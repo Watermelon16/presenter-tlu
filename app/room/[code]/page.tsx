@@ -491,7 +491,7 @@ export default function ParticipantRoomPage() {
                     />
                     <input
                       type="text"
-                      placeholder="Lớp (VD: 65CTL1)"
+                      placeholder="Lớp (VD: 65C)"
                       value={classNameInput}
                       onChange={(e) => setClassNameInput(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"

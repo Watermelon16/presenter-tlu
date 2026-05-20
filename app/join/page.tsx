@@ -79,7 +79,7 @@ function JoinRoomForm() {
             <div>
               <label className="text-sm font-medium mb-1.5 block">Mã phòng</label>
               <Input
-                placeholder="VD: TLU234"
+                placeholder="VD: A7K9P2"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 className="font-mono text-lg tracking-[4px]"
@@ -112,7 +112,7 @@ function JoinRoomForm() {
                 <div>
                   <label className="text-sm text-zinc-600 mb-1.5 block">Lớp</label>
                   <Input
-                    placeholder="65CTL1 - Công trình Thủy lợi"
+                    placeholder="VD: 65C"
                     value={className}
                     onChange={(e) => setClassName(e.target.value)}
                   />

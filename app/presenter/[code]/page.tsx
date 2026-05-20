@@ -1920,68 +1920,284 @@ function PresenterPage() {
           )}
         </div>
 
-        {/* ==================== EDIT ACTIVITY MODAL ==================== */}
-        {editingActivity && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[110]">
-            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-lg p-6">
-              <div className="text-xl font-semibold mb-1">Chỉnh sửa hoạt động</div>
-              <div className="text-sm text-zinc-600 mb-4">{editingActivity.type}</div>
-
-              <div className="space-y-4">
+        {/* ==================== CREATE / EDIT ACTIVITY MODAL (UNIFIED) ==================== */}
+        {(showCreateModal || editingActivity) && (
+          <div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowCreateModal(false);
+                setEditingActivity(null);
+              }
+            }}
+          >
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+              <div className="flex items-start justify-between mb-4">
                 <div>
-                  <label className="text-sm text-zinc-600 block mb-1">Tiêu đề</label>
-                  <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
+                  <div className="text-xl font-semibold">
+                    {editingActivity ? "Chỉnh sửa hoạt động" : "Tạo hoạt động mới"}
+                  </div>
+                  <div className="text-sm text-zinc-600 mt-0.5">
+                    {editingActivity
+                      ? `Đang sửa: ${editingActivity.title} (${editingActivity.type})`
+                      : "Chọn loại hoạt động và điền thông tin"}
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm text-zinc-600 block mb-1">Mốc slide PowerPoint</label>
-                  <input type="text" value={slideCue} onChange={(e) => setSlideCue(e.target.value)} placeholder="Slide 7" className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
-                </div>
+                <button
+                  onClick={() => { setShowCreateModal(false); setEditingActivity(null); }}
+                  className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none"
+                >
+                  ×
+                </button>
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button onClick={() => { setEditingActivity(null); setPollTitle(""); setSlideCue(""); }} className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100">Hủy</button>
-                <button onClick={async () => {
-                  if (!editingActivity) return;
-                  await updateActivity({
-                    activityId: editingActivity._id,
-                    title: pollTitle,
-                    slideCue: slideCue || undefined,
-                  });
-                  toast.success("Đã cập nhật hoạt động");
-                  setEditingActivity(null); setPollTitle(""); setSlideCue("");
-                }} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-medium">Lưu thay đổi</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== CREATE ACTIVITY MODAL ==================== */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[110]">
-            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-lg p-6">
-              <div className="text-xl font-semibold mb-1">Tạo hoạt động mới</div>
-              <div className="text-sm text-zinc-600 mb-4">Chọn loại</div>
-
               <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => (
-                    <button key={t} onClick={() => setCreateType(t)} className={`px-3 py-1.5 text-sm rounded-lg border ${createType === t ? "bg-emerald-600 border-emerald-500" : "border-zinc-300 hover:bg-zinc-100"}`}>
-                      {t}
+                {/* Loại hoạt động — disable khi edit (không đổi type được) */}
+                <div>
+                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Loại hoạt động</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => !editingActivity && setCreateType(t)}
+                        disabled={!!editingActivity}
+                        className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                          createType === t
+                            ? "bg-emerald-600 border-emerald-500 text-white"
+                            : "border-zinc-300 hover:bg-zinc-100 text-zinc-700"
+                        } ${editingActivity ? "opacity-60 cursor-not-allowed" : ""}`}
+                      >
+                        {t === "poll" && "📊 Poll"}
+                        {t === "wordcloud" && "☁️ Word Cloud"}
+                        {t === "rating" && "⭐ Rating"}
+                        {t === "qa" && "❓ Q&A"}
+                        {t === "board" && "📌 Board"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tiêu đề */}
+                <div>
+                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Tiêu đề <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={pollTitle}
+                    onChange={(e) => { setPollTitle(e.target.value); setTitleError(""); }}
+                    placeholder="VD: Phân loại đập theo vật liệu"
+                    className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
+                  />
+                  {titleError && <div className="text-xs text-red-600 mt-1">{titleError}</div>}
+                </div>
+
+                {/* Mốc slide PPT */}
+                <div>
+                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Mốc slide PowerPoint (tùy chọn)</label>
+                  <input
+                    type="text"
+                    value={slideCue}
+                    onChange={(e) => setSlideCue(e.target.value)}
+                    placeholder="VD: Slide 7, Sau slide 12"
+                    className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* === POLL-specific === */}
+                {createType === "poll" && (
+                  <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium text-zinc-700">Kiểu chọn:</label>
+                      <select
+                        value={pollType}
+                        onChange={(e) => setPollType(e.target.value as "single_choice" | "multiple_choice")}
+                        className="bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm"
+                      >
+                        <option value="single_choice">Chọn 1 đáp án</option>
+                        <option value="multiple_choice">Chọn nhiều đáp án</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Các lựa chọn</label>
+                      <div className="space-y-2">
+                        {options.map((opt, idx) => (
+                          <div key={idx} className="flex gap-2">
+                            <input
+                              type="text"
+                              value={opt}
+                              onChange={(e) => {
+                                const next = [...options];
+                                next[idx] = e.target.value;
+                                setOptions(next);
+                              }}
+                              placeholder={`Lựa chọn ${idx + 1}`}
+                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                            {options.length > 2 && (
+                              <button
+                                onClick={() => setOptions(options.filter((_, i) => i !== idx))}
+                                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                Xóa
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => setOptions([...options, ""])}
+                          className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          + Thêm lựa chọn
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* === RATING-specific === */}
+                {createType === "rating" && (
+                  <div className="space-y-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm font-medium text-zinc-700 block mb-1.5">Giá trị nhỏ nhất</label>
+                        <input
+                          type="number"
+                          value={ratingMin}
+                          onChange={(e) => setRatingMin(parseInt(e.target.value) || 1)}
+                          className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-zinc-700 block mb-1.5">Giá trị lớn nhất</label>
+                        <input
+                          type="number"
+                          value={ratingMax}
+                          onChange={(e) => setRatingMax(parseInt(e.target.value) || 5)}
+                          className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Nhãn điểm thấp</label>
+                      <input
+                        type="text"
+                        value={ratingMinLabel}
+                        onChange={(e) => setRatingMinLabel(e.target.value)}
+                        className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Nhãn điểm cao</label>
+                      <input
+                        type="text"
+                        value={ratingMaxLabel}
+                        onChange={(e) => setRatingMaxLabel(e.target.value)}
+                        className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* === BOARD-specific === */}
+                {createType === "board" && (
+                  <div className="space-y-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                    <label className="text-sm font-medium text-zinc-700 block">Các cột trên bảng</label>
+                    {boardColumns.map((col, idx) => (
+                      <div key={col.id} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={col.title}
+                          onChange={(e) => {
+                            const next = [...boardColumns];
+                            next[idx] = { ...col, title: e.target.value };
+                            setBoardColumns(next);
+                          }}
+                          placeholder={`Cột ${idx + 1}`}
+                          className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                        />
+                        {boardColumns.length > 1 && (
+                          <button
+                            onClick={() => setBoardColumns(boardColumns.filter((_, i) => i !== idx))}
+                            className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            Xóa
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => setBoardColumns([...boardColumns, { id: `col_${Date.now()}`, title: "" }])}
+                      className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                    >
+                      + Thêm cột
                     </button>
-                  ))}
+                  </div>
+                )}
+
+                {/* === Q&A-specific === */}
+                {createType === "qa" && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-zinc-600">
+                    Q&A cho phép sinh viên đặt câu hỏi tự do, có thể upvote. Bạn duyệt + trả lời trong dashboard.
+                  </div>
+                )}
+
+                {/* Thu thập mã SV + Thời gian */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-200">
+                  <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={requiresStudentCode}
+                      onChange={(e) => setRequiresStudentCode(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-600"
+                    />
+                    Bắt buộc mã SV (để chấm điểm)
+                  </label>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <label className="text-zinc-700">Thời gian:</label>
+                    <select
+                      value={timeLimitMode}
+                      onChange={(e) => setTimeLimitMode(e.target.value as "unlimited" | "preset" | "custom")}
+                      className="bg-white border border-zinc-300 rounded-lg px-2 py-1 text-sm"
+                    >
+                      <option value="unlimited">Không giới hạn</option>
+                      <option value="preset">1.5 phút</option>
+                      <option value="custom">Tùy chỉnh</option>
+                    </select>
+                    {timeLimitMode === "custom" && (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        value={timeLimitValue}
+                        onChange={(e) => setTimeLimitValue(parseFloat(e.target.value) || 1.5)}
+                        className="w-20 bg-white border border-zinc-300 rounded-lg px-2 py-1 text-sm"
+                      />
+                    )}
+                    {timeLimitMode === "custom" && <span className="text-zinc-500 text-xs">phút</span>}
+                  </div>
                 </div>
 
-                <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} placeholder="Tiêu đề hoạt động (VD: Phân loại đập theo vật liệu)" className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
+                {createError && (
+                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{createError}</div>
+                )}
 
-                <div className="flex gap-3">
-                  <button onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 rounded-xl border border-zinc-300">Hủy</button>
-                  <button onClick={async () => {
-                    if (!pollTitle.trim()) return;
-                    await createActivity({ sessionId: session!._id, type: createType, title: pollTitle.trim(), config: createType === "rating" ? { min: 1, max: 5 } : {}, requiresStudentCode: false, order: 999 });
-                    toast.success("Đã tạo hoạt động thành công!");
-                    setShowCreateModal(false);
-                    setPollTitle("");
-                  }} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-medium">Tạo hoạt động</button>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => { setShowCreateModal(false); setEditingActivity(null); }}
+                    className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleCreatePoll}
+                    disabled={isCreating}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-60"
+                  >
+                    {isCreating
+                      ? (editingActivity ? "Đang lưu..." : "Đang tạo...")
+                      : (editingActivity ? "Lưu thay đổi" : "Tạo hoạt động")}
+                  </button>
                 </div>
               </div>
             </div>
