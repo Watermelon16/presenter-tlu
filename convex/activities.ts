@@ -7,7 +7,7 @@ import { api } from "./_generated/api";
 export const createActivity = mutation({
   args: {
     sessionId: v.id("sessions"),
-    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa")),
+    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa"), v.literal("opentext")),
     title: v.string(),
     config: v.any(),
     requiresStudentCode: v.boolean(),

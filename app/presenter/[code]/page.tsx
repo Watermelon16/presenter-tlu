@@ -122,7 +122,7 @@ function PresenterPage() {
   const toggleLikeBoardPostPresenter = useMutation(api.board.toggleLikeBoardPost); // có thể dùng chung
 
   // Quick create for fast B testing (kịch bản + Companion + slide cue)
-  const quickCreateActivity = async (type: "poll" | "wordcloud" | "rating" | "qa" | "board", title: string, slideCue: string) => {
+  const quickCreateActivity = async (type: "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "opentext", title: string, slideCue: string) => {
     if (!session?._id) {
       toast.error("Chưa có session");
       return;
@@ -227,6 +227,9 @@ function PresenterPage() {
 
   // Panel hướng dẫn sử dụng (toggle để giảng viên xem nhanh khi cần)
   const [showHelp, setShowHelp] = useState(false);
+
+  // Dropdown "+ Tạo hoạt động"
+  const [showCreatePicker, setShowCreatePicker] = useState(false);
 
   // === Overlay toàn màn hình: QR mã phòng / kết quả activity / slide PDF ===
   // null = ẩn, "qr" = QR + mã phòng (Q), "result" = kết quả activity (F), "slides" = slide PDF (S)
@@ -412,6 +415,9 @@ function PresenterPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [shuffleOptions, setShuffleOptions] = useState(false);
   const [minSelections, setMinSelections] = useState(1);
+  // Quiz mode: nếu enabled, đánh dấu đáp án đúng (index trong options)
+  const [isQuizMode, setIsQuizMode] = useState(false);
+  const [correctOptionIndexes, setCorrectOptionIndexes] = useState<number[]>([]);
 
   // Mốc slide PowerPoint (tùy chọn)
   const [slideCue, setSlideCue] = useState("");
@@ -442,7 +448,7 @@ function PresenterPage() {
   const [titleError, setTitleError] = useState("");
 
   // Loại hoạt động đang tạo
-  const [createType, setCreateType] = useState<"poll" | "wordcloud" | "rating" | "qa" | "board">("poll");
+  const [createType, setCreateType] = useState<"poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext">("poll");
 
   // Reset board columns khi chuyển loại hoạt động
   useEffect(() => {
@@ -870,12 +876,20 @@ function PresenterPage() {
           text: text.trim(),
         }));
 
-        if (showAdvanced) {
-          config.shuffleOptions = shuffleOptions;
-          if (pollType === "multiple_choice") {
-            config.minSelections = minSelections;
-          }
+        config.shuffleOptions = shuffleOptions;
+        if (pollType === "multiple_choice") {
+          config.minSelections = minSelections;
         }
+
+        // Quiz mode: lưu danh sách id đáp án đúng (theo index → id từ validOptions)
+        if (isQuizMode && correctOptionIndexes.length > 0) {
+          config.isQuiz = true;
+          config.correctOptionIds = correctOptionIndexes
+            .filter((i) => i < validOptions.length)
+            .map((i) => `opt_${i}`);
+        }
+      } else if (createType === "opentext") {
+        config.maxLength = 500;
       } else if (createType === "wordcloud") {
         config.maxLength = 30;
       } else if (createType === "rating") {
@@ -1089,7 +1103,7 @@ function PresenterPage() {
   }, [isScriptMode, currentScriptIndex]);
 
   // Mở modal ở chế độ tạo mới, pre-config theo loại được chọn
-  const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board") => {
+  const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext") => {
     // Reset form về trạng thái mặc định cho loại này
     setEditingActivity(null);
     setCreateType(type);
@@ -1109,6 +1123,8 @@ function PresenterPage() {
       setShuffleOptions(false);
       setMinSelections(1);
       setShowAdvanced(false);
+      setIsQuizMode(false);
+      setCorrectOptionIndexes([]);
     } else if (type === "rating") {
       setRatingMin(1);
       setRatingMax(5);
@@ -1151,11 +1167,21 @@ function PresenterPage() {
     if (activity.type === "poll") {
       setCreateType("poll");
       setPollType(activity.config?.pollType || "single_choice");
-      setOptions(activity.config?.options?.map((o: any) => o.text) || ["", ""]);
+      const opts = activity.config?.options || [];
+      setOptions(opts.map((o: any) => o.text) || ["", ""]);
       setShuffleOptions(activity.config?.shuffleOptions || false);
       setMinSelections(activity.config?.minSelections || 1);
       setShowAdvanced(!!(activity.config?.shuffleOptions || activity.config?.minSelections));
-    } 
+
+      // Load Quiz mode state
+      const correctIds: string[] = activity.config?.correctOptionIds || [];
+      setIsQuizMode(!!activity.config?.isQuiz && correctIds.length > 0);
+      setCorrectOptionIndexes(
+        correctIds
+          .map((id) => opts.findIndex((o: any) => o.id === id))
+          .filter((i) => i >= 0)
+      );
+    }
     else if (activity.type === "wordcloud") {
       setCreateType("wordcloud");
     } 
@@ -1230,7 +1256,7 @@ function PresenterPage() {
     const isStartingThis = isStarting === activity._id;
 
     const typeIcon: Record<string, string> = {
-      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌",
+      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️",
     };
 
     return (
@@ -1280,7 +1306,7 @@ function PresenterPage() {
           <div className="text-xs text-zinc-500 flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="capitalize">{activity.type}</span>
             {activity.timeLimit && <span className="text-blue-600">⏱ {activity.timeLimit}p</span>}
-            {activity.requiresStudentCode && <span className="text-purple-600">👤 Mã SV</span>}
+            {activity.requiresStudentCode && <span className="text-emerald-700" title="Ghi nhận điểm tham gia">📋 Tính điểm</span>}
             {activity.slideCue && (
               <span className="text-amber-600 flex items-center gap-1">📍 {activity.slideCue}</span>
             )}
@@ -1704,106 +1730,56 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* === Tạo hoạt động — chọn loại có mô tả === */}
-        <div className="mb-6 bg-white border border-zinc-200 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-base font-semibold text-zinc-900">+ Tạo hoạt động mới</div>
-              <div className="text-xs text-zinc-500 mt-0.5">Chọn loại phù hợp với nội dung bạn đang giảng</div>
-            </div>
-          </div>
+        {/* === Tạo hoạt động — dropdown gọn === */}
+        <div className="mb-6 relative">
+          <button
+            onClick={() => setShowCreatePicker(!showCreatePicker)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-sm transition-colors"
+          >
+            <span className="text-lg">+</span> Tạo hoạt động
+            <span className="text-xs opacity-70">{showCreatePicker ? "▲" : "▼"}</span>
+          </button>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {/* Poll */}
-            <button
-              onClick={() => openCreateModal("poll")}
-              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-blue-400 hover:bg-blue-50/50 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-3xl">📊</span>
-                <span className="text-[10px] text-zinc-400 group-hover:text-blue-600 font-medium">POLL</span>
-              </div>
-              <div className="font-semibold text-zinc-900 mb-1">Trắc nghiệm</div>
-              <div className="text-xs text-zinc-600 leading-snug mb-2">
-                Đáp án có sẵn. SV chọn 1 hoặc nhiều ý.
-              </div>
-              <div className="text-[11px] text-blue-700 bg-blue-50 px-2 py-1 rounded leading-snug">
-                💡 Đo mức hiểu, khảo sát quan điểm
-              </div>
-            </button>
+          {showCreatePicker && (
+            <>
+              {/* Click-away */}
+              <div className="fixed inset-0 z-30" onClick={() => setShowCreatePicker(false)} />
 
-            {/* Word Cloud */}
-            <button
-              onClick={() => openCreateModal("wordcloud")}
-              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-sky-400 hover:bg-sky-50/50 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-3xl">☁️</span>
-                <span className="text-[10px] text-zinc-400 group-hover:text-sky-600 font-medium">WORD CLOUD</span>
-              </div>
-              <div className="font-semibold text-zinc-900 mb-1">Đám mây từ</div>
-              <div className="text-xs text-zinc-600 leading-snug mb-2">
-                SV nhập từ khóa ngắn. Từ trùng nhau → cụm to.
-              </div>
-              <div className="text-[11px] text-sky-700 bg-sky-50 px-2 py-1 rounded leading-snug">
-                💡 Brainstorm, liên tưởng nhanh
-              </div>
-            </button>
+              <div className="absolute top-full left-0 mt-2 w-[640px] max-w-[calc(100vw-2rem)] bg-white border border-zinc-200 rounded-2xl shadow-xl p-3 z-40">
+                <div className="px-2 py-1.5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Chọn loại hoạt động</div>
 
-            {/* Rating */}
-            <button
-              onClick={() => openCreateModal("rating")}
-              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-amber-400 hover:bg-amber-50/50 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-3xl">⭐</span>
-                <span className="text-[10px] text-zinc-400 group-hover:text-amber-600 font-medium">RATING</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { type: "poll", icon: "📊", name: "Trắc nghiệm", desc: "SV chọn 1 hoặc nhiều đáp án có sẵn (hỗ trợ chế độ Quiz)", color: "blue" },
+                    { type: "wordcloud", icon: "☁️", name: "Đám mây từ", desc: "Từ khóa ngắn, từ trùng → cụm to (brainstorm)", color: "sky" },
+                    { type: "rating", icon: "⭐", name: "Thang điểm", desc: "Chấm 1–N với nhãn thấp/cao tùy chỉnh", color: "amber" },
+                    { type: "qa", icon: "❓", name: "Hỏi đáp", desc: "SV đặt câu hỏi tự do, có upvote", color: "emerald" },
+                    { type: "opentext", icon: "✏️", name: "Trả lời ngắn", desc: "Câu trả lời 1–2 câu, không gom tần suất", color: "teal" },
+                    { type: "board", icon: "📌", name: "Bảng cộng tác", desc: "Padlet — đăng text + ảnh theo cột", color: "purple" },
+                  ].map((item) => (
+                    <button
+                      key={item.type}
+                      onClick={() => {
+                        openCreateModal(item.type as "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext");
+                        setShowCreatePicker(false);
+                      }}
+                      className="text-left p-3 rounded-xl hover:bg-zinc-50 active:bg-zinc-100 transition-colors flex items-start gap-3 group"
+                    >
+                      <span className="text-2xl shrink-0 mt-0.5">{item.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-zinc-900 group-hover:text-emerald-700 text-sm">
+                          {item.name}
+                        </div>
+                        <div className="text-xs text-zinc-600 mt-0.5 leading-snug">
+                          {item.desc}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="font-semibold text-zinc-900 mb-1">Thang điểm</div>
-              <div className="text-xs text-zinc-600 leading-snug mb-2">
-                Chấm 1–N với nhãn thấp/cao tùy chỉnh.
-              </div>
-              <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded leading-snug">
-                💡 Đo tự tin, mức độ hiểu bài
-              </div>
-            </button>
-
-            {/* Q&A */}
-            <button
-              onClick={() => openCreateModal("qa")}
-              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/50 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-3xl">❓</span>
-                <span className="text-[10px] text-zinc-400 group-hover:text-emerald-600 font-medium">Q&A</span>
-              </div>
-              <div className="font-semibold text-zinc-900 mb-1">Hỏi đáp</div>
-              <div className="text-xs text-zinc-600 leading-snug mb-2">
-                SV đặt câu hỏi tự do, có upvote &amp; moderation.
-              </div>
-              <div className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded leading-snug">
-                💡 Hỏi đáp giữa giờ, gom thắc mắc
-              </div>
-            </button>
-
-            {/* Board */}
-            <button
-              onClick={() => openCreateModal("board")}
-              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-purple-400 hover:bg-purple-50/50 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-3xl">📌</span>
-                <span className="text-[10px] text-zinc-400 group-hover:text-purple-600 font-medium">BOARD</span>
-              </div>
-              <div className="font-semibold text-zinc-900 mb-1">Bảng cộng tác</div>
-              <div className="text-xs text-zinc-600 leading-snug mb-2">
-                Padlet — SV đăng text + ảnh, chia cột.
-              </div>
-              <div className="text-[11px] text-purple-700 bg-purple-50 px-2 py-1 rounded leading-snug">
-                💡 Thảo luận nhóm, ý kiến đa dạng
-              </div>
-            </button>
-          </div>
+            </>
+          )}
         </div>
 
         {/* ==================== DANH SÁCH HOẠT ĐỘNG (Kéo thả + Chỉnh sửa) ==================== */}
@@ -2238,6 +2214,7 @@ function PresenterPage() {
                     {createType === "wordcloud" && "☁️"}
                     {createType === "rating" && "⭐"}
                     {createType === "qa" && "❓"}
+                    {createType === "opentext" && "✏️"}
                     {createType === "board" && "📌"}
                   </div>
                   <div className="flex-1">
@@ -2246,6 +2223,7 @@ function PresenterPage() {
                       {createType === "wordcloud" && "Đám mây từ (Word Cloud)"}
                       {createType === "rating" && "Thang điểm (Rating)"}
                       {createType === "qa" && "Hỏi đáp (Q&A)"}
+                      {createType === "opentext" && "Trả lời ngắn (Open Text)"}
                       {createType === "board" && "Bảng cộng tác (Board)"}
                     </div>
                     <div className="text-xs text-zinc-600 mt-0.5">
@@ -2253,6 +2231,7 @@ function PresenterPage() {
                       {createType === "wordcloud" && "SV nhập từ khóa ngắn, các từ trùng gom thành cụm to"}
                       {createType === "rating" && "SV chấm điểm theo thang số bạn đặt"}
                       {createType === "qa" && "SV đặt câu hỏi tự do, có thể upvote câu hay"}
+                      {createType === "opentext" && "SV nhập câu trả lời ngắn 1-2 câu, hiển thị danh sách đầy đủ"}
                       {createType === "board" && "SV đăng text + ảnh theo cột phân loại"}
                     </div>
                   </div>
@@ -2388,6 +2367,65 @@ function PresenterPage() {
                       />
                       Xáo trộn thứ tự đáp án cho từng SV
                     </label>
+
+                    {/* Quiz mode: đánh dấu đáp án đúng */}
+                    <div className="pt-2 border-t border-blue-200">
+                      <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isQuizMode}
+                          onChange={(e) => {
+                            setIsQuizMode(e.target.checked);
+                            if (!e.target.checked) setCorrectOptionIndexes([]);
+                          }}
+                          className="w-4 h-4 accent-blue-600"
+                        />
+                        <span className="font-medium">🎯 Chế độ Quiz</span>
+                        <span className="text-xs text-zinc-500">— có đáp án đúng, SV được báo đúng/sai sau khi gửi</span>
+                      </label>
+
+                      {isQuizMode && (
+                        <div className="mt-2 ml-6 p-3 bg-white rounded-lg border border-blue-300">
+                          <div className="text-xs text-zinc-700 mb-2">Đánh dấu đáp án đúng (có thể chọn nhiều):</div>
+                          <div className="space-y-1.5">
+                            {options.map((opt, idx) => {
+                              if (!opt.trim()) return null;
+                              const isCorrect = correctOptionIndexes.includes(idx);
+                              return (
+                                <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 px-2 py-1 rounded">
+                                  <input
+                                    type="checkbox"
+                                    checked={isCorrect}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setCorrectOptionIndexes([...correctOptionIndexes, idx]);
+                                      } else {
+                                        setCorrectOptionIndexes(correctOptionIndexes.filter((i) => i !== idx));
+                                      }
+                                    }}
+                                    className="w-4 h-4 accent-emerald-600"
+                                  />
+                                  <span className={isCorrect ? "text-emerald-700 font-medium" : "text-zinc-700"}>
+                                    {isCorrect && "✓ "}{opt}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {correctOptionIndexes.length === 0 && (
+                            <div className="text-xs text-amber-600 mt-2">⚠ Chưa đánh dấu đáp án đúng nào</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ===== OPEN TEXT-specific ===== */}
+                {createType === "opentext" && (
+                  <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-sm text-zinc-700">
+                    <div className="text-sm font-semibold text-teal-900 mb-2">⚙️ Cấu hình Trả lời ngắn</div>
+                    SV nhập câu trả lời ngắn (tối đa 500 ký tự). Khác Word Cloud: <strong>không gom tần suất</strong>, hiển thị danh sách tất cả câu trả lời. Phù hợp khi cần thu thập giải thích, ví dụ, lý do.
                   </div>
                 )}
 
@@ -2589,18 +2627,19 @@ function PresenterPage() {
                   </div>
                 </div>
 
-                {/* ===== Bắt buộc mã SV ===== */}
-                <label className="flex items-start gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl cursor-pointer hover:bg-zinc-100/70">
+                {/* ===== Ghi nhận điểm tham gia ===== */}
+                <label className="flex items-start gap-3 p-4 bg-emerald-50/50 border-2 border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-50">
                   <input
                     type="checkbox"
                     checked={requiresStudentCode}
                     onChange={(e) => setRequiresStudentCode(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-600 mt-0.5"
+                    className="w-5 h-5 accent-emerald-600 mt-0.5"
                   />
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-zinc-700">Bắt buộc mã SV để trả lời</div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
-                      Ghi nhận điểm tham gia cho từng SV. Nếu tắt, hoạt động hoàn toàn ẩn danh (chỉ xem tổng quan).
+                    <div className="text-sm font-semibold text-emerald-900">📋 Ghi nhận điểm tham gia</div>
+                    <div className="text-xs text-zinc-700 mt-1 space-y-1">
+                      <div><strong className="text-emerald-700">✓ Bật:</strong> Câu trả lời được ghi cho từng SV cụ thể. Tính vào Bảng thành tích. SV không trả lời sẽ bị đánh dấu &quot;Không trả lời&quot;.</div>
+                      <div><strong className="text-zinc-600">✗ Tắt:</strong> Khảo sát / câu hỏi mở ẩn danh. Chỉ xem kết quả tổng quan, không chấm điểm.</div>
                     </div>
                   </div>
                 </label>

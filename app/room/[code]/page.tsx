@@ -280,7 +280,7 @@ export default function ParticipantRoomPage() {
 
       let value: any;
 
-      if (activeActivity.type === "wordcloud") {
+      if (activeActivity.type === "wordcloud" || activeActivity.type === "opentext") {
         value = wordcloudInput.trim();
       } else if (activeActivity.type === "rating") {
         value = parseInt(selectedOptions[0]);
@@ -340,6 +340,25 @@ export default function ParticipantRoomPage() {
   };
 
   const options: Array<{ id: string; text: string }> = activeActivity?.config?.options || [];
+
+  // Quiz mode: kiểm tra đúng/sai cho Poll khi đã submit
+  const isQuiz: boolean = !!(
+    activeActivity?.type === "poll" &&
+    activeActivity.config?.isQuiz &&
+    Array.isArray(activeActivity.config?.correctOptionIds)
+  );
+  const correctIds: string[] = isQuiz ? (activeActivity!.config.correctOptionIds as string[]) : [];
+  let isCorrect: boolean | null = null;
+  if (isQuiz && hasSubmitted) {
+    const chosen: string[] =
+      activeActivity!.config?.pollType === "multiple_choice"
+        ? selectedOptions
+        : [selectedOptions[0]].filter(Boolean);
+    const chosenSet = new Set(chosen);
+    const correctSet = new Set(correctIds);
+    isCorrect =
+      chosenSet.size === correctSet.size && [...chosenSet].every((id) => correctSet.has(id));
+  }
 
   // ==================== RENDER ====================
 
@@ -617,6 +636,43 @@ export default function ParticipantRoomPage() {
               </div>
             )}
 
+            {/* Form trả lời - Open Text */}
+            {activeActivity.type === "opentext" && !hasSubmitted && (
+              <div className="bg-white border rounded-3xl p-6 shadow-sm">
+                <div className="mb-3 text-sm text-zinc-500">
+                  Câu trả lời ngắn (tối đa 500 ký tự)
+                </div>
+                <textarea
+                  value={wordcloudInput}
+                  onChange={(e) => setWordcloudInput(e.target.value)}
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Nhập câu trả lời của bạn..."
+                  className="w-full px-5 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
+                  disabled={isSubmitting || timeLeft === 0}
+                />
+                <div className="flex justify-end text-xs text-zinc-500 mt-1">
+                  {wordcloudInput.length} / 500
+                </div>
+
+                {submitError && (
+                  <div className="mt-3 text-sm text-red-600 bg-red-50 p-3 rounded-xl">{submitError}</div>
+                )}
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={!wordcloudInput.trim() || isSubmitting || timeLeft === 0}
+                  className="mt-3 w-full py-4 rounded-2xl bg-zinc-900 text-white text-lg font-medium disabled:opacity-50 active:bg-black transition-colors"
+                >
+                  {isSubmitting ? "Đang gửi..." : "Gửi câu trả lời"}
+                </button>
+
+                {timeLeft !== null && timeLeft <= 0 && (
+                  <p className="text-center text-sm text-red-600 mt-3">Đã hết thời gian</p>
+                )}
+              </div>
+            )}
+
             {/* Form trả lời - Rating / Thang điểm */}
             {activeActivity.type === "rating" && !hasSubmitted && (
               <div className="bg-white border rounded-3xl p-6 shadow-sm">
@@ -779,12 +835,42 @@ export default function ParticipantRoomPage() {
 
             {/* Feedback sau khi tham gia - Tối ưu trải nghiệm sinh viên */}
             {hasSubmitted && activeActivity?.type !== "board" && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-8 text-center">
-                <div className="text-5xl mb-4">✅</div>
-                <div className="text-2xl font-semibold text-emerald-800 mb-2">Đã ghi nhận!</div>
-                <p className="text-emerald-700">Cảm ơn bạn đã đóng góp. Phần tham gia của bạn đang được ghi nhận để tính điểm.</p>
+              <div className={`border rounded-3xl p-8 text-center ${
+                isQuiz
+                  ? isCorrect
+                    ? "bg-emerald-50 border-emerald-200"
+                    : "bg-red-50 border-red-200"
+                  : "bg-emerald-50 border-emerald-200"
+              }`}>
+                <div className="text-5xl mb-4">
+                  {isQuiz ? (isCorrect ? "🎉" : "❌") : "✅"}
+                </div>
+                <div className={`text-2xl font-semibold mb-2 ${
+                  isQuiz ? (isCorrect ? "text-emerald-800" : "text-red-700") : "text-emerald-800"
+                }`}>
+                  {isQuiz
+                    ? (isCorrect ? "Chính xác! 🎉" : "Chưa đúng")
+                    : "Đã ghi nhận!"}
+                </div>
+                <p className={isQuiz ? (isCorrect ? "text-emerald-700" : "text-red-600") : "text-emerald-700"}>
+                  {isQuiz
+                    ? (isCorrect ? "Bạn đã chọn đúng đáp án." : "Đáp án đúng được đánh dấu bên dưới.")
+                    : "Cảm ơn bạn đã đóng góp. Phần tham gia của bạn đang được ghi nhận để tính điểm."}
+                </p>
 
-                {activeActivity.type === "poll" && pollResults && pollResults.totalAnswered > 0 && (
+                {/* Quiz: hiển thị đáp án đúng */}
+                {isQuiz && (
+                  <div className="mt-6 pt-6 border-t border-zinc-200 text-left">
+                    <div className="text-sm font-medium text-zinc-700 mb-3">Đáp án đúng:</div>
+                    {(activeActivity.config?.options || []).filter((opt: any) => correctIds.includes(opt.id)).map((opt: any) => (
+                      <div key={opt.id} className="px-3 py-2 mb-2 bg-emerald-100 border border-emerald-300 rounded-lg text-emerald-900 text-sm font-medium">
+                        ✓ {opt.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeActivity.type === "poll" && !isQuiz && pollResults && pollResults.totalAnswered > 0 && (
                   <div className="mt-6 pt-6 border-t border-emerald-200 text-left">
                     <div className="text-sm font-medium text-emerald-800 mb-3">Kết quả hiện tại</div>
                     {pollResults.options?.map((opt: any) => {

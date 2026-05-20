@@ -50,11 +50,12 @@ export default defineSchema({
   activities: defineTable({
     sessionId: v.id("sessions"),
     type: v.union(
-      v.literal("poll"), 
+      v.literal("poll"),
       v.literal("wordcloud"),
       v.literal("rating"),
-      v.literal("board"), 
-      v.literal("qa")
+      v.literal("board"),
+      v.literal("qa"),
+      v.literal("opentext")
     ),
     title: v.string(),                    // Tiêu đề hoạt động
     config: v.any(),                      // Cấu hình chi tiết (câu hỏi, lựa chọn, thang điểm...)

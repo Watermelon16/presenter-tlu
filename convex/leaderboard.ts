@@ -85,8 +85,10 @@ export const getParticipationLeaderboard = query({
       const studentCode = resp.studentCode;
       let points = 0;
 
-      if (activity.type === "poll" || activity.type === "wordcloud" || activity.type === "rating") {
-        points = config[activity.type as keyof typeof config] || 1;
+      if (activity.type === "poll" || activity.type === "wordcloud" || activity.type === "rating" || activity.type === "opentext") {
+        // opentext dùng chung điểm với wordcloud (mỗi câu trả lời = 1 điểm)
+        const key = activity.type === "opentext" ? "wordcloud" : activity.type;
+        points = config[key as keyof typeof config] || 1;
       } else if (activity.type === "qa") {
         const value = typeof resp.value === "object" ? resp.value : {};
         // Điểm khi đặt câu hỏi
