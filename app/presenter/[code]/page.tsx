@@ -204,6 +204,7 @@ function PresenterPage() {
   const updateActivity = useMutation(api.activities.updateActivity);
   const deleteActivity = useMutation(api.activities.deleteActivity);
   const updateCollectStudentCode = useMutation(api.sessions.updateCollectStudentCode);
+  const endSession = useMutation(api.sessions.endSession);
 
   // Script Runner mutations (B: server-backed kịch bản)
   const startScriptRunner = useMutation(api.activities.startScriptRunner);
@@ -1355,12 +1356,27 @@ function PresenterPage() {
               </button>
             </div>
 
-            <button
-              className="px-4 py-2 text-sm rounded-lg border border-red-900 text-red-400 hover:bg-red-950 transition-colors"
-              onClick={() => alert("Chức năng kết thúc buổi sẽ được làm sau")}
-            >
-              Kết thúc buổi
-            </button>
+            {session.status === "ended" ? (
+              <div className="px-4 py-2 text-sm rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400">
+                Đã kết thúc
+              </div>
+            ) : (
+              <button
+                className="px-4 py-2 text-sm rounded-lg border border-red-900 text-red-400 hover:bg-red-950 transition-colors"
+                onClick={async () => {
+                  if (!session?._id) return;
+                  if (!confirm("Kết thúc buổi giảng? Sinh viên sẽ không thể gửi câu trả lời mới (kết quả đã có vẫn được giữ).")) return;
+                  try {
+                    await endSession({ sessionId: session._id });
+                    toast.success("Đã kết thúc buổi giảng. Bạn vẫn có thể xuất kết quả.");
+                  } catch (e: unknown) {
+                    toast.error(e instanceof Error ? e.message : "Không thể kết thúc buổi");
+                  }
+                }}
+              >
+                Kết thúc buổi
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ export default function CreateRoomPage() {
 
   const handleCreateRoom = async () => {
     if (!title.trim()) {
-      alert("Vui lòng nhập tên buổi giảng");
+      toast.error("Vui lòng nhập tên buổi giảng");
       return;
     }
 
@@ -35,7 +36,7 @@ export default function CreateRoomPage() {
       router.push(`/presenter/${result.code}`);
     } catch (error) {
       console.error(error);
-      alert("Không thể tạo phòng. Vui lòng thử lại.");
+      toast.error("Không thể tạo phòng. Vui lòng thử lại.");
     } finally {
       setIsLoading(false);
     }

@@ -154,7 +154,7 @@ export default function ParticipantRoomPage() {
   // Lưu danh tính
   const saveIdentity = async () => {
     if (!upperCode || !studentCodeInput.trim() || !fullNameInput.trim() || !classNameInput.trim()) {
-      alert("Vui lòng điền đầy đủ thông tin");
+      toast.error("Vui lòng điền đầy đủ thông tin");
       return;
     }
 
@@ -182,8 +182,9 @@ export default function ParticipantRoomPage() {
 
       // Feedback nhẹ cho sinh viên biết họ đã được ghi nhận
       toast.success("Đã ghi nhận thông tin. Câu trả lời của bạn sẽ được dùng để tính điểm tham gia.", { duration: 4000 });
-    } catch (err: any) {
-      alert(err.message || "Không thể lưu thông tin. Vui lòng thử lại.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể lưu thông tin. Vui lòng thử lại.";
+      toast.error(msg);
     }
   };
 
