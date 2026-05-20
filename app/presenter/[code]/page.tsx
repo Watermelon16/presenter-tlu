@@ -225,6 +225,9 @@ function PresenterPage() {
   const [isPresentationMode, setIsPresentationMode] = useState(false); // Chế độ Trình diễn cực mạnh (Focus Mode)
   const [isAdvancing, setIsAdvancing] = useState(false); // Transition state in Presentation Mode
 
+  // Panel hướng dẫn sử dụng (toggle để giảng viên xem nhanh khi cần)
+  const [showHelp, setShowHelp] = useState(false);
+
   // === Overlay toàn màn hình: QR mã phòng / kết quả activity / slide PDF ===
   // null = ẩn, "qr" = QR + mã phòng (Q), "result" = kết quả activity (F), "slides" = slide PDF (S)
   const [fullscreenOverlay, setFullscreenOverlay] = useState<null | "qr" | "result" | "slides">(null);
@@ -1224,13 +1227,21 @@ function PresenterPage() {
       opacity: isDragging ? 0.25 : 1,
     };
 
+    const isStartingThis = isStarting === activity._id;
+
+    const typeIcon: Record<string, string> = {
+      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌",
+    };
+
     return (
       <div
         ref={setNodeRef}
         style={style}
         className={`px-6 py-3 flex items-center gap-4 group border-b border-zinc-200 last:border-b-0 transition-all ${
-          isDragging 
-            ? 'opacity-30 border-dashed border-emerald-600/50 bg-transparent' 
+          isDragging
+            ? 'opacity-30 border-dashed border-emerald-600/50 bg-transparent'
+            : activity.status === "active"
+            ? 'bg-emerald-50/60 hover:bg-emerald-50'
             : 'hover:bg-zinc-100/60'
         }`}
       >
@@ -1248,17 +1259,28 @@ function PresenterPage() {
 
         <div className="w-6 text-xs text-zinc-500 font-mono select-none">{index + 1}</div>
 
+        <div className="text-xl select-none">{typeIcon[activity.type] || "•"}</div>
+
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate flex items-center gap-2">
             {activity.title}
+            {activity.status === "draft" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 font-medium">NHÁP</span>
+            )}
             {activity.status === "active" && (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-600">ĐANG CHẠY</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-semibold animate-pulse">● ĐANG CHẠY · SV THẤY</span>
+            )}
+            {activity.status === "closed" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG</span>
+            )}
+            {activity.status === "expired" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">HẾT GIỜ</span>
             )}
           </div>
           <div className="text-xs text-zinc-500 flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="capitalize">{activity.type}</span>
             {activity.timeLimit && <span className="text-blue-600">⏱ {activity.timeLimit}p</span>}
-            {activity.requiresStudentCode && <span className="text-purple-400">👤 Mã SV</span>}
+            {activity.requiresStudentCode && <span className="text-purple-600">👤 Mã SV</span>}
             {activity.slideCue && (
               <span className="text-amber-600 flex items-center gap-1">📍 {activity.slideCue}</span>
             )}
@@ -1266,21 +1288,49 @@ function PresenterPage() {
         </div>
 
         <div className="flex items-center gap-2 opacity-80 group-hover:opacity-100">
+          {/* Nút Bắt đầu / Đóng — quan trọng nhất, đặt to + nổi bật */}
+          {activity.status === "draft" && (
+            <button
+              onClick={() => handleStart(activity._id)}
+              disabled={isStartingThis}
+              className="px-4 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors disabled:opacity-60 shadow-sm"
+              title="Bắt đầu hoạt động — SV sẽ thấy ngay"
+            >
+              {isStartingThis ? "Đang bắt đầu..." : "▶ Bắt đầu"}
+            </button>
+          )}
+          {activity.status === "active" && (
+            <button
+              onClick={() => handleClose(activity._id)}
+              className="px-4 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors shadow-sm"
+              title="Đóng hoạt động — SV không gửi thêm được"
+            >
+              ⏹ Đóng
+            </button>
+          )}
+          {(activity.status === "closed" || activity.status === "expired") && (
+            <button
+              onClick={onDuplicate}
+              className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
+              title="Tạo bản sao để chạy lại"
+            >
+              🔄 Chạy lại
+            </button>
+          )}
+
           <button
             onClick={onEdit}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 transition-colors"
+            disabled={activity.status === "active"}
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={activity.status === "active" ? "Không thể sửa khi đang chạy" : "Sửa hoạt động"}
           >
             Sửa
           </button>
           <button
-            onClick={onDuplicate}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 transition-colors"
-          >
-            Làm lại
-          </button>
-          <button
             onClick={onDelete}
-            className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+            disabled={activity.status === "active"}
+            className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={activity.status === "active" ? "Không thể xóa khi đang chạy" : "Xóa hoạt động"}
           >
             Xóa
           </button>
@@ -1419,6 +1469,94 @@ function PresenterPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ==================== PANEL HƯỚNG DẪN (toggle) ==================== */}
+      <div className="max-w-7xl mx-auto px-6 pt-4">
+        <button
+          onClick={() => setShowHelp(!showHelp)}
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 font-medium transition-colors"
+        >
+          {showHelp ? "▼" : "▶"} 📖 Hướng dẫn sử dụng nhanh
+        </button>
+
+        {showHelp && (
+          <div className="mt-3 bg-white border border-blue-200 rounded-2xl p-6 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Cột 1: Flow tạo hoạt động */}
+              <div>
+                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-bold">1</span>
+                  Tạo & chạy hoạt động
+                </div>
+                <ol className="text-xs text-zinc-700 space-y-1.5 list-decimal pl-4 leading-relaxed">
+                  <li>Chọn 1 trong 5 loại (Trắc nghiệm / Đám mây từ / Thang điểm / Hỏi đáp / Bảng cộng tác)</li>
+                  <li>Điền tiêu đề + cấu hình → bấm <strong className="text-emerald-700">Tạo</strong></li>
+                  <li>Hoạt động tạo ra ở trạng thái <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span> — SV chưa thấy</li>
+                  <li>Bấm <strong className="text-emerald-700">▶ Bắt đầu</strong> để SV thấy & trả lời</li>
+                  <li>Bấm <strong className="text-red-700">⏹ Đóng</strong> khi xong</li>
+                </ol>
+              </div>
+
+              {/* Cột 2: Phím tắt */}
+              <div>
+                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs flex items-center justify-center font-bold">⌨</span>
+                  Phím tắt khi chiếu
+                </div>
+                <div className="text-xs text-zinc-700 space-y-1.5 leading-relaxed">
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Q</kbd>
+                    <span>Chiếu QR + mã phòng to (SV quét)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd>
+                    <span>Chiếu kết quả hoạt động to (đang chạy)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">S</kbd>
+                    <span>Chiếu slide PDF (nếu đã upload)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd>
+                    <span>Thoát chế độ chiếu</span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 mt-1 border-t border-zinc-200">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd>
+                    <span>Hoạt động tiếp theo (kịch bản) / Next slide</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd>
+                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd>
+                    <span>Trước / Sau (khi đang chiếu slide)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cột 3: Mẹo + workflow */}
+              <div>
+                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center font-bold">💡</span>
+                  Mẹo workflow
+                </div>
+                <ul className="text-xs text-zinc-700 space-y-1.5 list-disc pl-4 leading-relaxed">
+                  <li><strong>Đầu buổi:</strong> bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">Q</kbd> chiếu QR → SV quét, nhập mã SV/Họ tên/Lớp</li>
+                  <li><strong>Trong buổi:</strong> tạo activity từ trước → bấm Bắt đầu khi cần → bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">F</kbd> chiếu kết quả to</li>
+                  <li><strong>Kịch bản:</strong> sắp xếp thứ tự bằng kéo thả → bấm "▶ Chạy theo kịch bản" → dùng <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">Space</kbd> chuyển bước</li>
+                  <li><strong>Sau buổi:</strong> Xuất <strong className="text-emerald-700">Excel</strong> → đẩy lên LMS chấm điểm</li>
+                  <li><strong>Có PDF slide:</strong> Upload → bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">S</kbd> chiếu thay PPT (không cần Alt+Tab)</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-600">
+              <strong>Trạng thái hoạt động:</strong>
+              <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span> chưa hiện cho SV ·{" "}
+              <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span> SV đang thấy & trả lời được ·{" "}
+              <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-300 text-zinc-700">ĐÃ ĐÓNG</span> không nhận thêm trả lời
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -1727,9 +1865,14 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* ==================== DỮ LIỆU TRỰC TIẾP (Results section - sạch, sẵn sàng cải thiện sâu theo B) ==================== */}
+        {/* ==================== KẾT QUẢ REALTIME (Results section) ==================== */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Dữ liệu trực tiếp</h2>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">Kết quả realtime</h2>
+            <p className="text-sm text-zinc-600 mt-0.5">
+              Hiển thị câu trả lời của SV cho hoạt động đang chạy — cập nhật ngay khi SV gửi
+            </p>
+          </div>
 
           {activeActivity ? (
             <div 
@@ -2045,8 +2188,12 @@ function PresenterPage() {
               )}
             </div>
           ) : (
-            <div className="bg-white border border-zinc-200 rounded-2xl p-6 text-sm text-zinc-500">
-              Chưa có hoạt động nào đang chạy. Kết quả sẽ hiển thị realtime khi bạn kích hoạt hoạt động.
+            <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center">
+              <div className="text-4xl mb-3">⏸️</div>
+              <div className="text-base font-medium text-zinc-700 mb-1">Chưa có hoạt động nào đang chạy</div>
+              <div className="text-sm text-zinc-500 max-w-md mx-auto">
+                Tạo hoạt động ở khung phía trên, sau đó bấm nút <strong className="text-emerald-700">▶ Bắt đầu</strong> trên hoạt động đó để sinh viên thấy và trả lời.
+              </div>
             </div>
           )}
         </div>
