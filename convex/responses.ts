@@ -86,6 +86,112 @@ export const submitResponse = mutation({
   },
 });
 
+/**
+ * Lịch sử SV: danh sách tất cả activity (trừ draft) trong buổi + câu trả lời của SV,
+ * thống kê tổng (số response, my rank). Dùng cho giao diện sinh viên.
+ */
+export const getMyHistoryInSession = query({
+  args: {
+    sessionId: v.id("sessions"),
+    studentCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.studentCode) {
+      return { items: [], stats: { participatedCount: 0, totalAnswered: 0, totalActivities: 0 } };
+    }
+
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    // Bỏ qua draft (SV chưa nhìn thấy)
+    const visible = activities
+      .filter((a) => a.status !== "draft")
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+    // Tất cả responses của SV trong buổi
+    const myResponses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) =>
+        q.eq("sessionId", args.sessionId).eq("studentCode", args.studentCode)
+      )
+      .collect();
+
+    const responseByActivity = new Map(myResponses.map((r) => [r.activityId, r]));
+
+    // Board posts của SV
+    const boardPosts = await ctx.db
+      .query("boardPosts")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("sessionId"), args.sessionId),
+          q.eq(q.field("studentCode"), args.studentCode)
+        )
+      )
+      .collect();
+
+    const boardPostsByActivity = new Map<string, typeof boardPosts>();
+    for (const p of boardPosts) {
+      const arr = boardPostsByActivity.get(p.activityId) || [];
+      arr.push(p);
+      boardPostsByActivity.set(p.activityId, arr);
+    }
+
+    // Đếm tổng số response cho từng activity (để hiển thị "X SV đã trả lời")
+    const allResponses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    const totalResponseCountByActivity = new Map<string, number>();
+    for (const r of allResponses) {
+      if (r.status === "answered") {
+        totalResponseCountByActivity.set(
+          r.activityId,
+          (totalResponseCountByActivity.get(r.activityId) || 0) + 1
+        );
+      }
+    }
+
+    const items = visible.map((act) => {
+      const myResp = responseByActivity.get(act._id) || null;
+      const myBoard = boardPostsByActivity.get(act._id) || [];
+      const hasParticipated = !!myResp || myBoard.length > 0;
+
+      return {
+        _id: act._id,
+        title: act.title,
+        type: act.type,
+        status: act.status,
+        order: act.order,
+        slideCue: act.slideCue,
+        requiresStudentCode: act.requiresStudentCode,
+        startedAt: act.startedAt,
+        closedAt: act.closedAt,
+        timeLimit: act.timeLimit,
+        config: act.config,
+        myResponse: myResp,
+        myBoardPosts: myBoard,
+        hasParticipated,
+        totalAnswers: totalResponseCountByActivity.get(act._id) || 0,
+      };
+    });
+
+    const participatedCount = items.filter((i) => i.hasParticipated).length;
+    const totalAnswered = items.filter((i) => i.myResponse?.status === "answered").length;
+
+    return {
+      items,
+      stats: {
+        participatedCount,
+        totalAnswered,
+        totalActivities: items.length,
+      },
+    };
+  },
+});
+
 // Lấy câu trả lời của 1 SV cho 1 hoạt động (dùng để hiển thị "đã trả lời" + chống submit lại)
 export const getMyResponse = query({
   args: {

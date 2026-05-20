@@ -156,20 +156,54 @@ export default function ParticipantRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upperCode]);
 
-  // Tính hạng cá nhân
+  // Lịch sử hoạt động của SV
+  const myHistory = useQuery(
+    api.responses.getMyHistoryInSession,
+    session?._id && identity?.studentCode
+      ? { sessionId: session._id, studentCode: identity.studentCode }
+      : "skip"
+  );
+
+  // State để bung/thu lịch sử và xem chi tiết từng activity
+  const [showHistory, setShowHistory] = useState(true);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+
+  // Tính hạng cá nhân + stat tốc độ
   let myRank = -1;
   let myScore = 0;
+  let myAvgMs: number | null = null;
 
-  const rankData = myRankData as any;
+  type LeaderboardEntry = {
+    studentCode: string;
+    fullName: string;
+    score: number;
+    avgResponseMs: number | null;
+    answeredCount?: number;
+  };
+  const rankData = myRankData as {
+    leaderboard?: LeaderboardEntry[];
+    totalParticipants?: number;
+    participantsWithScore?: number;
+  } | undefined;
   if (identity && rankData?.leaderboard) {
     const foundIndex = rankData.leaderboard.findIndex(
-      (s: any) => s.studentCode === identity.studentCode
+      (s) => s.studentCode === identity.studentCode
     );
     if (foundIndex >= 0) {
       myRank = foundIndex;
       myScore = rankData.leaderboard[foundIndex].score;
+      myAvgMs = rankData.leaderboard[foundIndex].avgResponseMs;
     }
   }
+
+  // Format thời gian ms cho hiển thị
+  const formatTimeMs = (ms: number | null) => {
+    if (ms === null || ms === undefined) return "—";
+    if (ms < 1000) return `${ms}ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    return `${Math.floor(s / 60)}p${Math.round(s % 60).toString().padStart(2, "0")}`;
+  };
 
   // Timer đếm ngược
   useEffect(() => {
@@ -487,27 +521,63 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
-        {/* Hiển thị hạng cá nhân - Tăng động lực */}
+        {/* THÀNH TÍCH CÁ NHÂN — rank, score, speed + top 3 mini */}
         {identity && myRankData && (
-          <div className="mb-6 bg-white border border-zinc-200 rounded-2xl p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-emerald-600 font-semibold tracking-wider">THÀNH TÍCH CỦA BẠN</div>
-                {myRank >= 0 ? (
-                  <>
-                    <div className="text-4xl font-bold text-zinc-900 mt-1">#{myRank + 1}</div>
-                    <div className="text-sm text-zinc-600 mt-0.5">
-                      {myScore} điểm • {rankData.participantsWithScore} / {rankData.totalParticipants} người đã tham gia
+          <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-50 to-amber-50 px-5 py-4 border-b border-zinc-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs text-emerald-700 font-semibold tracking-wider">🏆 THÀNH TÍCH CỦA BẠN</div>
+                  {myRank >= 0 ? (
+                    <div className="flex items-baseline gap-3 mt-1">
+                      <div className="text-4xl font-bold text-zinc-900">#{myRank + 1}</div>
+                      <div className="text-sm text-zinc-600">
+                        <span className="font-semibold text-emerald-700">{myScore} điểm</span>
+                        {myAvgMs !== null && (
+                          <span className="ml-2 text-zinc-500">⚡ {formatTimeMs(myAvgMs)}</span>
+                        )}
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="text-lg text-zinc-600 mt-1">Bạn chưa có điểm nào. Hãy tham gia các hoạt động nhé!</div>
-                )}
+                  ) : (
+                    <div className="text-sm text-zinc-600 mt-1">Chưa có điểm. Hãy tham gia hoạt động!</div>
+                  )}
+                </div>
+                {myRank === 0 && <div className="text-4xl">🥇</div>}
+                {myRank === 1 && <div className="text-4xl">🥈</div>}
+                {myRank === 2 && <div className="text-4xl">🥉</div>}
+                {myRank >= 3 && myRank < 10 && <div className="text-3xl">⭐</div>}
               </div>
-              {myRank >= 0 && myRank < 3 && (
-                <div className="text-4xl">🎉</div>
-              )}
+              <div className="text-xs text-zinc-600 mt-2">
+                {rankData?.participantsWithScore || 0} / {rankData?.totalParticipants || 0} sinh viên có điểm
+              </div>
             </div>
+
+            {/* Top 3 nhỏ */}
+            {rankData?.leaderboard && rankData.leaderboard.length > 0 && (
+              <div className="px-5 py-3">
+                <div className="text-[10px] tracking-wider text-zinc-500 font-medium mb-2">TOP 3</div>
+                <div className="space-y-1.5">
+                  {rankData.leaderboard.slice(0, 3).map((entry, idx) => {
+                    const isMe = entry.studentCode === identity.studentCode;
+                    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+                    return (
+                      <div
+                        key={entry.studentCode}
+                        className={`flex items-center gap-3 text-sm py-1 px-2 rounded-lg ${isMe ? "bg-emerald-100 border border-emerald-300" : ""}`}
+                      >
+                        <span className="text-lg">{medal}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-medium truncate ${isMe ? "text-emerald-900" : "text-zinc-800"}`}>
+                            {entry.fullName} {isMe && <span className="text-xs text-emerald-700">(bạn)</span>}
+                          </div>
+                        </div>
+                        <div className="text-sm font-mono font-semibold text-emerald-700 tabular-nums">{entry.score} đ</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1191,7 +1261,216 @@ export default function ParticipantRoomPage() {
             )}
           </div>
         )}
+
+        {/* ============== LỊCH SỬ HOẠT ĐỘNG CỦA SV ============== */}
+        {identity && myHistory && myHistory.items.length > 0 && (
+          <div className="mt-8 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+            >
+              <div className="text-left">
+                <div className="font-semibold text-zinc-900">📝 Lịch sử hoạt động</div>
+                <div className="text-xs text-zinc-600 mt-0.5">
+                  Đã tham gia {myHistory.stats.totalAnswered} / {myHistory.stats.totalActivities} hoạt động trong buổi
+                </div>
+              </div>
+              <div className="text-zinc-400 text-lg">{showHistory ? "▲" : "▼"}</div>
+            </button>
+
+            {showHistory && (
+              <div className="border-t border-zinc-200 divide-y divide-zinc-100">
+                {myHistory.items.map((item) => {
+                  const isExpanded = expandedHistoryId === item._id;
+                  const isAnsweredItem = item.myResponse?.status === "answered";
+                  const isCurrentActive = item.status === "active";
+                  const typeIcon: Record<string, string> = {
+                    poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️",
+                  };
+
+                  // Phân loại trạng thái màu
+                  const statusBadge =
+                    item.status === "active" ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span>
+                    ) : item.status === "closed" ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG</span>
+                    ) : item.status === "expired" ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">HẾT GIỜ</span>
+                    ) : null;
+
+                  return (
+                    <div key={item._id} className={isCurrentActive ? "bg-emerald-50/40" : ""}>
+                      <button
+                        onClick={() => setExpandedHistoryId(isExpanded ? null : item._id)}
+                        className="w-full px-5 py-3 text-left hover:bg-zinc-50 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl shrink-0 mt-0.5">{typeIcon[item.type] || "•"}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-zinc-900">{item.title}</span>
+                              {statusBadge}
+                              {isAnsweredItem && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">✓ Bạn đã tham gia</span>
+                              )}
+                              {!item.hasParticipated && !isCurrentActive && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">Không tham gia</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                              {item.slideCue && <span className="text-amber-600">📍 {item.slideCue}</span>}
+                              <span>{item.totalAnswers} người trả lời</span>
+                              {item.requiresStudentCode ? (
+                                <span className="text-emerald-700">📋 Tính điểm</span>
+                              ) : (
+                                <span className="text-zinc-500">🕶️ Ẩn danh</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-zinc-400 text-sm shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </button>
+
+                      {/* Chi tiết khi expanded */}
+                      {isExpanded && (
+                        <div className="px-5 pb-4 pl-14 text-sm text-zinc-700 space-y-2">
+                          {item.myResponse ? (
+                            <HistoryAnswerDisplay item={item} />
+                          ) : item.hasParticipated && item.myBoardPosts.length > 0 ? (
+                            <div className="space-y-2">
+                              <div className="text-xs text-zinc-500">Bài đăng của bạn:</div>
+                              {item.myBoardPosts.map((p) => (
+                                <div key={p._id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
+                                  {p.imageUrl && (
+                                    <img src={p.imageUrl} alt="" className="max-h-32 rounded mb-2" />
+                                  )}
+                                  <div>{p.content}</div>
+                                  <div className="text-xs text-emerald-600 mt-1">♥ {p.likes} likes</div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-zinc-500 italic">Bạn không trả lời hoạt động này.</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/**
+ * Hiển thị câu trả lời của SV cho 1 hoạt động trong lịch sử.
+ * Format khác nhau tùy loại activity.
+ */
+function HistoryAnswerDisplay({ item }: { item: {
+  type: string;
+  config: unknown;
+  myResponse: { value: unknown; status: string; submittedAt: number; deviceMismatch?: boolean } | null;
+} }) {
+  if (!item.myResponse) return null;
+  const val = item.myResponse.value;
+
+  // Quiz: kiểm tra đúng/sai
+  const cfg = item.config as { isQuiz?: boolean; correctOptionIds?: string[]; options?: Array<{ id: string; text: string }>; pollType?: string } | null;
+  const isQuiz = item.type === "poll" && cfg?.isQuiz && Array.isArray(cfg.correctOptionIds);
+
+  if (item.type === "poll") {
+    const choiceIds = (val as { choiceIds?: string[] })?.choiceIds || [];
+    const opts = cfg?.options || [];
+    const myChoices = opts.filter((o) => choiceIds.includes(o.id));
+
+    let isCorrect: boolean | null = null;
+    if (isQuiz && cfg.correctOptionIds) {
+      const correctSet = new Set(cfg.correctOptionIds);
+      const chosenSet = new Set(choiceIds);
+      isCorrect = chosenSet.size === correctSet.size && [...chosenSet].every((id) => correctSet.has(id));
+    }
+
+    return (
+      <div>
+        <div className="text-xs text-zinc-500 mb-1.5">Câu trả lời của bạn:</div>
+        <div className="space-y-1">
+          {myChoices.map((o) => (
+            <div key={o.id} className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm">
+              ✓ {o.text}
+            </div>
+          ))}
+        </div>
+        {isQuiz && (
+          <div className={`mt-2 text-sm font-medium ${isCorrect ? "text-emerald-700" : "text-red-600"}`}>
+            {isCorrect ? "🎉 Bạn trả lời đúng!" : "❌ Đáp án chưa đúng"}
+          </div>
+        )}
+        {isQuiz && !isCorrect && cfg?.correctOptionIds && (
+          <div className="mt-2">
+            <div className="text-xs text-zinc-500 mb-1">Đáp án đúng:</div>
+            {cfg.options?.filter((o) => cfg.correctOptionIds!.includes(o.id)).map((o) => (
+              <div key={o.id} className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-900 text-sm">
+                ✓ {o.text}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (item.type === "rating") {
+    const rating = (val as { rating?: number })?.rating ?? (typeof val === "number" ? val : null);
+    return (
+      <div>
+        <div className="text-xs text-zinc-500 mb-1">Bạn chấm:</div>
+        <div className="text-3xl font-bold text-emerald-700">{rating ?? "—"}</div>
+      </div>
+    );
+  }
+
+  if (item.type === "wordcloud") {
+    return (
+      <div>
+        <div className="text-xs text-zinc-500 mb-1">Từ khóa của bạn:</div>
+        <div className="text-base font-medium text-emerald-700">{typeof val === "string" ? val : ""}</div>
+      </div>
+    );
+  }
+
+  if (item.type === "opentext") {
+    return (
+      <div>
+        <div className="text-xs text-zinc-500 mb-1">Câu trả lời của bạn:</div>
+        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 whitespace-pre-wrap">{typeof val === "string" ? val : ""}</div>
+      </div>
+    );
+  }
+
+  if (item.type === "qa") {
+    const text = (val as { text?: string })?.text || (typeof val === "string" ? val : "");
+    const upvotes = (val as { upvotes?: number })?.upvotes || 0;
+    const answer = (val as { answer?: string })?.answer;
+    return (
+      <div>
+        <div className="text-xs text-zinc-500 mb-1">Câu hỏi của bạn:</div>
+        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
+          <div>{text}</div>
+          <div className="text-xs text-emerald-600 mt-2">👍 {upvotes} upvote</div>
+          {answer && (
+            <div className="mt-2 pt-2 border-t border-zinc-200">
+              <div className="text-[10px] font-bold text-emerald-700 mb-1">GIẢNG VIÊN TRẢ LỜI:</div>
+              <div className="text-emerald-900">{answer}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
