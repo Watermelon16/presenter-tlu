@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -299,6 +300,56 @@ function PresenterPage() {
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
 
+  // Document Picture-in-Picture (Chrome 116+): cửa sổ nổi trên PPT, không cần Alt+Tab
+  const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
+  const pipWindowRef = useRef<Window | null>(null);
+
+  const openFloatingPanel = useCallback(async () => {
+    // @ts-expect-error documentPictureInPicture chưa có trong TS lib
+    const dpip = typeof window !== "undefined" ? window.documentPictureInPicture : undefined;
+
+    if (!dpip) {
+      // Fallback: cửa sổ popup thường
+      window.open(
+        `/presenter/${upperCode}/companion?pip=true`,
+        "pip-companion",
+        "width=380,height=300,menubar=no,toolbar=no,location=no,status=no,resizable=yes"
+      );
+      toast.message("Trình duyệt chưa hỗ trợ cửa sổ nổi. Đang dùng popup thường.", {
+        description: "Dùng Chrome / Edge 116+ để có cửa sổ thực sự nổi trên PPT.",
+      });
+      return;
+    }
+
+    try {
+      const pipWindow: Window = await dpip.requestWindow({ width: 380, height: 320 });
+      pipWindowRef.current = pipWindow;
+
+      // Copy stylesheets từ main document để Tailwind hoạt động trong PiP
+      document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+        try {
+          pipWindow.document.head.appendChild(node.cloneNode(true));
+        } catch {}
+      });
+
+      pipWindow.document.body.style.margin = "0";
+      pipWindow.document.body.style.backgroundColor = "#0a0a0a";
+      pipWindow.document.body.style.color = "white";
+      pipWindow.document.body.style.fontFamily = "system-ui, -apple-system, sans-serif";
+
+      pipWindow.addEventListener("pagehide", () => {
+        setPipContainer(null);
+        pipWindowRef.current = null;
+      });
+
+      setPipContainer(pipWindow.document.body);
+      toast.success("Đã mở bảng điều khiển nổi. Cửa sổ này sẽ nổi trên mọi app khác.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Không thể mở cửa sổ nổi";
+      toast.error(msg);
+    }
+  }, [upperCode]);
+
   // === Overlay toàn màn hình: QR mã phòng / kết quả activity / slide PDF ===
   // null = ẩn, "qr" = QR + mã phòng (Q), "result" = kết quả activity (F), "slides" = slide PDF (S)
   const [fullscreenOverlay, setFullscreenOverlay] = useState<null | "qr" | "result" | "slides">(null);
@@ -421,6 +472,18 @@ function PresenterPage() {
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
   }, [upperCode]);
+
+  // Tải QR thành file PNG để dán vào slide PPT
+  const handleDownloadQr = useCallback(() => {
+    if (!qrDataUrl || !upperCode) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = `QR_PresenterTLU_${upperCode}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Đã tải QR. Dán vào slide đầu của PPT để SV quét nhanh.");
+  }, [qrDataUrl, upperCode]);
 
   // Phím tắt toàn cục:
   //   F     → overlay kết quả activity
@@ -1626,20 +1689,64 @@ function PresenterPage() {
         </button>
 
         {showHelp && (
-          <div className="mt-3 bg-white border border-blue-200 rounded-2xl p-6 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Cột 1: Flow tạo hoạt động */}
+          <div className="mt-3 bg-white border border-blue-200 rounded-2xl p-6 shadow-sm space-y-5">
+            {/* Hàng 1: 2 workflow chọn cách dùng phù hợp */}
+            <div>
+              <div className="text-sm font-semibold text-zinc-900 mb-2.5">Chọn workflow phù hợp:</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Workflow 1: PDF */}
+                <div className="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">📑</span>
+                    <div className="font-semibold text-indigo-900">Workflow A — PDF, 1 cửa sổ</div>
+                  </div>
+                  <div className="text-xs text-zinc-700 leading-relaxed mb-2">
+                    Xuất PPT → PDF rồi upload. Toàn bộ buổi giảng trong 1 tab browser, <strong>không Alt+Tab</strong>.
+                  </div>
+                  <ol className="text-xs text-zinc-700 space-y-1 list-decimal pl-4">
+                    <li>Upload PDF qua nút <strong>📑 Upload PDF</strong></li>
+                    <li>Bấm <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">S</kbd> chiếu slide fullscreen, <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">← →</kbd> chuyển trang</li>
+                    <li>Bấm <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">F</kbd> chiếu kết quả khi cần</li>
+                    <li><kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">Esc</kbd> tự về slide</li>
+                  </ol>
+                  <div className="text-[11px] text-indigo-700 mt-2">⚠ Mất animation PPT, chỉ có ảnh tĩnh slide.</div>
+                </div>
+
+                {/* Workflow 2: PPT */}
+                <div className="border-2 border-amber-200 rounded-xl p-4 bg-amber-50/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🎯</span>
+                    <div className="font-semibold text-amber-900">Workflow B — Giữ PPT, dùng cửa sổ nổi</div>
+                  </div>
+                  <div className="text-xs text-zinc-700 leading-relaxed mb-2">
+                    PPT giữ nguyên cho animation đẹp. Web app mở <strong>cửa sổ nổi nhỏ trên PPT</strong> để điều khiển không Alt+Tab.
+                  </div>
+                  <ol className="text-xs text-zinc-700 space-y-1 list-decimal pl-4">
+                    <li><strong>Trước buổi:</strong> Bấm Q → 💾 <strong>Tải QR</strong> → dán vào slide đầu PPT</li>
+                    <li>Vào menu <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-amber-300 rounded">⋯</kbd> → <strong>Bảng điều khiển nổi</strong> (Chrome 116+)</li>
+                    <li>PPT chạy fullscreen, cửa sổ nổi hiện ở góc → thấy response count, bấm Bắt đầu/Đóng từ đó</li>
+                    <li>Khi cần chiếu kết quả to: Alt+Tab → <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-amber-300 rounded">F</kbd> → Alt+Tab về PPT</li>
+                  </ol>
+                  <div className="text-[11px] text-amber-700 mt-2">💡 Cửa sổ nổi này nổi trên MỌI ứng dụng (kể cả PPT fullscreen)</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Hàng 2: 3 cột chi tiết */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-zinc-200">
+              {/* Cột 1: Flow tạo */}
               <div>
                 <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-bold">1</span>
                   Tạo & chạy hoạt động
                 </div>
                 <ol className="text-xs text-zinc-700 space-y-1.5 list-decimal pl-4 leading-relaxed">
-                  <li>Chọn 1 trong 5 loại (Trắc nghiệm / Đám mây từ / Thang điểm / Hỏi đáp / Bảng cộng tác)</li>
-                  <li>Điền tiêu đề + cấu hình → bấm <strong className="text-emerald-700">Tạo</strong></li>
-                  <li>Hoạt động tạo ra ở trạng thái <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span> — SV chưa thấy</li>
-                  <li>Bấm <strong className="text-emerald-700">▶ Bắt đầu</strong> để SV thấy & trả lời</li>
+                  <li>Bấm <strong className="text-emerald-700">+ Tạo hoạt động</strong> → chọn loại (6 loại)</li>
+                  <li>Điền cấu hình → bấm <strong className="text-emerald-700">Tạo</strong></li>
+                  <li>Hoạt động ở trạng thái <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span></li>
+                  <li>Bấm <strong className="text-emerald-700">▶ Bắt đầu</strong> → SV thấy & trả lời</li>
                   <li>Bấm <strong className="text-red-700">⏹ Đóng</strong> khi xong</li>
+                  <li>Bấm <strong className="text-blue-700">🔄 Chạy lại</strong> nếu muốn mở lại với câu trả lời mới</li>
                 </ol>
               </div>
 
@@ -1647,58 +1754,34 @@ function PresenterPage() {
               <div>
                 <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs flex items-center justify-center font-bold">⌨</span>
-                  Phím tắt khi chiếu
+                  Phím tắt
                 </div>
                 <div className="text-xs text-zinc-700 space-y-1.5 leading-relaxed">
-                  <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Q</kbd>
-                    <span>Chiếu QR + mã phòng to (SV quét)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd>
-                    <span>Chiếu kết quả hoạt động to (đang chạy)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">S</kbd>
-                    <span>Chiếu slide PDF (nếu đã upload)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd>
-                    <span>Thoát chế độ chiếu</span>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1 mt-1 border-t border-zinc-200">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd>
-                    <span>Hoạt động tiếp theo (kịch bản) / Next slide</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd>
-                    <kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd>
-                    <span>Trước / Sau (khi đang chiếu slide)</span>
-                  </div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Q</kbd><span>QR + mã phòng to</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd><span>Chiếu kết quả to</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">S</kbd><span>Chiếu slide PDF</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd><span>Thoát overlay (về slide nếu đang chiếu)</span></div>
+                  <div className="flex items-center gap-2 pt-1 mt-1 border-t border-zinc-200"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd><span>Bước kế trong kịch bản / next slide</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd><span>Chuyển slide PDF</span></div>
                 </div>
               </div>
 
-              {/* Cột 3: Mẹo + workflow */}
+              {/* Cột 3: Trạng thái */}
               <div>
                 <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center font-bold">💡</span>
-                  Mẹo workflow
+                  <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center font-bold">●</span>
+                  Trạng thái hoạt động
                 </div>
-                <ul className="text-xs text-zinc-700 space-y-1.5 list-disc pl-4 leading-relaxed">
-                  <li><strong>Đầu buổi:</strong> bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">Q</kbd> chiếu QR → SV quét, nhập mã SV/Họ tên/Lớp</li>
-                  <li><strong>Trong buổi:</strong> tạo activity từ trước → bấm Bắt đầu khi cần → bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">F</kbd> chiếu kết quả to</li>
-                  <li><strong>Kịch bản:</strong> sắp xếp thứ tự bằng kéo thả → bấm "▶ Chạy theo kịch bản" → dùng <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">Space</kbd> chuyển bước</li>
-                  <li><strong>Sau buổi:</strong> Xuất <strong className="text-emerald-700">Excel</strong> → đẩy lên LMS chấm điểm</li>
-                  <li><strong>Có PDF slide:</strong> Upload → bấm <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-100 border border-zinc-300 rounded">S</kbd> chiếu thay PPT (không cần Alt+Tab)</li>
-                </ul>
+                <div className="text-xs text-zinc-700 space-y-2 leading-relaxed">
+                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700 font-medium">NHÁP</span> Đã tạo nhưng SV chưa thấy</div>
+                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span> SV đang trả lời được</div>
+                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG</span> Không nhận thêm trả lời</div>
+                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-200 text-amber-800 font-medium">HẾT GIỜ</span> Tự đóng do hết timeLimit</div>
+                  <div className="pt-2 mt-2 border-t border-zinc-200">
+                    <strong>📋 Tính điểm:</strong> Bật toggle <em>Ghi nhận điểm tham gia</em> → câu trả lời tính vào Bảng thành tích.
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-zinc-200 text-xs text-zinc-600">
-              <strong>Trạng thái hoạt động:</strong>
-              <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span> chưa hiện cho SV ·{" "}
-              <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span> SV đang thấy & trả lời được ·{" "}
-              <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-300 text-zinc-700">ĐÃ ĐÓNG</span> không nhận thêm trả lời
             </div>
           </div>
         )}
@@ -1758,16 +1841,30 @@ function PresenterPage() {
                 {showScriptMenu && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setShowScriptMenu(false)} />
-                    <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-zinc-200 rounded-xl shadow-lg z-40 py-1">
+                    <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-zinc-200 rounded-xl shadow-lg z-40 py-1">
+                      <button
+                        onClick={() => { openFloatingPanel(); setShowScriptMenu(false); }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-100 flex items-start gap-2"
+                        title="Cửa sổ nhỏ nổi trên PPT (Chrome 116+) — không cần Alt+Tab"
+                      >
+                        <span className="text-xl shrink-0">🪟</span>
+                        <div>
+                          <div className="font-semibold">Bảng điều khiển nổi</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">Nổi trên PPT, không cần Alt+Tab (Chrome 116+)</div>
+                        </div>
+                      </button>
                       <button
                         onClick={() => {
                           window.open(`/presenter/${upperCode}/companion?pip=true`, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
                           setShowScriptMenu(false);
                         }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                        title="Cửa sổ điều khiển nhỏ kéo vào góc màn hình laptop khi PPT fullscreen"
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-100 flex items-start gap-2"
                       >
-                        🖼️ Trợ lý PiP (cửa sổ nhỏ)
+                        <span className="text-xl shrink-0">🖼️</span>
+                        <div>
+                          <div className="font-semibold">Companion popup (cũ)</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">Cửa sổ thường, cần đặt always-on-top thủ công</div>
+                        </div>
                       </button>
                     </div>
                   </>
@@ -2964,7 +3061,15 @@ function PresenterPage() {
             <div className="text-white text-[160px] leading-none font-mono font-bold tracking-[12px] mt-2">
               {upperCode}
             </div>
-            <div className="mt-10 text-zinc-500 text-sm">Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Esc</kbd> hoặc click để đóng • Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> để mở lại</div>
+            <div className="mt-6">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDownloadQr(); }}
+                className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white"
+              >
+                💾 Tải QR thành ảnh (dán vào PPT)
+              </button>
+            </div>
+            <div className="mt-8 text-zinc-500 text-sm">Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Esc</kbd> hoặc click để đóng • Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> để mở lại</div>
           </div>
         </div>
       )}
@@ -3236,6 +3341,171 @@ function PresenterPage() {
           </div>
         </div>
       )}
+
+      {/* ==================== DOCUMENT PIP (cửa sổ nổi trên PPT) ==================== */}
+      {pipContainer && createPortal(
+        <PipControlPanel
+          upperCode={upperCode}
+          sessionTitle={session.title}
+          totalParticipants={totalParticipants}
+          activeActivity={activeActivity}
+          sortedActivities={sortedActivities}
+          pollResults={pollResults}
+          wordCloudResults={wordCloudResults}
+          ratingResults={ratingResults}
+          qaResponses={qaResponses}
+          boardPosts={boardPosts}
+          onStart={handleStart}
+          onClose={handleClose}
+          onPrev={goToPrevInScript}
+          onNext={goToNextInScript}
+          isScriptMode={isScriptMode}
+          currentScriptIndex={currentScriptIndex}
+          scriptLength={scriptLength}
+          currentScriptActivity={currentScriptActivity}
+        />,
+        pipContainer
+      )}
+    </div>
+  );
+}
+
+// Bảng điều khiển nổi (Document PiP) — render qua portal vào cửa sổ riêng
+function PipControlPanel({
+  upperCode,
+  sessionTitle,
+  totalParticipants,
+  activeActivity,
+  sortedActivities,
+  pollResults,
+  wordCloudResults,
+  ratingResults,
+  qaResponses,
+  boardPosts,
+  onStart,
+  onClose,
+  onPrev,
+  onNext,
+  isScriptMode,
+  currentScriptIndex,
+  scriptLength,
+  currentScriptActivity,
+}: {
+  upperCode?: string;
+  sessionTitle: string;
+  totalParticipants: number;
+  activeActivity: { _id: string; type: string; title: string; status: string; slideCue?: string; requiresStudentCode?: boolean } | undefined;
+  sortedActivities: Array<{ _id: string; status: string; title: string; type: string; slideCue?: string }>;
+  pollResults?: { totalAnswered?: number } | null;
+  wordCloudResults?: { totalResponses?: number } | null;
+  ratingResults?: { total?: number } | null;
+  qaResponses?: Array<unknown>;
+  boardPosts?: Array<unknown>;
+  onStart: (id: string) => void;
+  onClose: (id: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  isScriptMode: boolean;
+  currentScriptIndex: number;
+  scriptLength: number;
+  currentScriptActivity?: { _id: string; title: string; slideCue?: string; status?: string } | null;
+}) {
+  // Tìm activity tiếp theo (nháp gần nhất) để nút "Bắt đầu" hoạt động cả khi chưa Script mode
+  const nextDraft = sortedActivities.find((a) => a.status === "draft");
+
+  const responseCount =
+    activeActivity?.type === "poll" ? pollResults?.totalAnswered ?? 0 :
+    activeActivity?.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
+    activeActivity?.type === "rating" ? ratingResults?.total ?? 0 :
+    activeActivity?.type === "qa" ? qaResponses?.length ?? 0 :
+    activeActivity?.type === "board" ? boardPosts?.length ?? 0 :
+    activeActivity?.type === "opentext" ? wordCloudResults?.totalResponses ?? 0 :
+    0;
+
+  return (
+    <div className="min-h-screen w-full bg-zinc-950 text-white flex flex-col p-3 gap-3">
+      {/* Header: mã phòng + số SV */}
+      <div className="flex items-center justify-between text-[10px] font-mono tracking-widest border-b border-zinc-800 pb-2">
+        <div className="text-emerald-400">📌 {upperCode}</div>
+        <div className="text-zinc-400">👥 {totalParticipants} SV</div>
+      </div>
+
+      {/* Buổi giảng */}
+      <div className="text-[11px] text-zinc-500 -mt-1 truncate" title={sessionTitle}>{sessionTitle}</div>
+
+      {/* Activity đang chạy */}
+      {activeActivity ? (
+        <div className="bg-emerald-950/40 border border-emerald-700/40 rounded-xl p-3">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <span className="text-[10px] text-emerald-400 font-medium">● ĐANG CHẠY</span>
+            <span className="text-[10px] text-zinc-500 uppercase">{activeActivity.type}</span>
+          </div>
+          <div className="font-semibold text-sm leading-snug mb-1.5 line-clamp-2">{activeActivity.title}</div>
+          {activeActivity.slideCue && (
+            <div className="text-[11px] text-amber-400 mb-1">📍 {activeActivity.slideCue}</div>
+          )}
+          <div className="text-2xl font-bold text-emerald-300 mb-2">
+            {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
+          </div>
+          <button
+            onClick={() => onClose(activeActivity._id)}
+            className="w-full py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+          >
+            ⏹ Đóng hoạt động
+          </button>
+        </div>
+      ) : nextDraft ? (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-3">
+          <div className="text-[10px] text-zinc-400 mb-1">HOẠT ĐỘNG KẾ TIẾP</div>
+          <div className="font-semibold text-sm leading-snug mb-1.5 line-clamp-2">{nextDraft.title}</div>
+          {nextDraft.slideCue && (
+            <div className="text-[11px] text-amber-400 mb-2">📍 {nextDraft.slideCue}</div>
+          )}
+          <button
+            onClick={() => onStart(nextDraft._id)}
+            className="w-full py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+          >
+            ▶ Bắt đầu
+          </button>
+        </div>
+      ) : (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-center text-xs text-zinc-500">
+          Hết hoạt động trong danh sách
+        </div>
+      )}
+
+      {/* Script controls (nếu đang chạy kịch bản) */}
+      {isScriptMode && (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-2.5">
+          <div className="flex items-center gap-2 text-[10px] text-zinc-400 mb-1.5">
+            <span>KỊCH BẢN</span>
+            <span className="font-mono text-emerald-400">{currentScriptIndex + 1}/{scriptLength}</span>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              onClick={onPrev}
+              disabled={currentScriptIndex === 0}
+              className="flex-1 py-1.5 text-xs rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-40"
+            >
+              ← Trước
+            </button>
+            <button
+              onClick={onNext}
+              disabled={currentScriptIndex >= scriptLength - 1}
+              className="flex-[2] py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-40"
+            >
+              Tiếp →
+            </button>
+          </div>
+          {currentScriptActivity?.slideCue && (
+            <div className="text-[10px] text-amber-400 mt-1.5 text-center">📍 {currentScriptActivity.slideCue}</div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-auto text-[10px] text-zinc-600 text-center">
+        Cửa sổ này nổi trên PPT • Đóng cửa sổ để thoát
+      </div>
     </div>
   );
 }
