@@ -77,36 +77,66 @@ export const getParticipationLeaderboard = query({
       scoreMap.set(p.studentCode, 0);
     });
 
+    // CHỈ tính điểm cho activities có requiresStudentCode=true (giảng viên bật ghi nhận điểm)
+    const scoringActivityIds = new Set(
+      activities.filter((a) => a.requiresStudentCode).map((a) => a._id)
+    );
+
+    // Helper: bonus tốc độ (0–50% điểm gốc) — trả lời càng sớm sau khi mở activity càng nhiều bonus
+    const computeSpeedBonus = (basePoints: number, activity: any, submittedAt?: number) => {
+      if (!activity.startedAt || !submittedAt || !activity.timeLimit) return 0;
+      const elapsed = submittedAt - activity.startedAt;
+      const total = activity.timeLimit * 60 * 1000;
+      if (elapsed <= 0 || total <= 0) return 0;
+      // Tỷ lệ thời gian còn lại × 50% điểm gốc, làm tròn 0.1
+      const remainingRatio = Math.max(0, 1 - elapsed / total);
+      return Math.round(basePoints * remainingRatio * 0.5 * 10) / 10;
+    };
+
     // Tính điểm từ responses
     for (const resp of responses) {
       const activity = activities.find((a) => a._id === resp.activityId);
       if (!activity || !resp.studentCode) continue;
+      if (!scoringActivityIds.has(activity._id)) continue; // bỏ qua activity ẩn danh
+      if (resp.status !== "answered") continue; // bỏ qua "no_response"
 
       const studentCode = resp.studentCode;
-      let points = 0;
+      let basePoints = 0;
 
       if (activity.type === "poll" || activity.type === "wordcloud" || activity.type === "rating" || activity.type === "opentext") {
-        // opentext dùng chung điểm với wordcloud (mỗi câu trả lời = 1 điểm)
         const key = activity.type === "opentext" ? "wordcloud" : activity.type;
-        points = config[key as keyof typeof config] || 1;
+        basePoints = config[key as keyof typeof config] || 1;
       } else if (activity.type === "qa") {
         const value = typeof resp.value === "object" ? resp.value : {};
-        // Điểm khi đặt câu hỏi
-        if (value.text) {
-          points = config.qa;
-        }
-        // Điểm từ upvote (nếu có)
+        if (value.text) basePoints = config.qa;
         const upvotes = value.upvotes || 0;
-        points += upvotes * config.qaUpvote;
+        basePoints += upvotes * config.qaUpvote;
       }
 
+      // Bonus quiz: trả lời đúng được +50% điểm
+      if (activity.type === "poll" && activity.config?.isQuiz && Array.isArray(activity.config?.correctOptionIds)) {
+        const correctIds: string[] = activity.config.correctOptionIds;
+        const chosen = (resp.value as { choiceIds?: string[] })?.choiceIds || [];
+        const correctSet = new Set(correctIds);
+        const chosenSet = new Set(chosen);
+        const isCorrect = chosenSet.size === correctSet.size && [...chosenSet].every((id) => correctSet.has(id));
+        if (isCorrect) {
+          basePoints += Math.round(basePoints * 0.5 * 10) / 10;
+        }
+      }
+
+      const speedBonus = computeSpeedBonus(basePoints, activity, resp.submittedAt);
+      const total = basePoints + speedBonus;
+
       const current = scoreMap.get(studentCode) || 0;
-      scoreMap.set(studentCode, current + points);
+      scoreMap.set(studentCode, current + total);
     }
 
-    // Tính điểm từ Board posts
+    // Tính điểm từ Board posts — chỉ cho board activity có requiresStudentCode
     for (const post of boardPosts) {
       if (!post.studentCode) continue;
+      const activity = activities.find((a) => a._id === post.activityId);
+      if (!activity || !scoringActivityIds.has(activity._id)) continue;
       const current = scoreMap.get(post.studentCode) || 0;
       scoreMap.set(post.studentCode, current + config.board);
     }

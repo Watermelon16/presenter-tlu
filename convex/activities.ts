@@ -211,7 +211,62 @@ export const reorderActivities = mutation({
   },
 });
 
-// Tạo bản sao hoạt động (dùng để "Làm lại" hoạt động đã đóng/hết giờ)
+/**
+ * CHẠY LẠI hoạt động: xóa toàn bộ responses cũ, đặt status="active" lại,
+ * reset startedAt, re-schedule timeLimit nếu có. KHÔNG tạo bản sao mới.
+ */
+export const restartActivity = mutation({
+  args: { activityId: v.id("activities") },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) throw new Error("Không tìm thấy hoạt động");
+
+    if (activity.status === "active") {
+      throw new Error("Hoạt động đang chạy");
+    }
+
+    // Xóa toàn bộ responses cũ
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+      .collect();
+    for (const r of responses) {
+      await ctx.db.delete(r._id);
+    }
+
+    // Xóa luôn board posts cũ nếu là board
+    if (activity.type === "board") {
+      const posts = await ctx.db
+        .query("boardPosts")
+        .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+        .collect();
+      for (const p of posts) {
+        await ctx.db.delete(p._id);
+      }
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.activityId, {
+      status: "active",
+      startedAt: now,
+      closedAt: undefined,
+    });
+
+    // Re-schedule expire nếu có timeLimit
+    if (activity.timeLimit && activity.timeLimit > 0) {
+      const delayMs = Math.round(activity.timeLimit * 60 * 1000);
+      await ctx.scheduler.runAfter(
+        delayMs,
+        internal.activities.internalExpireActivity,
+        { activityId: args.activityId }
+      );
+    }
+
+    return { success: true, activityId: args.activityId };
+  },
+});
+
+// Tạo bản sao hoạt động (giữ cho trường hợp muốn copy template)
 export const duplicateActivity = mutation({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {

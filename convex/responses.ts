@@ -59,6 +59,30 @@ export const submitResponse = mutation({
   },
 });
 
+// Lấy câu trả lời của 1 SV cho 1 hoạt động (dùng để hiển thị "đã trả lời" + chống submit lại)
+export const getMyResponse = query({
+  args: {
+    activityId: v.id("activities"),
+    studentCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.studentCode) return null;
+
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return null;
+
+    const existing = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) =>
+        q.eq("sessionId", activity.sessionId).eq("studentCode", args.studentCode)
+      )
+      .filter((q) => q.eq(q.field("activityId"), args.activityId))
+      .first();
+
+    return existing;
+  },
+});
+
 // Lấy kết quả của một hoạt động (dành cho giảng viên)
 export const getActivityResponses = query({
   args: { activityId: v.id("activities") },

@@ -69,6 +69,14 @@ export default function ParticipantRoomPage() {
   const [identity, setIdentity] = useState<StudentIdentity | null>(null);
   const [showIdentityForm, setShowIdentityForm] = useState(false);
 
+  // Query câu trả lời đã gửi của chính SV cho activity hiện tại (chống submit lại)
+  const myResponse = useQuery(
+    api.responses.getMyResponse,
+    activeActivity?._id && identity?.studentCode
+      ? { activityId: activeActivity._id, studentCode: identity.studentCode }
+      : "skip"
+  );
+
   // Form nhập danh tính
   const [studentCodeInput, setStudentCodeInput] = useState("");
   const [fullNameInput, setFullNameInput] = useState("");
@@ -168,14 +176,38 @@ export default function ParticipantRoomPage() {
     return () => clearInterval(interval);
   }, [activeActivity?.startedAt, activeActivity?.timeLimit]);
 
-  // Reset vote state khi hoạt động thay đổi
+  // Reset vote state khi hoạt động thay đổi HOẶC khi giảng viên chạy lại (startedAt mới)
   useEffect(() => {
     setSelectedOptions([]);
     setWordcloudInput("");
     setQaQuestionInput("");
-    setHasSubmitted(false);
     setSubmitError("");
-  }, [activeActivity?._id]);
+    // hasSubmitted sẽ set lại từ myResponse trong effect khác
+  }, [activeActivity?._id, activeActivity?.startedAt]);
+
+  // Sync hasSubmitted với câu trả lời đã có trên server
+  // → SV reload trang vẫn thấy "đã trả lời" + chống submit lại
+  useEffect(() => {
+    if (myResponse && myResponse.status === "answered") {
+      setHasSubmitted(true);
+      // Khôi phục selection cũ để hiển thị "bạn đã chọn gì"
+      const val = myResponse.value;
+      if (activeActivity?.type === "poll") {
+        const choiceIds = (val as { choiceIds?: string[] })?.choiceIds;
+        if (choiceIds) setSelectedOptions(choiceIds);
+      } else if (activeActivity?.type === "rating") {
+        const r = (val as { rating?: number })?.rating;
+        if (r !== undefined) setSelectedOptions([String(r)]);
+      } else if (activeActivity?.type === "wordcloud" || activeActivity?.type === "opentext") {
+        if (typeof val === "string") setWordcloudInput(val);
+      } else if (activeActivity?.type === "qa") {
+        const text = (val as { text?: string })?.text || (typeof val === "string" ? val : "");
+        if (text) setQaQuestionInput(text);
+      }
+    } else {
+      setHasSubmitted(false);
+    }
+  }, [myResponse, activeActivity?._id, activeActivity?.type, activeActivity?.startedAt]);
 
   // Luôn thu thập danh tính khi vào phòng (để liên thông với danh sách sinh viên của giảng viên)
   // Chỉ cần nhập 1 lần / phòng (dựa vào localStorage)

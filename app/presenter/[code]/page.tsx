@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -201,6 +202,7 @@ function PresenterPage() {
   const moveActivityUp = useMutation(api.activities.moveActivityUp);
   const moveActivityDown = useMutation(api.activities.moveActivityDown);
   const duplicateActivity = useMutation(api.activities.duplicateActivity);
+  const restartActivity = useMutation(api.activities.restartActivity);
   const updateActivity = useMutation(api.activities.updateActivity);
   const deleteActivity = useMutation(api.activities.deleteActivity);
   const updateCollectStudentCode = useMutation(api.sessions.updateCollectStudentCode);
@@ -230,6 +232,8 @@ function PresenterPage() {
 
   // Dropdown "+ Tạo hoạt động"
   const [showCreatePicker, setShowCreatePicker] = useState(false);
+  // Dropdown "⋯ Thêm" trong block Kịch bản
+  const [showScriptMenu, setShowScriptMenu] = useState(false);
 
   // === Overlay toàn màn hình: QR mã phòng / kết quả activity / slide PDF ===
   // null = ẩn, "qr" = QR + mã phòng (Q), "result" = kết quả activity (F), "slides" = slide PDF (S)
@@ -503,22 +507,35 @@ function PresenterPage() {
     moveActivityUp({ activityId: activityId as any });
   }, [moveActivityUp]);
 
-  // Duplicate (Làm lại) - tạo bản nháp mới từ hoạt động cũ
+  // Chạy lại: reset chính activity đó (xóa responses cũ, mở lại để SV trả lời)
+  const handleRestart = useCallback(async (activityId: string, title: string) => {
+    if (!confirm(`Chạy lại "${title}"? Toàn bộ câu trả lời cũ của SV sẽ bị xóa.`)) return;
+    setIsDuplicating(activityId);
+    try {
+      await restartActivity({ activityId: activityId as Id<"activities"> });
+      toast.success("Đã chạy lại hoạt động. SV có thể trả lời lại từ đầu.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể chạy lại. Vui lòng thử lại.";
+      toast.error(msg);
+    } finally {
+      setIsDuplicating(null);
+    }
+  }, [restartActivity]);
+
+  // Sao chép (tách riêng — cho trường hợp muốn dùng template)
   const handleDuplicate = useCallback(async (activityId: string) => {
     setIsDuplicating(activityId);
     try {
-      await duplicateActivity({ activityId: activityId as any });
-      toast.success("Đã tạo bản nháp mới. Bạn có thể chỉnh sửa và chạy lại.");
-
-      // Cuộn xuống cuối danh sách
+      await duplicateActivity({ activityId: activityId as Id<"activities"> });
+      toast.success("Đã sao chép hoạt động xuống cuối danh sách.");
       setTimeout(() => {
         activitiesListRef.current?.scrollTo({
           top: activitiesListRef.current.scrollHeight,
           behavior: "smooth",
         });
       }, 120);
-    } catch (err) {
-      toast.error("Không thể sao chép hoạt động. Vui lòng thử lại.");
+    } catch {
+      toast.error("Không thể sao chép hoạt động.");
     } finally {
       setIsDuplicating(null);
     }
@@ -1236,7 +1253,7 @@ function PresenterPage() {
   }
 
   // Sortable item component for drag and drop
-  function SortableActivityItem({ activity, index, onEdit, onDuplicate, onDelete }: any) {
+  function SortableActivityItem({ activity, index, onEdit, onDuplicate, onRestart, onDelete }: any) {
     const {
       attributes,
       listeners,
@@ -1336,9 +1353,9 @@ function PresenterPage() {
           )}
           {(activity.status === "closed" || activity.status === "expired") && (
             <button
-              onClick={onDuplicate}
+              onClick={onRestart}
               className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
-              title="Tạo bản sao để chạy lại"
+              title="Mở lại hoạt động này — xóa câu trả lời cũ, SV trả lời lại từ đầu"
             >
               🔄 Chạy lại
             </button>
@@ -1589,104 +1606,116 @@ function PresenterPage() {
         {/* === TỔNG QUAN BUỔI GIẢNG (tạm ẩn để ổn định syntax — sẽ khôi phục + cải thiện ở Results) === */}
         {/* {exportData && ( ... dashboard stats ... )} */}
 
-        {/* ==================== KỊCH BẢN + TRỢ LÝ LIỀN MẠCH PPT (B - Ưu tiên) ==================== */}
+        {/* ==================== KỊCH BẢN (gọn — chỉ 3 nút chính + menu ⋯) ==================== */}
         {sortedActivities.length > 0 && (
-          <div className="mb-8 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
-              <div className="flex items-center gap-3">
-                <div className="font-semibold text-lg flex items-center gap-2">
-                  Kịch bản hoạt động
-                  {isScriptMode && <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-600 font-medium">ĐANG TRÌNH DIỄN</span>}
-                </div>
-                <div className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-600">{scriptLength} hoạt động</div>
-              </div>
-
+          <div className="mb-6 bg-white border border-zinc-200 rounded-2xl px-5 py-3 flex items-center gap-4">
+            {/* Trạng thái + progress (chỉ hiện khi đang chạy) */}
+            <div className="flex-1 min-w-0">
               {!isScriptMode ? (
-                <div className="flex items-center gap-2">
-                  <button onClick={startScriptMode} className="px-5 py-2 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 font-medium flex items-center gap-2">▶ Chạy theo kịch bản</button>
-                  <button 
-                    onClick={async () => {
-                      const name = prompt("Tên kịch bản mẫu (ví dụ: Tuần 5 - Kỹ thuật phần mềm):");
-                      if (!name || !session?._id) return;
-                      try {
-                        await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
-                        toast.success("Đã lưu kịch bản thành mẫu!");
-                      } catch (e: any) {
-                        toast.error(e.message || "Không thể lưu kịch bản");
-                      }
-                    }}
-                    className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-                  >
-                    💾 Lưu kịch bản
-                  </button>
-
-                  <button
-                    onClick={() => setShowTemplatesModal(true)}
-                    className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-                  >
-                    📚 Kịch bản đã lưu
-                  </button>
+                <div className="text-sm text-zinc-600">
+                  <strong className="text-zinc-900">Kịch bản:</strong> {scriptLength} hoạt động
+                  <span className="ml-2 text-xs text-zinc-500">— bấm Chạy để bắt đầu theo thứ tự, dùng <kbd className="px-1 py-0.5 bg-zinc-100 border border-zinc-300 rounded text-[10px]">Space</kbd> chuyển bước</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  {!isPresentationMode && <button onClick={() => setIsPresentationMode(true)} className="px-4 py-2 text-sm rounded-lg bg-white text-black font-medium">Vào chế độ Trình diễn</button>}
-                  <button 
-                    onClick={openCompanionWindow} 
-                    className="px-5 py-2 text-sm rounded-lg bg-amber-500 text-black font-bold hover:bg-amber-400 shadow flex items-center gap-2 ring-1 ring-amber-300/50"
-                    title="Mở cửa sổ Companion (đặt trên màn hình laptop khi chiếu PowerPoint)"
-                  >
-                    📍 Mở Trợ lý Kịch bản (nhỏ)
-                  </button>
-
-                  {/* Picture-in-Picture mode - siêu nhỏ, kéo vào góc màn hình */}
-                  <button 
-                    onClick={() => {
-                      const url = `/presenter/${upperCode}/companion?pip=true`;
-                      window.open(url, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
-                    }} 
-                    className="px-3 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700 flex items-center gap-1.5"
-                    title="Mở Picture-in-Picture siêu nhỏ (kéo thả vào góc màn hình laptop khi chiếu PowerPoint fullscreen)"
-                  >
-                    🖼️ PiP
-                  </button>
-
-                  {/* Bảng thành tích - Top người tham gia */}
-                  <button
-                    onClick={() => {
-                      // Mở cửa sổ chiếu Bảng thành tích riêng (để chiếu màn hình lớn)
-                      const url = `/presenter/${upperCode}/leaderboard`;
-                      window.open(url, 'leaderboard', 'width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
-                    }}
-                    className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium flex items-center gap-2"
-                    title="Mở Bảng thành tích (Top 10) để chiếu lên màn hình"
-                  >
-                    🏆 Bảng thành tích
-                  </button>
-
-                  <button
-                    onClick={() => setShowScoringConfig(true)}
-                    className="px-3 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-                    title="Cấu hình điểm cho Bảng thành tích"
-                  >
-                    ⚙️
-                  </button>
-                  <button onClick={goToPrevInScript} disabled={currentScriptIndex === 0} className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 disabled:opacity-40">← Trước</button>
-                  <button onClick={goToNextInScript} disabled={currentScriptIndex >= scriptLength - 1} className="px-6 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 font-medium">Tiếp theo → <span className="text-[10px] opacity-75">(Space)</span></button>
-                  <button onClick={stopScriptMode} className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-red-100/30 text-red-600">Dừng</button>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium text-xs">● ĐANG CHẠY</span>
+                  <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-emerald-500 transition-all" style={{ width: scriptLength > 0 ? `${((currentScriptIndex + 1) / scriptLength) * 100}%` : "0%" }} />
+                  </div>
+                  <span className="font-mono text-emerald-600 text-xs whitespace-nowrap">{currentScriptIndex + 1}/{scriptLength}</span>
+                  {currentScriptActivity?.slideCue && (
+                    <span className="text-amber-600 text-xs font-medium whitespace-nowrap">📍 {currentScriptActivity.slideCue}</span>
+                  )}
                 </div>
               )}
             </div>
 
-            {isScriptMode && currentScriptActivity && (
-              <div className="px-6 py-4 bg-zinc-50/70 border-b border-zinc-200 text-sm">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden"><div className="h-1.5 bg-emerald-500 transition-all" style={{width: scriptLength > 0 ? ((currentScriptIndex + 1) / scriptLength) * 100 : 0 + "%"}} /></div>
-                  <div className="font-mono text-emerald-600 w-16 text-right">{currentScriptIndex + 1}/{scriptLength}</div>
-                </div>
-                {currentScriptActivity.slideCue && <div className="mt-3 text-amber-600 font-bold text-lg">📍 {currentScriptActivity.slideCue}</div>}
+            {/* Nút chính + menu ⋯ */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!isScriptMode ? (
+                <button onClick={startScriptMode} className="px-4 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+                  ▶ Chạy kịch bản
+                </button>
+              ) : (
+                <>
+                  <button onClick={goToPrevInScript} disabled={currentScriptIndex === 0} className="px-3 py-1.5 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 disabled:opacity-40" title="Bước trước">←</button>
+                  <button onClick={goToNextInScript} disabled={currentScriptIndex >= scriptLength - 1} className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-40" title="Bước tiếp">Tiếp →</button>
+                  <button onClick={stopScriptMode} className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50" title="Dừng kịch bản">Dừng</button>
+                </>
+              )}
+
+              {/* Menu ⋯ — các action ít dùng */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowScriptMenu(!showScriptMenu)}
+                  className="px-2.5 py-1.5 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
+                  title="Thêm tùy chọn"
+                >
+                  ⋯
+                </button>
+                {showScriptMenu && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setShowScriptMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-zinc-200 rounded-xl shadow-lg z-40 py-1">
+                      <button
+                        onClick={() => { openCompanionWindow(); setShowScriptMenu(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        📍 Trợ lý điều khiển (popup)
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.open(`/presenter/${upperCode}/companion?pip=true`, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+                          setShowScriptMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        🖼️ Picture-in-Picture nhỏ
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.open(`/presenter/${upperCode}/leaderboard`, 'leaderboard', 'width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+                          setShowScriptMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        🏆 Bảng thành tích (chiếu)
+                      </button>
+                      <div className="my-1 border-t border-zinc-200" />
+                      <button
+                        onClick={async () => {
+                          const name = prompt("Tên kịch bản mẫu (vd: Đập và Hồ chứa - Buổi 1):");
+                          setShowScriptMenu(false);
+                          if (!name || !session?._id) return;
+                          try {
+                            await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
+                            toast.success("Đã lưu kịch bản mẫu");
+                          } catch (e: unknown) {
+                            toast.error(e instanceof Error ? e.message : "Lỗi");
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        💾 Lưu thành mẫu
+                      </button>
+                      <button
+                        onClick={() => { setShowTemplatesModal(true); setShowScriptMenu(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        📚 Mẫu đã lưu
+                      </button>
+                      <div className="my-1 border-t border-zinc-200" />
+                      <button
+                        onClick={() => { setShowScoringConfig(true); setShowScriptMenu(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                      >
+                        ⚙️ Cấu hình điểm thành tích
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-            <div className="px-6 py-3 text-xs text-zinc-500">Mở "Trợ lý Kịch bản (nhỏ)" để có cửa sổ chuyên biệt trên laptop khi PowerPoint fullscreen.</div>
+            </div>
           </div>
         )}
 
@@ -1811,6 +1840,7 @@ function PresenterPage() {
                       index={index}
                       onEdit={() => openEditModal(activity)}
                       onDuplicate={() => handleDuplicate(activity._id)}
+                      onRestart={() => handleRestart(activity._id, activity.title)}
                       onDelete={() => handleDelete(activity._id, activity.title)}
                     />
                   ))}
