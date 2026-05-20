@@ -1160,7 +1160,7 @@ function PresenterPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-zinc-900">
         <div>Đang tải thông tin buổi giảng...</div>
       </div>
     );
@@ -1188,18 +1188,18 @@ function PresenterPage() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`px-6 py-3 flex items-center gap-4 group border-b border-zinc-800 last:border-b-0 transition-all ${
+        className={`px-6 py-3 flex items-center gap-4 group border-b border-zinc-200 last:border-b-0 transition-all ${
           isDragging 
             ? 'opacity-30 border-dashed border-emerald-600/50 bg-transparent' 
-            : 'hover:bg-zinc-950/60'
+            : 'hover:bg-zinc-100/60'
         }`}
       >
         {/* Drag handle */}
         <div
           {...attributes}
           {...listeners}
-          className={`w-8 text-zinc-400 hover:text-emerald-400 cursor-grab active:cursor-grabbing select-none flex items-center justify-center rounded transition-colors text-lg leading-none ${
-            isDragging ? 'text-emerald-500/40' : 'hover:bg-zinc-800'
+          className={`w-8 text-zinc-600 hover:text-emerald-600 cursor-grab active:cursor-grabbing select-none flex items-center justify-center rounded transition-colors text-lg leading-none ${
+            isDragging ? 'text-emerald-500/40' : 'hover:bg-zinc-100'
           }`}
           title="Kéo để sắp xếp thứ tự kịch bản"
         >
@@ -1212,15 +1212,15 @@ function PresenterPage() {
           <div className="font-medium truncate flex items-center gap-2">
             {activity.title}
             {activity.status === "active" && (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">ĐANG CHẠY</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-600">ĐANG CHẠY</span>
             )}
           </div>
           <div className="text-xs text-zinc-500 flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="capitalize">{activity.type}</span>
-            {activity.timeLimit && <span className="text-blue-400">⏱ {activity.timeLimit}p</span>}
+            {activity.timeLimit && <span className="text-blue-600">⏱ {activity.timeLimit}p</span>}
             {activity.requiresStudentCode && <span className="text-purple-400">👤 Mã SV</span>}
             {activity.slideCue && (
-              <span className="text-amber-400 flex items-center gap-1">📍 {activity.slideCue}</span>
+              <span className="text-amber-600 flex items-center gap-1">📍 {activity.slideCue}</span>
             )}
           </div>
         </div>
@@ -1228,19 +1228,19 @@ function PresenterPage() {
         <div className="flex items-center gap-2 opacity-80 group-hover:opacity-100">
           <button
             onClick={onEdit}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 transition-colors"
           >
             Sửa
           </button>
           <button
             onClick={onDuplicate}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 transition-colors"
           >
             Làm lại
           </button>
           <button
             onClick={onDelete}
-            className="px-3 py-1.5 text-xs rounded-lg border border-red-900/60 text-red-400 hover:bg-red-950/40 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
           >
             Xóa
           </button>
@@ -1250,9 +1250,9 @@ function PresenterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-zinc-50 text-zinc-900">
       {/* Top Bar */}
-      <div className="border-b border-zinc-800 bg-zinc-950 sticky top-0 z-50">
+      <div className="border-b border-zinc-200 bg-zinc-50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <button
@@ -1260,9 +1260,9 @@ function PresenterPage() {
               className="text-left group"
               title="Chiếu QR + mã phòng (phím Q)"
             >
-              <div className="text-xs text-zinc-500 group-hover:text-zinc-400">MÃ PHÒNG · Chiếu (Q)</div>
+              <div className="text-xs text-zinc-500 group-hover:text-zinc-600">MÃ PHÒNG · Chiếu (Q)</div>
               <div className="flex items-center gap-3">
-                <div className="text-3xl font-mono tracking-[4px] font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                <div className="text-3xl font-mono tracking-[4px] font-semibold text-zinc-900 group-hover:text-emerald-600 transition-colors">
                   {session.code}
                 </div>
                 {qrDataUrl && (
@@ -1275,16 +1275,16 @@ function PresenterPage() {
               </div>
             </button>
 
-            <div className="h-8 w-px bg-zinc-800" />
+            <div className="h-8 w-px bg-zinc-100" />
 
             <div>
-              <div className="text-sm text-zinc-400">Buổi giảng</div>
+              <div className="text-sm text-zinc-600">Buổi giảng</div>
               <div className="text-lg font-medium">{session.title}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-4 py-2 bg-zinc-900 rounded-lg border border-zinc-800">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-zinc-200">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               <span className="text-sm">
                 {totalParticipants} sinh viên tham gia
@@ -1314,7 +1314,7 @@ function PresenterPage() {
                 <button
                   onClick={() => pdfFileInputRef.current?.click()}
                   disabled={isUploadingPdf}
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-60 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
                   title="Upload PDF slide (thay PowerPoint, chiếu trong cùng tab)"
                 >
                   {isUploadingPdf ? "Đang tải..." : "📑 Upload PDF"}
@@ -1333,7 +1333,7 @@ function PresenterPage() {
               <button
                 onClick={handleExportResults}
                 disabled={!exportData || isExporting}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-60 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
               >
                 {isExporting ? "Đang xuất..." : "Xuất CSV"}
               </button>
@@ -1357,12 +1357,12 @@ function PresenterPage() {
             </div>
 
             {session.status === "ended" ? (
-              <div className="px-4 py-2 text-sm rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400">
+              <div className="px-4 py-2 text-sm rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-600">
                 Đã kết thúc
               </div>
             ) : (
               <button
-                className="px-4 py-2 text-sm rounded-lg border border-red-900 text-red-400 hover:bg-red-950 transition-colors"
+                className="px-4 py-2 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 onClick={async () => {
                   if (!session?._id) return;
                   if (!confirm("Kết thúc buổi giảng? Sinh viên sẽ không thể gửi câu trả lời mới (kết quả đã có vẫn được giữ).")) return;
@@ -1387,14 +1387,14 @@ function PresenterPage() {
 
         {/* ==================== KỊCH BẢN + TRỢ LÝ LIỀN MẠCH PPT (B - Ưu tiên) ==================== */}
         {sortedActivities.length > 0 && (
-          <div className="mb-8 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/50">
+          <div className="mb-8 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
               <div className="flex items-center gap-3">
                 <div className="font-semibold text-lg flex items-center gap-2">
                   Kịch bản hoạt động
-                  {isScriptMode && <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">ĐANG TRÌNH DIỄN</span>}
+                  {isScriptMode && <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-600 font-medium">ĐANG TRÌNH DIỄN</span>}
                 </div>
-                <div className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400">{scriptLength} hoạt động</div>
+                <div className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-600">{scriptLength} hoạt động</div>
               </div>
 
               {!isScriptMode ? (
@@ -1411,14 +1411,14 @@ function PresenterPage() {
                         toast.error(e.message || "Không thể lưu kịch bản");
                       }
                     }}
-                    className="px-4 py-2 text-sm rounded-lg border border-zinc-600 hover:bg-zinc-800 text-zinc-300"
+                    className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
                   >
                     💾 Lưu kịch bản
                   </button>
 
                   <button
                     onClick={() => setShowTemplatesModal(true)}
-                    className="px-4 py-2 text-sm rounded-lg border border-zinc-600 hover:bg-zinc-800 text-zinc-300"
+                    className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
                   >
                     📚 Kịch bản đã lưu
                   </button>
@@ -1440,7 +1440,7 @@ function PresenterPage() {
                       const url = `/presenter/${upperCode}/companion?pip=true`;
                       window.open(url, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
                     }} 
-                    className="px-3 py-2 text-sm rounded-lg border border-zinc-600 hover:bg-zinc-800 text-zinc-300 flex items-center gap-1.5"
+                    className="px-3 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700 flex items-center gap-1.5"
                     title="Mở Picture-in-Picture siêu nhỏ (kéo thả vào góc màn hình laptop khi chiếu PowerPoint fullscreen)"
                   >
                     🖼️ PiP
@@ -1461,25 +1461,25 @@ function PresenterPage() {
 
                   <button
                     onClick={() => setShowScoringConfig(true)}
-                    className="px-3 py-2 text-sm rounded-lg border border-zinc-600 hover:bg-zinc-800 text-zinc-300"
+                    className="px-3 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
                     title="Cấu hình điểm cho Bảng thành tích"
                   >
                     ⚙️
                   </button>
-                  <button onClick={goToPrevInScript} disabled={currentScriptIndex === 0} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-40">← Trước</button>
+                  <button onClick={goToPrevInScript} disabled={currentScriptIndex === 0} className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-100 disabled:opacity-40">← Trước</button>
                   <button onClick={goToNextInScript} disabled={currentScriptIndex >= scriptLength - 1} className="px-6 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 font-medium">Tiếp theo → <span className="text-[10px] opacity-75">(Space)</span></button>
-                  <button onClick={stopScriptMode} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-red-900/30 text-red-400">Dừng</button>
+                  <button onClick={stopScriptMode} className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-red-100/30 text-red-600">Dừng</button>
                 </div>
               )}
             </div>
 
             {isScriptMode && currentScriptActivity && (
-              <div className="px-6 py-4 bg-zinc-950/70 border-b border-zinc-800 text-sm">
+              <div className="px-6 py-4 bg-zinc-50/70 border-b border-zinc-200 text-sm">
                 <div className="flex items-center gap-4">
-                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden"><div className="h-1.5 bg-emerald-500 transition-all" style={{width: scriptLength > 0 ? ((currentScriptIndex + 1) / scriptLength) * 100 : 0 + "%"}} /></div>
-                  <div className="font-mono text-emerald-400 w-16 text-right">{currentScriptIndex + 1}/{scriptLength}</div>
+                  <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden"><div className="h-1.5 bg-emerald-500 transition-all" style={{width: scriptLength > 0 ? ((currentScriptIndex + 1) / scriptLength) * 100 : 0 + "%"}} /></div>
+                  <div className="font-mono text-emerald-600 w-16 text-right">{currentScriptIndex + 1}/{scriptLength}</div>
                 </div>
-                {currentScriptActivity.slideCue && <div className="mt-3 text-amber-400 font-bold text-lg">📍 {currentScriptActivity.slideCue}</div>}
+                {currentScriptActivity.slideCue && <div className="mt-3 text-amber-600 font-bold text-lg">📍 {currentScriptActivity.slideCue}</div>}
               </div>
             )}
             <div className="px-6 py-3 text-xs text-zinc-500">Mở "Trợ lý Kịch bản (nhỏ)" để có cửa sổ chuyên biệt trên laptop khi PowerPoint fullscreen.</div>
@@ -1488,12 +1488,12 @@ function PresenterPage() {
 
         {/* === Slide PDF status (nếu đã upload) === */}
         {hasPdf && (
-          <div className="mb-4 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl px-4 py-3 flex items-center justify-between">
+          <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
               <div className="text-2xl">📑</div>
               <div className="min-w-0">
-                <div className="text-sm font-medium text-indigo-200 truncate">{session.pdfFileName}</div>
-                <div className="text-xs text-indigo-400/80">{pdfTotalPages} trang • Đang ở trang {pdfCurrentPage}</div>
+                <div className="text-sm font-medium text-indigo-800 truncate">{session.pdfFileName}</div>
+                <div className="text-xs text-indigo-600/80">{pdfTotalPages} trang • Đang ở trang {pdfCurrentPage}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -1506,7 +1506,7 @@ function PresenterPage() {
               <button
                 onClick={() => pdfFileInputRef.current?.click()}
                 disabled={isUploadingPdf}
-                className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 hover:bg-zinc-800 text-zinc-300 disabled:opacity-60"
+                className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700 disabled:opacity-60"
                 title="Thay file PDF khác"
               >
                 Đổi PDF
@@ -1518,7 +1518,7 @@ function PresenterPage() {
                   await clearSessionPdf({ sessionId: session._id });
                   toast.success("Đã xóa slide PDF");
                 }}
-                className="px-3 py-1.5 text-xs rounded-lg border border-red-900/60 hover:bg-red-950/40 text-red-400"
+                className="px-3 py-1.5 text-xs rounded-lg border border-red-200 hover:bg-red-50 text-red-600"
               >
                 Xóa
               </button>
@@ -1528,19 +1528,19 @@ function PresenterPage() {
 
         {/* === Tạo nhanh (mẫu Đập và Hồ chứa) */}
         <div className="mb-4">
-          <div className="text-xs text-blue-400 font-medium mb-1.5 px-1">Tạo nhanh — Mẫu hoạt động (gắn mốc slide)</div>
+          <div className="text-xs text-blue-600 font-medium mb-1.5 px-1">Tạo nhanh — Mẫu hoạt động (gắn mốc slide)</div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => quickCreateActivity("wordcloud", "Liên tưởng về Đập và Hồ chứa", "Slide 3")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Word Cloud</button>
-            <button onClick={() => quickCreateActivity("poll", "Mức độ hiểu phân loại đập", "Slide 10")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Poll</button>
-            <button onClick={() => quickCreateActivity("qa", "Câu hỏi về cấu tạo đập đất", "Slide 18")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Q&A</button>
-            <button onClick={() => quickCreateActivity("rating", "Đánh giá mức nắm vững công thức tính lưu lượng tràn", "Slide 24")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Rating</button>
+            <button onClick={() => quickCreateActivity("wordcloud", "Liên tưởng về Đập và Hồ chứa", "Slide 3")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Word Cloud</button>
+            <button onClick={() => quickCreateActivity("poll", "Mức độ hiểu phân loại đập", "Slide 10")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Poll</button>
+            <button onClick={() => quickCreateActivity("qa", "Câu hỏi về cấu tạo đập đất", "Slide 18")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Q&A</button>
+            <button onClick={() => quickCreateActivity("rating", "Đánh giá mức nắm vững công thức tính lưu lượng tràn", "Slide 24")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Rating</button>
           </div>
         </div>
 
         {/* ==================== DANH SÁCH HOẠT ĐỘNG (Kéo thả + Chỉnh sửa) ==================== */}
         {sortedActivities.length > 0 && (
-          <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-            <div className="px-6 py-3 border-b border-zinc-800 bg-zinc-950/60 flex items-center justify-between">
+          <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="px-6 py-3 border-b border-zinc-200 bg-zinc-100/60 flex items-center justify-between">
               <div>
                 <span className="font-medium">Danh sách hoạt động</span>
                 <span className="ml-2 text-xs text-zinc-500">({sortedActivities.length} hoạt động • Kéo thả để sắp xếp thứ tự kịch bản)</span>
@@ -1575,20 +1575,20 @@ function PresenterPage() {
               {/* DragOverlay: Hiển thị bản preview nổi đẹp khi đang kéo (chất lượng cao cho Dnd list) */}
               <DragOverlay>
                 {draggingActivity ? (
-                  <div className="px-6 py-3 flex items-center gap-4 bg-zinc-800 border border-emerald-500 rounded-xl shadow-2xl opacity-95">
-                    <div className="w-8 text-emerald-400 flex items-center justify-center text-lg">⋮⋮</div>
+                  <div className="px-6 py-3 flex items-center gap-4 bg-zinc-100 border border-emerald-500 rounded-xl shadow-2xl opacity-95">
+                    <div className="w-8 text-emerald-600 flex items-center justify-center text-lg">⋮⋮</div>
                     <div className="w-6 text-xs text-zinc-500 font-mono">
                       {sortedActivities.findIndex((a) => a._id === draggingActivity._id) + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{draggingActivity.title}</div>
-                      <div className="text-xs text-zinc-400 flex items-center gap-2 mt-0.5">
+                      <div className="text-xs text-zinc-600 flex items-center gap-2 mt-0.5">
                         <span className="capitalize">{draggingActivity.type}</span>
-                        {draggingActivity.slideCue && <span className="text-amber-400">📍 {draggingActivity.slideCue}</span>}
+                        {draggingActivity.slideCue && <span className="text-amber-600">📍 {draggingActivity.slideCue}</span>}
                         {draggingActivity.timeLimit && <span>⏱ {draggingActivity.timeLimit}p</span>}
                       </div>
                     </div>
-                    <div className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">ĐANG KÉO</div>
+                    <div className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-600">ĐANG KÉO</div>
                   </div>
                 ) : null}
               </DragOverlay>
@@ -1603,8 +1603,8 @@ function PresenterPage() {
           {activeActivity ? (
             <div 
               ref={resultsRef}
-              className={`bg-zinc-900 border rounded-2xl p-6 transition-all duration-300 ${
-                highlightResults ? "border-emerald-500 ring-1 ring-emerald-500/30" : "border-zinc-800"
+              className={`bg-white border rounded-2xl p-6 transition-all duration-300 ${
+                highlightResults ? "border-emerald-500 ring-1 ring-emerald-500/30" : "border-zinc-200"
               }`}
             >
               <div className="flex items-center justify-between mb-4">
@@ -1615,12 +1615,12 @@ function PresenterPage() {
                       setHighlightResults(true);
                       setTimeout(() => setHighlightResults(false), 800);
                     }}
-                    className="text-xs px-3 py-1 rounded-lg border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                    className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
                   >
                     Làm mới
                   </button>
                 </div>
-                <div className="text-sm text-emerald-400 font-medium">
+                <div className="text-sm text-emerald-600 font-medium">
                   {activeActivity.type === "poll" && pollResults && `${pollResults.totalAnswered} đã trả lời`}
                   {activeActivity.type === "wordcloud" && wordCloudResults && `${wordCloudResults.totalResponses} phản hồi`}
                   {activeActivity.type === "rating" && ratingResults && `${ratingResults.total} lượt`}
@@ -1631,19 +1631,19 @@ function PresenterPage() {
 
               {/* Empty states nhất quán */}
               {activeActivity.type === "poll" && (!pollResults || pollResults.totalAnswered === 0) && (
-                <div className="text-center py-10 text-zinc-400 text-sm">Chưa có sinh viên nào trả lời</div>
+                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có sinh viên nào trả lời</div>
               )}
               {activeActivity.type === "wordcloud" && (!wordCloudResults || wordCloudResults.totalResponses === 0) && (
-                <div className="text-center py-10 text-zinc-400 text-sm">Chưa có từ khóa nào</div>
+                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có từ khóa nào</div>
               )}
               {activeActivity.type === "rating" && (!ratingResults || ratingResults.total === 0) && (
-                <div className="text-center py-10 text-zinc-400 text-sm">Chưa có đánh giá nào</div>
+                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có đánh giá nào</div>
               )}
               {activeActivity.type === "qa" && (!qaResponses || qaResponses.length === 0) && (
-                <div className="text-center py-10 text-zinc-400 text-sm">Chưa có câu hỏi nào</div>
+                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có câu hỏi nào</div>
               )}
               {activeActivity.type === "board" && (!boardPosts || boardPosts.length === 0) && (
-                <div className="text-center py-10 text-zinc-400 text-sm">Chưa có bài đăng nào</div>
+                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có bài đăng nào</div>
               )}
 
               {/* === POLL === */}
@@ -1654,11 +1654,11 @@ function PresenterPage() {
                     return (
                       <div key={opt.id} className="flex items-center gap-4">
                         <div className="w-48 text-sm truncate" title={opt.text}>{opt.text}</div>
-                        <div className="flex-1 bg-zinc-800 rounded-full h-3 overflow-hidden">
+                        <div className="flex-1 bg-zinc-100 rounded-full h-3 overflow-hidden">
                           <div className="bg-emerald-500 h-3 transition-all rounded-full" style={{ width: `${percentage}%` }} />
                         </div>
-                        <div className="w-24 text-right text-sm font-mono text-emerald-400">
-                          {opt.count} <span className="text-emerald-500/70">({percentage}%)</span>
+                        <div className="w-24 text-right text-sm font-mono text-emerald-600">
+                          {opt.count} <span className="text-emerald-500">({percentage}%)</span>
                         </div>
                       </div>
                     );
@@ -1669,11 +1669,11 @@ function PresenterPage() {
               {/* === WORD CLOUD === */}
               {activeActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
                 <div>
-                  <div className="flex justify-between text-sm text-zinc-400 mb-2">
+                  <div className="flex justify-between text-sm text-zinc-600 mb-2">
                     <span>Đám mây từ (top 50)</span>
                     <span>{wordCloudResults.words.length} từ khác nhau</span>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center py-6 min-h-[160px] bg-zinc-950 rounded-2xl border border-zinc-800">
+                  <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center py-6 min-h-[160px] bg-zinc-50 rounded-2xl border border-zinc-200">
                     {wordCloudResults.words.slice(0, 50).map((item: any, idx: number) => {
                       const max = wordCloudResults.words[0]?.count || 1;
                       const size = Math.max(14, Math.min(44, Math.round(14 + (item.count / max) * 30)));
@@ -1694,10 +1694,10 @@ function PresenterPage() {
                   {/* Header */}
                   <div className="flex items-end justify-between mb-5">
                     <div>
-                      <div className="text-5xl font-semibold tabular-nums text-emerald-400">
+                      <div className="text-5xl font-semibold tabular-nums text-emerald-600">
                         {ratingResults.average || "—"}
                       </div>
-                      <div className="text-sm text-zinc-400 mt-0.5">
+                      <div className="text-sm text-zinc-600 mt-0.5">
                         Điểm trung bình • {ratingResults.total} lượt đánh giá
                       </div>
                     </div>
@@ -1726,20 +1726,20 @@ function PresenterPage() {
 
                       return (
                         <div key={score} className="flex items-center gap-3 group">
-                          <div className="w-8 text-right font-semibold text-sm tabular-nums text-zinc-300">
+                          <div className="w-8 text-right font-semibold text-sm tabular-nums text-zinc-700">
                             {score}
                           </div>
 
-                          <div className="flex-1 bg-zinc-800 rounded-full h-3.5 overflow-hidden border border-zinc-700">
+                          <div className="flex-1 bg-zinc-100 rounded-full h-3.5 overflow-hidden border border-zinc-300">
                             <div 
                               className={`h-3.5 transition-all duration-300 rounded-full ${isHigh ? "bg-emerald-500" : "bg-emerald-600/80"}`}
                               style={{ width: `${pct}%` }} 
                             />
                           </div>
 
-                          <div className="w-24 text-right text-sm font-mono text-emerald-400 tabular-nums flex items-baseline justify-end gap-1.5">
+                          <div className="w-24 text-right text-sm font-mono text-emerald-600 tabular-nums flex items-baseline justify-end gap-1.5">
                             <span className="font-medium">{count}</span>
-                            <span className="text-[10px] text-emerald-500/70">({pct}%)</span>
+                            <span className="text-[10px] text-emerald-500">({pct}%)</span>
                           </div>
                         </div>
                       );
@@ -1763,7 +1763,7 @@ function PresenterPage() {
                     return (
                       <div 
                         key={q._id} 
-                        className={`bg-zinc-950 border rounded-xl p-4 transition-all ${isHidden ? "border-zinc-700 opacity-60" : "border-zinc-800"}`}
+                        className={`bg-zinc-50 border rounded-xl p-4 transition-all ${isHidden ? "border-zinc-300 opacity-60" : "border-zinc-200"}`}
                       >
                         {/* Header */}
                         <div className="flex items-start justify-between gap-3">
@@ -1781,12 +1781,12 @@ function PresenterPage() {
 
                           <div className="flex items-center gap-2 shrink-0">
                             {/* Status */}
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wide ${isHidden ? "bg-zinc-700 text-zinc-400" : "bg-emerald-500/10 text-emerald-400"}`}>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wide ${isHidden ? "bg-zinc-200 text-zinc-600" : "bg-emerald-500/10 text-emerald-600"}`}>
                               {isHidden ? "ĐÃ ẨN" : "HIỂN THỊ"}
                             </span>
 
                             {/* Upvotes */}
-                            <div className="text-xs text-zinc-400 flex items-center gap-1 bg-zinc-900 px-2 py-0.5 rounded">
+                            <div className="text-xs text-zinc-600 flex items-center gap-1 bg-white px-2 py-0.5 rounded">
                               ↑ {v.upvotes || 0}
                             </div>
                           </div>
@@ -1794,7 +1794,7 @@ function PresenterPage() {
 
                         {/* Answer (if exists) */}
                         {v.answer && (
-                          <div className="mt-3 ml-1 pl-3 border-l-2 border-emerald-600 text-sm text-emerald-300 bg-emerald-950/30 py-2 px-3 rounded-r">
+                          <div className="mt-3 ml-1 pl-3 border-l-2 border-emerald-600 text-sm text-emerald-700 bg-emerald-50/30 py-2 px-3 rounded-r">
                             {v.answer}
                           </div>
                         )}
@@ -1806,7 +1806,7 @@ function PresenterPage() {
                               value={answerText}
                               onChange={(e) => setAnswerText(e.target.value)}
                               placeholder="Nhập câu trả lời của bạn..."
-                              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm resize-y min-h-[70px]"
+                              className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm resize-y min-h-[70px]"
                               rows={3}
                             />
                             <div className="flex gap-2">
@@ -1815,7 +1815,7 @@ function PresenterPage() {
                                   setAnsweringId(null);
                                   setAnswerText("");
                                 }}
-                                className="px-4 py-1.5 text-xs rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                                className="px-4 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100"
                               >
                                 Hủy
                               </button>
@@ -1842,13 +1842,13 @@ function PresenterPage() {
 
                         {/* Presenter Actions */}
                         {!isAnswering && (
-                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-800">
+                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-200">
                             <button
                               onClick={() => {
                                 setAnsweringId(q._id);
                                 setAnswerText(v.answer || "");
                               }}
-                              className="text-xs px-3 py-1 rounded-lg border border-zinc-700 hover:bg-zinc-800 text-emerald-400"
+                              className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-emerald-600"
                             >
                               {v.answer ? "Sửa trả lời" : "Trả lời"}
                             </button>
@@ -1863,7 +1863,7 @@ function PresenterPage() {
                                   toast.error("Thao tác thất bại");
                                 }
                               }}
-                              className="text-xs px-3 py-1 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                              className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100"
                             >
                               {isHidden ? "Hiện lại" : "Ẩn"}
                             </button>
@@ -1878,7 +1878,7 @@ function PresenterPage() {
                                   toast.error("Không thể xóa");
                                 }
                               }}
-                              className="text-xs px-3 py-1 rounded-lg border border-red-900/60 text-red-400 hover:bg-red-950/40 ml-auto"
+                              className="text-xs px-3 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-auto"
                             >
                               Xóa
                             </button>
@@ -1896,14 +1896,14 @@ function PresenterPage() {
                   {(activeActivity.config?.columns || []).map((col: any) => {
                     const posts = boardPosts.filter((p: any) => p.columnId === col.id);
                     return (
-                      <div key={col.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                      <div key={col.id} className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
                         <div className="font-medium mb-2 text-sm">{col.title}</div>
                         <div className="space-y-2">
                           {posts.length > 0 ? posts.map((post: any) => (
-                            <div key={post._id} className="bg-zinc-900 p-2.5 rounded-lg text-sm">
+                            <div key={post._id} className="bg-white p-2.5 rounded-lg text-sm">
                               {post.content}
                               {post.imageUrl && <img src={post.imageUrl} className="mt-2 rounded max-h-28" alt="" />}
-                              <div className="text-xs text-emerald-400 mt-1">❤️ {post.likes}</div>
+                              <div className="text-xs text-emerald-600 mt-1">❤️ {post.likes}</div>
                             </div>
                           )) : <div className="text-xs text-zinc-500 py-2">Chưa có bài đăng</div>}
                         </div>
@@ -1914,7 +1914,7 @@ function PresenterPage() {
               )}
             </div>
           ) : (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-sm text-zinc-500">
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 text-sm text-zinc-500">
               Chưa có hoạt động nào đang chạy. Kết quả sẽ hiển thị realtime khi bạn kích hoạt hoạt động.
             </div>
           )}
@@ -1923,23 +1923,23 @@ function PresenterPage() {
         {/* ==================== EDIT ACTIVITY MODAL ==================== */}
         {editingActivity && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[110]">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6">
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-lg p-6">
               <div className="text-xl font-semibold mb-1">Chỉnh sửa hoạt động</div>
-              <div className="text-sm text-zinc-400 mb-4">{editingActivity.type}</div>
+              <div className="text-sm text-zinc-600 mb-4">{editingActivity.type}</div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-zinc-400 block mb-1">Tiêu đề</label>
-                  <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2" />
+                  <label className="text-sm text-zinc-600 block mb-1">Tiêu đề</label>
+                  <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
                 </div>
                 <div>
-                  <label className="text-sm text-zinc-400 block mb-1">Mốc slide PowerPoint</label>
-                  <input type="text" value={slideCue} onChange={(e) => setSlideCue(e.target.value)} placeholder="Slide 7" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2" />
+                  <label className="text-sm text-zinc-600 block mb-1">Mốc slide PowerPoint</label>
+                  <input type="text" value={slideCue} onChange={(e) => setSlideCue(e.target.value)} placeholder="Slide 7" className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
                 </div>
               </div>
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => { setEditingActivity(null); setPollTitle(""); setSlideCue(""); }} className="flex-1 py-2.5 rounded-xl border border-zinc-700 hover:bg-zinc-800">Hủy</button>
+                <button onClick={() => { setEditingActivity(null); setPollTitle(""); setSlideCue(""); }} className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100">Hủy</button>
                 <button onClick={async () => {
                   if (!editingActivity) return;
                   await updateActivity({
@@ -1958,23 +1958,23 @@ function PresenterPage() {
         {/* ==================== CREATE ACTIVITY MODAL ==================== */}
         {showCreateModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[110]">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6">
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-lg p-6">
               <div className="text-xl font-semibold mb-1">Tạo hoạt động mới</div>
-              <div className="text-sm text-zinc-400 mb-4">Chọn loại</div>
+              <div className="text-sm text-zinc-600 mb-4">Chọn loại</div>
 
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => (
-                    <button key={t} onClick={() => setCreateType(t)} className={`px-3 py-1.5 text-sm rounded-lg border ${createType === t ? "bg-emerald-600 border-emerald-500" : "border-zinc-700 hover:bg-zinc-800"}`}>
+                    <button key={t} onClick={() => setCreateType(t)} className={`px-3 py-1.5 text-sm rounded-lg border ${createType === t ? "bg-emerald-600 border-emerald-500" : "border-zinc-300 hover:bg-zinc-100"}`}>
                       {t}
                     </button>
                   ))}
                 </div>
 
-                <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} placeholder="Tiêu đề hoạt động (VD: Phân loại đập theo vật liệu)" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2" />
+                <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} placeholder="Tiêu đề hoạt động (VD: Phân loại đập theo vật liệu)" className="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-2" />
 
                 <div className="flex gap-3">
-                  <button onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 rounded-xl border border-zinc-700">Hủy</button>
+                  <button onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 rounded-xl border border-zinc-300">Hủy</button>
                   <button onClick={async () => {
                     if (!pollTitle.trim()) return;
                     await createActivity({ sessionId: session!._id, type: createType, title: pollTitle.trim(), config: createType === "rating" ? { min: 1, max: 5 } : {}, requiresStudentCode: false, order: 999 });
@@ -1991,9 +1991,9 @@ function PresenterPage() {
         {/* ==================== MODAL CẤU HÌNH ĐIỂM BẢNG THÀNH TÍCH ==================== */}
         {showScoringConfig && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[120]">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md p-6">
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-md p-6">
               <div className="text-xl font-semibold mb-1">Cấu hình điểm thành tích</div>
-              <div className="text-sm text-zinc-400 mb-6">Điều chỉnh điểm cho từng loại hoạt động (phù hợp sinh viên đại học)</div>
+              <div className="text-sm text-zinc-600 mb-6">Điều chỉnh điểm cho từng loại hoạt động (phù hợp sinh viên đại học)</div>
 
               <div className="space-y-4">
                 {[
@@ -2011,7 +2011,7 @@ function PresenterPage() {
                         ...scoringConfig,
                         [item.key]: parseInt(e.target.value) || 0,
                       })}
-                      className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-right font-mono"
+                      className="w-20 bg-zinc-100 border border-zinc-300 rounded-lg px-3 py-1.5 text-right font-mono"
                     />
                   </div>
                 ))}
@@ -2020,7 +2020,7 @@ function PresenterPage() {
               <div className="flex gap-3 mt-8">
                 <button
                   onClick={() => setShowScoringConfig(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-zinc-700 hover:bg-zinc-800"
+                  className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100"
                 >
                   Hủy
                 </button>
@@ -2050,21 +2050,21 @@ function PresenterPage() {
         {/* ==================== MODAL DANH SÁCH KỊCH BẢN MẪU ==================== */}
         {showTemplatesModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[120]">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6 max-h-[80vh] overflow-auto">
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-lg p-6 max-h-[80vh] overflow-auto">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xl font-semibold">Kịch bản đã lưu</div>
-                <button onClick={() => setShowTemplatesModal(false)} className="text-zinc-400 hover:text-white">✕</button>
+                <button onClick={() => setShowTemplatesModal(false)} className="text-zinc-600 hover:text-zinc-900">✕</button>
               </div>
 
               {!templatesList || templatesList.length === 0 ? (
-                <div className="text-center py-8 text-zinc-400">
+                <div className="text-center py-8 text-zinc-600">
                   Chưa có kịch bản nào được lưu.<br />
                   Sau khi soạn kịch bản, bấm “Lưu kịch bản” để tạo mẫu.
                 </div>
               ) : (
                 <div className="space-y-3">
                   {templatesList.map((tpl: any) => (
-                    <div key={tpl._id} className="bg-zinc-800 border border-zinc-700 rounded-xl p-4 flex items-center justify-between">
+                    <div key={tpl._id} className="bg-zinc-100 border border-zinc-300 rounded-xl p-4 flex items-center justify-between">
                       <div>
                         <div className="font-medium">{tpl.name}</div>
                         <div className="text-xs text-zinc-500">
