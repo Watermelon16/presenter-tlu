@@ -175,6 +175,10 @@ convex/
 
 ---
 
-## License
+## Tác giả & Bản quyền
 
-MIT — dùng tự do cho mục đích giảng dạy.
+**TS. Lê Hồng Phương**
+Bộ môn Thủy công, Trường Đại học Thủy lợi
+Email: lephuong.tlu.7@gmail.com
+
+© Trường Đại học Thủy lợi. Bản quyền thuộc về tác giả. Phát hành dưới giấy phép MIT cho mục đích giảng dạy phi lợi nhuận.

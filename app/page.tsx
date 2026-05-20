@@ -48,6 +48,10 @@ export default function CreateRoomPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-semibold tracking-tight">Presenter TLU</h1>
           <p className="text-zinc-600 mt-2">Công cụ tương tác giảng dạy — Đại học Thủy Lợi</p>
+          <p className="text-xs text-zinc-500 mt-3">
+            Phát triển bởi <span className="font-medium text-zinc-700">TS. Lê Hồng Phương</span>
+            <br />Bộ môn Thủy công, Trường Đại học Thủy lợi
+          </p>
         </div>
 
         <Card>
