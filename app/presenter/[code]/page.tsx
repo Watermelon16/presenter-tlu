@@ -1920,7 +1920,7 @@ function PresenterPage() {
           )}
         </div>
 
-        {/* ==================== CREATE / EDIT ACTIVITY MODAL (UNIFIED) ==================== */}
+        {/* ==================== CREATE / EDIT ACTIVITY MODAL (UNIFIED, FULL CONFIG) ==================== */}
         {(showCreateModal || editingActivity) && (
           <div
             className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4"
@@ -1931,16 +1931,17 @@ function PresenterPage() {
               }
             }}
           >
-            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
-              <div className="flex items-start justify-between mb-4">
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
+              {/* Header sticky */}
+              <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-start justify-between z-10">
                 <div>
                   <div className="text-xl font-semibold">
                     {editingActivity ? "Chỉnh sửa hoạt động" : "Tạo hoạt động mới"}
                   </div>
                   <div className="text-sm text-zinc-600 mt-0.5">
                     {editingActivity
-                      ? `Đang sửa: ${editingActivity.title} (${editingActivity.type})`
-                      : "Chọn loại hoạt động và điền thông tin"}
+                      ? `Đang sửa: ${editingActivity.title}`
+                      : "Cấu hình đầy đủ cho từng loại hoạt động"}
                   </div>
                 </div>
                 <button
@@ -1951,77 +1952,109 @@ function PresenterPage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {/* Loại hoạt động — disable khi edit (không đổi type được) */}
+              <div className="px-6 py-5 space-y-5">
+                {/* ===== Loại hoạt động ===== */}
                 <div>
-                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Loại hoạt động</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => !editingActivity && setCreateType(t)}
-                        disabled={!!editingActivity}
-                        className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                          createType === t
-                            ? "bg-emerald-600 border-emerald-500 text-white"
-                            : "border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-                        } ${editingActivity ? "opacity-60 cursor-not-allowed" : ""}`}
-                      >
-                        {t === "poll" && "📊 Poll"}
-                        {t === "wordcloud" && "☁️ Word Cloud"}
-                        {t === "rating" && "⭐ Rating"}
-                        {t === "qa" && "❓ Q&A"}
-                        {t === "board" && "📌 Board"}
-                      </button>
-                    ))}
+                  <label className="text-sm font-semibold text-zinc-700 block mb-2">
+                    Loại hoạt động {editingActivity && <span className="text-xs text-zinc-500 font-normal">(không thể đổi khi chỉnh sửa)</span>}
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => {
+                      const labels: Record<string, { icon: string; name: string }> = {
+                        poll: { icon: "📊", name: "Poll" },
+                        wordcloud: { icon: "☁️", name: "Word Cloud" },
+                        rating: { icon: "⭐", name: "Rating" },
+                        qa: { icon: "❓", name: "Q&A" },
+                        board: { icon: "📌", name: "Board" },
+                      };
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => !editingActivity && setCreateType(t)}
+                          disabled={!!editingActivity}
+                          className={`px-2 py-3 text-xs rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
+                            createType === t
+                              ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-semibold"
+                              : "border-zinc-200 hover:border-zinc-400 text-zinc-700"
+                          } ${editingActivity ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          <span className="text-2xl">{labels[t].icon}</span>
+                          <span>{labels[t].name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Tiêu đề */}
+                {/* ===== Tiêu đề + mô tả ===== */}
                 <div>
-                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Tiêu đề <span className="text-red-500">*</span></label>
+                  <label className="text-sm font-semibold text-zinc-700 block mb-1.5">
+                    Tiêu đề <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={pollTitle}
                     onChange={(e) => { setPollTitle(e.target.value); setTitleError(""); }}
                     placeholder="VD: Phân loại đập theo vật liệu"
-                    className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
                   />
                   {titleError && <div className="text-xs text-red-600 mt-1">{titleError}</div>}
                 </div>
 
-                {/* Mốc slide PPT */}
                 <div>
-                  <label className="text-sm font-medium text-zinc-700 block mb-1.5">Mốc slide PowerPoint (tùy chọn)</label>
+                  <label className="text-sm font-semibold text-zinc-700 block mb-1.5">Mô tả (tùy chọn)</label>
+                  <textarea
+                    value={pollDescription}
+                    onChange={(e) => setPollDescription(e.target.value)}
+                    placeholder="Giải thích/gợi ý hiển thị dưới tiêu đề khi SV trả lời"
+                    rows={2}
+                    className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2 text-sm resize-y focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-semibold text-zinc-700 block mb-1.5">Mốc slide PowerPoint (tùy chọn)</label>
                   <input
                     type="text"
                     value={slideCue}
                     onChange={(e) => setSlideCue(e.target.value)}
                     placeholder="VD: Slide 7, Sau slide 12"
-                    className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                {/* === POLL-specific === */}
+                {/* ===== POLL-specific ===== */}
                 {createType === "poll" && (
                   <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm font-medium text-zinc-700">Kiểu chọn:</label>
-                      <select
-                        value={pollType}
-                        onChange={(e) => setPollType(e.target.value as "single_choice" | "multiple_choice")}
-                        className="bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm"
-                      >
-                        <option value="single_choice">Chọn 1 đáp án</option>
-                        <option value="multiple_choice">Chọn nhiều đáp án</option>
-                      </select>
+                    <div className="text-sm font-semibold text-blue-900">⚙️ Cấu hình Poll</div>
+
+                    <div>
+                      <label className="text-sm text-zinc-700 block mb-1.5">Kiểu chọn đáp án</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setPollType("single_choice")}
+                          className={`flex-1 px-3 py-2 text-sm rounded-lg border ${pollType === "single_choice" ? "bg-blue-600 border-blue-600 text-white font-medium" : "bg-white border-zinc-300 text-zinc-700"}`}
+                        >
+                          ◉ Chọn 1 đáp án
+                        </button>
+                        <button
+                          onClick={() => setPollType("multiple_choice")}
+                          className={`flex-1 px-3 py-2 text-sm rounded-lg border ${pollType === "multiple_choice" ? "bg-blue-600 border-blue-600 text-white font-medium" : "bg-white border-zinc-300 text-zinc-700"}`}
+                        >
+                          ☑ Chọn nhiều đáp án
+                        </button>
+                      </div>
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Các lựa chọn</label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-sm text-zinc-700">Các lựa chọn <span className="text-red-500">*</span></label>
+                        <span className="text-xs text-zinc-500">{options.filter(o => o.trim()).length} / {options.length} đã nhập</span>
+                      </div>
                       <div className="space-y-2">
                         {options.map((opt, idx) => (
-                          <div key={idx} className="flex gap-2">
+                          <div key={idx} className="flex gap-2 items-center">
+                            <span className="w-6 text-center text-xs text-zinc-500 font-mono">{idx + 1}.</span>
                             <input
                               type="text"
                               value={opt}
@@ -2030,175 +2063,300 @@ function PresenterPage() {
                                 next[idx] = e.target.value;
                                 setOptions(next);
                               }}
-                              placeholder={`Lựa chọn ${idx + 1}`}
-                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                              placeholder={`Lựa chọn ${idx + 1}${idx === 0 ? " (VD: Đập bê tông trọng lực)" : ""}`}
+                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                             />
                             {options.length > 2 && (
                               <button
                                 onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+                                className="px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+                                title="Xóa lựa chọn này"
                               >
-                                Xóa
+                                ✕
                               </button>
                             )}
                           </div>
                         ))}
                         <button
                           onClick={() => setOptions([...options, ""])}
-                          className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                         >
                           + Thêm lựa chọn
                         </button>
                       </div>
                     </div>
+
+                    {/* Multi-choice: số lựa chọn tối thiểu */}
+                    {pollType === "multiple_choice" && (
+                      <div>
+                        <label className="text-sm text-zinc-700 block mb-1.5">
+                          Số lựa chọn tối thiểu SV phải chọn
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={options.length}
+                            value={minSelections}
+                            onChange={(e) => setMinSelections(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-20 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                          />
+                          <span className="text-xs text-zinc-500">/ {options.filter(o => o.trim()).length} đáp án</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Toggle nâng cao */}
+                    <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer pt-2 border-t border-blue-200">
+                      <input
+                        type="checkbox"
+                        checked={shuffleOptions}
+                        onChange={(e) => setShuffleOptions(e.target.checked)}
+                        className="w-4 h-4 accent-blue-600"
+                      />
+                      Xáo trộn thứ tự đáp án cho từng SV
+                    </label>
                   </div>
                 )}
 
-                {/* === RATING-specific === */}
+                {/* ===== WORD CLOUD-specific ===== */}
+                {createType === "wordcloud" && (
+                  <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-sm text-zinc-700">
+                    <div className="text-sm font-semibold text-sky-900 mb-2">⚙️ Cấu hình Word Cloud</div>
+                    Sinh viên nhập từ khóa ngắn (tối đa 30 ký tự). Các từ trùng nhau sẽ được gom lại — từ có tần suất cao nhất hiển thị to nhất.
+                  </div>
+                )}
+
+                {/* ===== RATING-specific ===== */}
                 {createType === "rating" && (
                   <div className="space-y-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="text-sm font-semibold text-amber-900">⚙️ Cấu hình thang điểm</div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-sm font-medium text-zinc-700 block mb-1.5">Giá trị nhỏ nhất</label>
+                        <label className="text-sm text-zinc-700 block mb-1.5">Điểm thấp nhất</label>
                         <input
                           type="number"
+                          min={0}
                           value={ratingMin}
                           onChange={(e) => setRatingMin(parseInt(e.target.value) || 1)}
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-zinc-700 block mb-1.5">Giá trị lớn nhất</label>
+                        <label className="text-sm text-zinc-700 block mb-1.5">Điểm cao nhất</label>
                         <input
                           type="number"
+                          min={ratingMin + 1}
                           value={ratingMax}
                           onChange={(e) => setRatingMax(parseInt(e.target.value) || 5)}
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Nhãn điểm thấp</label>
-                      <input
-                        type="text"
-                        value={ratingMinLabel}
-                        onChange={(e) => setRatingMinLabel(e.target.value)}
-                        className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-zinc-700 block mb-1.5">Nhãn điểm cao</label>
-                      <input
-                        type="text"
-                        value={ratingMaxLabel}
-                        onChange={(e) => setRatingMaxLabel(e.target.value)}
-                        className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
 
-                {/* === BOARD-specific === */}
-                {createType === "board" && (
-                  <div className="space-y-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
-                    <label className="text-sm font-medium text-zinc-700 block">Các cột trên bảng</label>
-                    {boardColumns.map((col, idx) => (
-                      <div key={col.id} className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm text-zinc-700 block mb-1.5">Nhãn điểm thấp</label>
                         <input
                           type="text"
-                          value={col.title}
-                          onChange={(e) => {
-                            const next = [...boardColumns];
-                            next[idx] = { ...col, title: e.target.value };
-                            setBoardColumns(next);
-                          }}
-                          placeholder={`Cột ${idx + 1}`}
-                          className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                          value={ratingMinLabel}
+                          onChange={(e) => setRatingMinLabel(e.target.value)}
+                          placeholder="Rất không hiểu"
+                          className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
-                        {boardColumns.length > 1 && (
-                          <button
-                            onClick={() => setBoardColumns(boardColumns.filter((_, i) => i !== idx))}
-                            className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
-                          >
-                            Xóa
-                          </button>
-                        )}
                       </div>
-                    ))}
-                    <button
-                      onClick={() => setBoardColumns([...boardColumns, { id: `col_${Date.now()}`, title: "" }])}
-                      className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
-                    >
-                      + Thêm cột
-                    </button>
+                      <div>
+                        <label className="text-sm text-zinc-700 block mb-1.5">Nhãn điểm cao</label>
+                        <input
+                          type="text"
+                          value={ratingMaxLabel}
+                          onChange={(e) => setRatingMaxLabel(e.target.value)}
+                          placeholder="Rất hiểu rõ"
+                          className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-amber-800 bg-amber-100/60 px-3 py-2 rounded-lg">
+                      Thang điểm sẽ hiển thị từ <strong>{ratingMin}</strong> đến <strong>{ratingMax}</strong> ({ratingMax - ratingMin + 1} mức)
+                    </div>
                   </div>
                 )}
 
-                {/* === Q&A-specific === */}
+                {/* ===== Q&A-specific ===== */}
                 {createType === "qa" && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-zinc-600">
-                    Q&A cho phép sinh viên đặt câu hỏi tự do, có thể upvote. Bạn duyệt + trả lời trong dashboard.
+                  <div className="space-y-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <div className="text-sm font-semibold text-emerald-900">⚙️ Cấu hình Q&A</div>
+
+                    <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={qaAllowAnonymous}
+                        onChange={(e) => setQaAllowAnonymous(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-600"
+                      />
+                      Cho phép SV đặt câu hỏi ẩn danh (không kèm tên)
+                    </label>
+
+                    <div>
+                      <label className="text-sm text-zinc-700 block mb-1.5">
+                        Số câu hỏi tối đa mỗi SV được đặt (để trống = không giới hạn)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={qaMaxQuestionsPerStudent ?? ""}
+                        onChange={(e) => setQaMaxQuestionsPerStudent(e.target.value === "" ? null : parseInt(e.target.value))}
+                        placeholder="Không giới hạn"
+                        className="w-40 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
                   </div>
                 )}
 
-                {/* Thu thập mã SV + Thời gian */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-200">
-                  <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={requiresStudentCode}
-                      onChange={(e) => setRequiresStudentCode(e.target.checked)}
-                      className="w-4 h-4 accent-emerald-600"
-                    />
-                    Bắt buộc mã SV (để chấm điểm)
-                  </label>
+                {/* ===== BOARD-specific ===== */}
+                {createType === "board" && (
+                  <div className="space-y-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                    <div className="text-sm font-semibold text-purple-900">⚙️ Cấu hình Board</div>
 
-                  <div className="flex items-center gap-2 text-sm">
-                    <label className="text-zinc-700">Thời gian:</label>
-                    <select
-                      value={timeLimitMode}
-                      onChange={(e) => setTimeLimitMode(e.target.value as "unlimited" | "preset" | "custom")}
-                      className="bg-white border border-zinc-300 rounded-lg px-2 py-1 text-sm"
-                    >
-                      <option value="unlimited">Không giới hạn</option>
-                      <option value="preset">1.5 phút</option>
-                      <option value="custom">Tùy chỉnh</option>
-                    </select>
-                    {timeLimitMode === "custom" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-sm text-zinc-700">Các cột trên bảng</label>
+                        <span className="text-xs text-zinc-500">{boardColumns.length} cột</span>
+                      </div>
+                      <div className="space-y-2">
+                        {boardColumns.map((col, idx) => (
+                          <div key={col.id} className="flex gap-2 items-center">
+                            <span className="w-6 text-center text-xs text-zinc-500 font-mono">{idx + 1}.</span>
+                            <input
+                              type="text"
+                              value={col.title}
+                              onChange={(e) => {
+                                const next = [...boardColumns];
+                                next[idx] = { ...col, title: e.target.value };
+                                setBoardColumns(next);
+                              }}
+                              placeholder={`Tên cột ${idx + 1}`}
+                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                            {boardColumns.length > 1 && (
+                              <button
+                                onClick={() => setBoardColumns(boardColumns.filter((_, i) => i !== idx))}
+                                className="px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => setBoardColumns([...boardColumns, { id: `col_${Date.now()}`, title: "" }])}
+                          className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                        >
+                          + Thêm cột
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ===== Thời gian giới hạn (cho tất cả loại) ===== */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
+                    ⏱️ Thời gian trả lời
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {[
+                      { mode: "unlimited" as const, value: 0, label: "∞ Không giới hạn" },
+                      { mode: "preset" as const, value: 0.5, label: "30 giây" },
+                      { mode: "preset" as const, value: 1, label: "1 phút" },
+                      { mode: "preset" as const, value: 2, label: "2 phút" },
+                      { mode: "preset" as const, value: 5, label: "5 phút" },
+                      { mode: "custom" as const, value: timeLimitValue, label: "Tùy chỉnh" },
+                    ].map((opt) => {
+                      const isActive = opt.mode === "unlimited"
+                        ? timeLimitMode === "unlimited"
+                        : opt.mode === "custom"
+                          ? timeLimitMode === "custom"
+                          : timeLimitMode === "preset" && timeLimitValue === opt.value;
+                      return (
+                        <button
+                          key={opt.label}
+                          onClick={() => {
+                            setTimeLimitMode(opt.mode);
+                            if (opt.mode === "preset") setTimeLimitValue(opt.value);
+                          }}
+                          className={`px-2 py-2 text-xs rounded-lg border transition-colors ${
+                            isActive
+                              ? "bg-emerald-600 border-emerald-500 text-white font-medium"
+                              : "bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                          } ${opt.label === "∞ Không giới hạn" ? "col-span-3 sm:col-span-1" : ""}`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {timeLimitMode === "custom" && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-sm text-zinc-700">Nhập số phút:</span>
                       <input
                         type="number"
                         step="0.5"
-                        min="0.5"
+                        min={0.1}
                         value={timeLimitValue}
                         onChange={(e) => setTimeLimitValue(parseFloat(e.target.value) || 1.5)}
-                        className="w-20 bg-white border border-zinc-300 rounded-lg px-2 py-1 text-sm"
+                        className="w-24 bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm"
                       />
-                    )}
-                    {timeLimitMode === "custom" && <span className="text-zinc-500 text-xs">phút</span>}
+                      <span className="text-xs text-zinc-500">phút (chấp nhận thập phân, VD: 1.5)</span>
+                    </div>
+                  )}
+                  <div className="text-xs text-zinc-500 pt-1">
+                    Khi hết giờ: hoạt động tự đóng, các SV chưa trả lời được ghi nhận &quot;Không trả lời&quot;.
                   </div>
                 </div>
 
-                {createError && (
-                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{createError}</div>
-                )}
+                {/* ===== Bắt buộc mã SV ===== */}
+                <label className="flex items-start gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl cursor-pointer hover:bg-zinc-100/70">
+                  <input
+                    type="checkbox"
+                    checked={requiresStudentCode}
+                    onChange={(e) => setRequiresStudentCode(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-zinc-700">Bắt buộc mã SV để trả lời</div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      Ghi nhận điểm tham gia cho từng SV. Nếu tắt, hoạt động hoàn toàn ẩn danh (chỉ xem tổng quan).
+                    </div>
+                  </div>
+                </label>
 
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => { setShowCreateModal(false); setEditingActivity(null); }}
-                    className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    onClick={handleCreatePoll}
-                    disabled={isCreating}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-60"
-                  >
-                    {isCreating
-                      ? (editingActivity ? "Đang lưu..." : "Đang tạo...")
-                      : (editingActivity ? "Lưu thay đổi" : "Tạo hoạt động")}
-                  </button>
-                </div>
+                {createError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg">
+                    {createError}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer sticky */}
+              <div className="sticky bottom-0 bg-white border-t border-zinc-200 px-6 py-4 flex gap-3">
+                <button
+                  onClick={() => { setShowCreateModal(false); setEditingActivity(null); }}
+                  className="flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleCreatePoll}
+                  disabled={isCreating}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-60 shadow-sm"
+                >
+                  {isCreating
+                    ? (editingActivity ? "Đang lưu..." : "Đang tạo...")
+                    : (editingActivity ? "Lưu thay đổi" : "Tạo hoạt động")}
+                </button>
               </div>
             </div>
           </div>
