@@ -1,0 +1,278 @@
+================================================================================
+NGHIÊN CỨU SÂU: TK BÀI GIẢNG (Toolkit Bài Giảng)
+Website Tương Tác Giảng Dạy Lai Ghép Mentimeter + Padlet + Tùy Chỉnh Cao
+================================================================================
+
+Ngày nghiên cứu: Tháng 4/2026
+Nguồn: Web search, phân tích GitHub projects (Claper, PollUP, Spacedeck, Tapiz...), 
+       tài liệu Convex/Supabase 2026, phản hồi từ người dùng (giảng viên VN).
+Mục tiêu: Xác thực ý tưởng, đánh giá thị trường, lựa chọn công nghệ, 
+          ước tính chi phí, rủi ro và lộ trình thực tế cho MVP.
+
+================================================================================
+1. TÓM TẮT Ý TƯỞNG & CƠ HỘI
+================================================================================
+
+TK Bài Giảng là công cụ web cho phép giảng viên tạo buổi giảng tương tác 
+thời gian thực với 2 trụ cột chính:
+- Poll / Thăm dò ý kiến (kiểu Mentimeter): trắc nghiệm, thang điểm, 
+  word cloud, trả lời mở, kết quả realtime.
+- Board / Bảng cộng tác (kiểu Padlet): đăng note + ảnh, like, kéo thả, 
+  hiển thị chung.
+- Kết hợp với Q&A có moderation + điều khiển Presenter chuyên nghiệp.
+- Điểm khác biệt cốt lõi: **Mức độ tùy chỉnh cao**, đặc biệt là khả năng 
+  **tự tạo và lưu mẫu hoạt động tùy chỉnh** (custom activity templates).
+
+Đối tượng chính: Giảng viên đại học / cao đẳng / trung học phổ thông tại 
+Việt Nam, dạy lớp 20-50 sinh viên. Họ đang dùng PowerPoint + Mentimeter 
+(đắt) hoặc Kahoot/Padlet (không đủ linh hoạt).
+
+Cơ hội:
+- Thị trường EdTech VN đang tăng mạnh sau COVID, nhu cầu công cụ 
+  tương tác miễn phí / giá rẻ / tiếng Việt / dễ tự host.
+- Các giải pháp nước ngoài đắt (Mentimeter ~$200-400/năm cho team), 
+  giao diện tiếng Anh, ít tùy chỉnh.
+- Open source hiện tại (Claper, PollUP...) chưa có giải pháp lai ghép 
+  tốt + tùy chỉnh sâu như mong muốn của người dùng.
+
+================================================================================
+2. PHÂN TÍCH CẠNH TRANH (COMPETITOR LANDSCAPE)
+================================================================================
+
+A. GIẢI PHÁP THƯƠNG MẠI (ĐỐI THỦ TRỰC TIẾP)
+---------------------------------------------
+- Mentimeter: Poll + quiz rất mạnh, word cloud đẹp, nhưng board yếu, 
+  giá cao, ít tùy chỉnh, không tự host.
+- Padlet: Board đẹp, media-rich, realtime tốt, nhưng poll/thăm dò 
+  yếu, giá subscription.
+- Wooclap, Slido, AhaSlides, Kahoot: Tương tự, nghiêng về poll/quiz, 
+  thiếu board linh hoạt.
+- Điểm yếu chung: Không cho phép tạo "loại hoạt động hoàn toàn mới", 
+  không tối ưu ngữ cảnh VN, dữ liệu nằm ngoài kiểm soát.
+
+B. GIẢI PHÁP OPEN SOURCE (CƠ SỞ THAM KHẢO)
+---------------------------------------------
+1. Claper (https://github.com/ClaperCo/Claper) – ~750 stars (2026)
+   - Open source mạnh nhất cho Mentimeter-like.
+   - Tính năng: Poll, quiz, Q&A, forms, moderation, export, 
+     slide integration (upload PPT hoặc overlay).
+   - Stack: Elixir/Phoenix + PostgreSQL + Docker (rất tốt cho self-host).
+   - Điểm mạnh: Hoàn thiện, active, có hosted demo.
+   - Điểm yếu với nhu cầu của ta: Board cộng tác kiểu Padlet yếu, 
+     tùy chỉnh template hạn chế, không phải React/TS hiện đại.
+
+2. PollUP (https://github.com/JonasWeinert/PollUP) – Rất quan trọng
+   - Được xây dựng bằng **React 19 + Convex** (gần như chính xác stack 
+     chúng ta đang cân nhắc).
+   - Tính năng: Session code 6 số, anonymous participant, nhiều loại 
+     poll (single/multiple choice, text, number, file), timer, 
+     conditional logic, live results, teacher dashboard, clone session.
+   - Realtime hoàn toàn nhờ Convex reactive queries (không cần 
+     WebSocket thủ công).
+   - Đây là **bằng chứng sống** rằng Convex cực kỳ phù hợp cho loại 
+     app này. Chúng ta có thể học hỏi data model, pattern, và thậm chí 
+     fork một số phần nếu cần.
+   - Live demo: https://poll-up.vercel.app
+
+3. Các giải pháp Padlet-like:
+   - Spacedeck Open: Canvas media-rich, drag-drop ảnh/video, realtime.
+   - Tapiz: Docker tốt, sticky notes + drawing + polling, realtime.
+   - CollabReef: Yjs CRDT, nhiều view (whiteboard, kanban, calendar).
+   - AFFiNE: Local-first, block-based, rất mạnh nhưng nặng.
+   - Scrumlr: Tập trung retro board, đơn giản, đẹp.
+
+KẾT LUẬN CẠNH TRANH:
+- Không nên fork Claper hay Spacedeck vì người dùng yêu cầu **full custom** 
+  và muốn kiểm soát 100% (để làm custom template engine).
+- **PollUP** là tài liệu tham khảo số 1 về architecture và DX với Convex.
+- Chúng ta sẽ học pattern realtime + schema từ PollUP, nhưng xây dựng 
+  lai ghép board + template system từ đầu.
+
+================================================================================
+3. ĐÁNH GIÁ CÔNG NGHỆ & STACK KHUYẾN NGHỊ
+================================================================================
+
+A. YÊU CẦU KỸ THUẬT CỐT LÕI CỦA APP
+------------------------------------
+- Realtime mạnh: Hàng trăm cập nhật/giây khi cả lớp vote cùng lúc.
+- Optimistic UI + conflict handling đơn giản (vì <50 user).
+- Auth 2 lớp: Host (có tài khoản) vs Participant (anonymous hoàn toàn).
+- File storage (ảnh trong board).
+- Dễ deploy local (cho demo và sau này self-host).
+- Type safety end-to-end (vì người dùng đang học).
+- Khả năng mở rộng sau: AI (tóm tắt word cloud, gợi ý câu hỏi), 
+  custom schema cho template.
+
+B. SO SÁNH STACK CHÍNH (2026)
+
+┌─────────────────────┬──────────────────────────┬──────────────────────────┐
+│ Tiêu chí            │ Convex + Next.js         │ Supabase + Next.js       │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Realtime DX         │ Xuất sắc (reactive query │ Tốt (Postgres Realtime + │
+│                     │ tự động, không cần WS)   │ subscription thủ công)   │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Optimistic updates  │ Built-in, rất mượt       │ Cần code nhiều hơn       │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ TypeScript          │ End-to-end xuất sắc      │ Tốt (nhưng kém Convex)   │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Local dev           │ convex dev (tuyệt vời)   │ Supabase local (Docker)  │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Self-host sau này   │ Có (enterprise, phức tạp)│ Rất tốt (Postgres +      │
+│                     │                          │ Realtime tự host)        │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ File storage        │ Convex Storage (dễ)      │ Supabase Storage (tốt)   │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ AI / Actions sau    │ Convex Actions + vector  │ Edge functions + pgvector│
+│                     │ search rất mạnh          │                          │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Chi phí Free tier   │ Phù hợp (xem chi tiết    │ Rất hào phóng (500MB DB, │
+│ (2026)              │ bên dưới)                │ 2GB storage, 500MB       │
+│                     │                          │ egress/tháng)            │
+├─────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Đường cong học      │ Trung bình (mới nhưng    │ Thấp (quen thuộc hơn)    │
+│                     │ logic rõ ràng)           │                          │
+└─────────────────────┴──────────────────────────┴──────────────────────────┘
+
+KHUYẾN NGHỊ MẠNH: **Bắt đầu với Convex + Next.js 15**
+
+Lý do:
+- PollUP đã chứng minh Convex giải quyết xuất sắc đúng bài toán 
+  "realtime poll + presenter control".
+- DX cao → người dùng đang học sẽ tiến bộ nhanh, ít boilerplate.
+- Free tier 2026: 1.000.000 function calls/tháng, 1.000 concurrent 
+  sessions, 0.5GB DB – **hoàn toàn đủ cho giai đoạn MVP và 1-2 năm đầu** 
+  với quy mô <50 user/buổi.
+- Nếu sau muốn self-host mạnh → có thể cân nhắc dual-write sang 
+  Postgres hoặc migrate một phần.
+
+Alternative: Nếu người dùng rất muốn dễ self-host ngay từ đầu → 
+chọn Supabase. Nhưng với mục tiêu "local/demo trước", Convex vẫn 
+vượt trội về tốc độ phát triển.
+
+C. CÔNG CỤ HỖ TRỢ
+----------------
+- Frontend: Tailwind + shadcn/ui (đã có skill theme-factory và 
+  web-artifacts-builder trong vibe-combo – rất mạnh).
+- Animation: Framer Motion (cho poll reveal, board drag mượt).
+- Biểu đồ: Recharts hoặc Tremor.
+- Word cloud: Thư viện canvas nhẹ hoặc custom SVG.
+- Export: jsPDF + xlsx.
+- Test: Playwright (có skill sẵn).
+- QR: qrcode.
+
+================================================================================
+4. CHI PHÍ ƯỚC TÍNH (MVP + 12 THÁNG ĐẦU)
+================================================================================
+
+A. Phát triển (nếu thuê ngoài, tham khảo)
+- MVP 3-4 tháng (1 dev full-time): ~$8.000 - $15.000 (tùy chất lượng).
+- Nhưng với vibe-coding + AI agent (như chúng ta đang làm): 
+  **chi phí gần như chỉ thời gian + tool subscription**.
+
+B. Hosting & Backend (Convex Free/Starter)
+- 0 - 6 tháng đầu: $0 (Free tier đủ).
+- Sau khi có 50-100 buổi/tháng, ~$10-30/tháng (Starter).
+- Professional ($25/dev/tháng) chỉ cần khi scale lớn hoặc cần 
+  concurrent queries cao hơn.
+
+C. Domain + Misc: ~$15-20/năm.
+
+KẾT LUẬN: Rào cản chi phí cực thấp. Có thể chạy production demo 
+miễn phí trong nhiều tháng.
+
+================================================================================
+5. RỦI RO & GIẢI PHÁP GIẢM THIỂU
+================================================================================
+
+1. Realtime board kéo thả phức tạp (conflict position)
+   → Giảm thiểu: Bắt đầu với layout Column/List + dnd-kit reorder 
+      (như Trello). Free canvas để Phase 2. Dùng optimistic + 
+      last-write-wins đơn giản.
+
+2. Custom template engine quá rộng (JSON schema + renderer)
+   → Giảm thiểu: Làm trước "configurable templates" (chọn loại + 
+      điền title/options/scale). "Full arbitrary schema" để sau. 
+      Học từ cách PollUP làm conditional logic.
+
+3. Participant UX trên mobile kém (lỗi phổ biến nhất)
+   → Giảm thiểu: Test thật trên iPhone + Android ngay từ Phase 2. 
+      Ưu tiên big tap targets, optimistic UI mạnh, tránh modal 
+      phức tạp. Dùng PWA manifest.
+
+4. Người dùng (giảng viên) chưa quen Convex → khó maintain sau
+   → Giảm thiểu: Viết tài liệu tiếng Việt cực tốt + AGENTS.md 
+      chi tiết + comment code dày. Dùng skill `backend-dev-guidelines`.
+
+5. Scope creep (thêm "chỉ 1 tính năng nữa")
+   → Giảm thiểu: Freeze scope sau PRD. Mọi ý tưởng mới vào 
+      backlog "Phase 2 / Nice to have".
+
+================================================================================
+6. KHUYẾN NGHỊ MVP SCOPE & ƯU TIÊN
+================================================================================
+
+**Phase 1 (Foundation + Core Realtime) – 4-6 tuần**
+- Next.js + Convex setup + shadcn
+- Room + code + QR + 2 view (Presenter / Participant)
+- Poll 4 loại cơ bản + realtime results (bar/pie/cloud)
+- Board cơ bản (text + ảnh, like, column layout)
+- Q&A đơn giản + moderation
+- Auth anonymous + host
+
+**Phase 2 (UX + Export) – 2-3 tuần**
+- Presenter controls đầy đủ + fullscreen
+- Mobile polish + optimistic
+- Export PDF + XLSX
+- Lịch sử session
+
+**Phase 3 (Tùy chỉnh cao – điểm khác biệt) – 3-4 tuần**
+- Theme editor (màu, logo, bg, header) áp dụng realtime
+- Custom Activity Template builder (tạo + lưu + reuse)
+- 5-7 templates mẫu sẵn
+
+**Success Metrics cho MVP**:
+- 1 buổi giảng mẫu 30-40 phút chạy mượt (3-4 hoạt động xen kẽ).
+- 80%+ participant join chỉ bằng QR, không cần hướng dẫn phức tạp.
+- Có thể export và gửi kết quả cho sinh viên trong < 2 phút sau buổi.
+- Ít nhất 2 template tùy chỉnh được tạo và dùng lại thành công.
+
+================================================================================
+7. KẾT LUẬN & NEXT STEPS
+================================================================================
+
+TK Bài Giảng có **cơ hội rõ ràng** trên thị trường giáo dục Việt Nam 
+vì:
+- Nhu cầu cao, giải pháp hiện tại chưa đáp ứng "tùy chỉnh sâu".
+- Chi phí phát triển & vận hành thấp (đặc biệt với Convex Free tier).
+- Có ví dụ PollUP chứng minh technical feasibility rất cao.
+- Người dùng đã có hệ thống AI skill (vibe-combo) để build nhanh.
+
+**Rủi ro chính** nằm ở **product design** (custom template engine + 
+mobile UX) chứ không phải infrastructure.
+
+**Khuyến nghị hành động ngay**:
+1. Hoàn thiện PRD (xác nhận persona, user stories, scope freeze).
+2. Tech Design chi tiết (schema Convex, cách implement custom template, 
+   realtime patterns từ PollUP).
+3. Bắt đầu build với vibe-build workflow, ưu tiên Phase 1.
+
+Nếu sau 3 tháng MVP thành công và có 5-10 giảng viên dùng thử, 
+có thể cân nhắc:
+- Mở source một phần (AGPL như Claper).
+- Xây dựng template marketplace.
+- Tích hợp AI nhẹ (tóm tắt phản hồi).
+
+================================================================================
+PHỤ LỤC: LINK THAM KHẢO QUAN TRỌNG
+================================================================================
+
+- PollUP (Convex + Mentimeter clone): https://github.com/JonasWeinert/PollUP
+- Claper (Open source Mentimeter): https://github.com/ClaperCo/Claper
+- Convex Pricing 2026: https://www.convex.dev/pricing
+- Convex Limits: https://docs.convex.dev/production/state/limits
+- Spacedeck Open: https://github.com/spacedeck/spacedeck-open
+- Tapiz: https://github.com/juanfran/tapiz
+
+================================================================================
+KẾT THÚC NGHIÊN CỨU
+================================================================================
