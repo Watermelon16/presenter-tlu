@@ -12,6 +12,18 @@ interface StudentIdentity {
   className: string;
 }
 
+// Lấy hoặc tạo deviceId cố định cho thiết bị này (chống điểm danh hộ / làm bài hộ)
+function getOrCreateDeviceId(): string {
+  if (typeof window === "undefined") return "";
+  const KEY = "presenter_tlu_device_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 export default function ParticipantRoomPage() {
   const { code } = useParams<{ code: string }>();
   const upperCode = code?.toUpperCase();
@@ -129,6 +141,7 @@ export default function ParticipantRoomPage() {
             studentCode: parsed.studentCode,
             fullName: parsed.fullName,
             className: parsed.className,
+            deviceId: getOrCreateDeviceId(),
           })
             .then(() => {
               localStorage.setItem(`student_${upperCode}`, JSON.stringify(parsed));
@@ -233,6 +246,7 @@ export default function ParticipantRoomPage() {
         studentCode: newIdentity.studentCode,
         fullName: newIdentity.fullName,
         className: newIdentity.className,
+        deviceId: getOrCreateDeviceId(),
       });
 
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(newIdentity));
@@ -325,6 +339,7 @@ export default function ParticipantRoomPage() {
           columnId: boardSelectedColumn,
           imageStorageId: imageStorageId as any,
           studentCode: identity?.studentCode,
+          deviceId: getOrCreateDeviceId(),
         });
 
         // Reset form board (cho phép đăng tiếp)
@@ -361,6 +376,7 @@ export default function ParticipantRoomPage() {
         activityId: activeActivity._id,
         studentCode: identity?.studentCode,
         value,
+        deviceId: getOrCreateDeviceId(),
       });
 
       setHasSubmitted(true);
@@ -456,7 +472,7 @@ export default function ParticipantRoomPage() {
 
       <div className="max-w-2xl mx-auto px-5 pt-8">
 
-        {/* Banner xác nhận danh tính cho sinh viên - Rất quan trọng để họ biết mình đang được tính điểm */}
+        {/* Banner xác nhận danh tính cho sinh viên */}
         {identity && (
           <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center gap-3">
             <div className="text-emerald-600 text-lg leading-none mt-0.5">✓</div>
@@ -464,23 +480,10 @@ export default function ParticipantRoomPage() {
               <span className="font-medium">{identity.fullName}</span>{" "}
               <span className="text-emerald-700">({identity.studentCode})</span>
               <span className="text-emerald-600"> · {identity.className}</span>
+              <div className="text-[11px] text-emerald-700/80 mt-0.5">
+                🔒 Thiết bị đã khóa với SV này — không thể đổi để chống điểm danh hộ
+              </div>
             </div>
-            <button
-              onClick={() => {
-                if (!confirm("Xóa thông tin đã nhớ để nhập lại? (chỉ làm khi bạn không phải SV này)")) return;
-                localStorage.removeItem(`student_${upperCode}`);
-                localStorage.removeItem("student_identity_global");
-                setIdentity(null);
-                setStudentCodeInput("");
-                setFullNameInput("");
-                setClassNameInput("");
-                setShowIdentityForm(true);
-                toast.success("Đã xóa. Nhập lại thông tin ở dưới.");
-              }}
-              className="text-xs text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
-            >
-              Đổi thông tin
-            </button>
           </div>
         )}
 

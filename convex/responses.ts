@@ -2,11 +2,16 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Gửi câu trả lời cho một hoạt động
+//
+// CHỐNG GIAN LẬN: Lưu deviceId trên mỗi response. Nếu deviceId trên response
+// khác với deviceId của participant (đăng ký lúc join) → mark deviceMismatch
+// để giảng viên thấy "câu trả lời này có thể là người khác submit hộ".
 export const submitResponse = mutation({
   args: {
     activityId: v.id("activities"),
     studentCode: v.optional(v.string()), // Bắt buộc nếu activity requiresStudentCode
     value: v.any(),
+    deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
@@ -46,6 +51,26 @@ export const submitResponse = mutation({
       }
     }
 
+    // Check deviceId mismatch (chống làm bài hộ)
+    let deviceMismatch: boolean | undefined = undefined;
+    if (args.deviceId && args.studentCode) {
+      const participant = await ctx.db
+        .query("participants")
+        .withIndex("by_session_and_student", (q) =>
+          q.eq("sessionId", activity.sessionId).eq("studentCode", args.studentCode!)
+        )
+        .first();
+
+      if (participant?.deviceId && participant.deviceId !== args.deviceId) {
+        deviceMismatch = true;
+        // Cũng flag participant để giảng viên dễ thấy
+        await ctx.db.patch(participant._id, {
+          flagged: true,
+          flagReason: participant.flagReason || "Câu trả lời gửi từ thiết bị khác (nghi vấn làm bài hộ)",
+        });
+      }
+    }
+
     await ctx.db.insert("responses", {
       activityId: args.activityId,
       sessionId: activity.sessionId,
@@ -53,9 +78,11 @@ export const submitResponse = mutation({
       value: args.value,
       status: "answered",
       submittedAt: Date.now(),
+      deviceId: args.deviceId,
+      deviceMismatch,
     });
 
-    return true;
+    return { success: true, deviceMismatch: !!deviceMismatch };
   },
 });
 

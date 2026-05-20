@@ -42,9 +42,16 @@ export default defineSchema({
     fullName: v.string(),
     className: v.string(),
     joinedAt: v.number(),
+
+    // === Chống gian lận ===
+    deviceId: v.optional(v.string()),         // Random UUID tạo trên client, lưu localStorage
+    flagged: v.optional(v.boolean()),         // Có dấu hiệu bất thường (đổi thiết bị giữa chừng v.v.)
+    flagReason: v.optional(v.string()),       // Lý do để giảng viên xem
+    deviceChangeCount: v.optional(v.number()),// Số lần đổi thiết bị
   })
     .index("by_session", ["sessionId"])
-    .index("by_session_and_student", ["sessionId", "studentCode"]),
+    .index("by_session_and_student", ["sessionId", "studentCode"])
+    .index("by_session_and_device", ["sessionId", "deviceId"]),
 
   // Hoạt động trong buổi giảng (Poll, Board, Q&A...)
   activities: defineTable({
@@ -90,6 +97,8 @@ export default defineSchema({
       v.literal("no_response")             // Tự động ghi nhận khi hết giờ
     ),
     submittedAt: v.number(),
+    deviceId: v.optional(v.string()),      // Thiết bị submit — để chống làm bài hộ
+    deviceMismatch: v.optional(v.boolean()),// Khác device của participant → flag
   })
     .index("by_activity", ["activityId"])
     .index("by_session_and_student", ["sessionId", "studentCode"]),

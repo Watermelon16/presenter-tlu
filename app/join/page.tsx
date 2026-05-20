@@ -16,6 +16,19 @@ export default function JoinRoomPage() {
   );
 }
 
+// Lấy hoặc tạo deviceId cố định cho thiết bị này (để chống điểm danh hộ)
+function getOrCreateDeviceId(): string {
+  if (typeof window === "undefined") return "";
+  const KEY = "presenter_tlu_device_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    // Tạo UUID đơn giản (random + timestamp)
+    id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 function JoinRoomForm() {
   const searchParams = useSearchParams();
   const [code, setCode] = useState("");
@@ -72,6 +85,7 @@ function JoinRoomForm() {
       await joinSession({
         code: upperCode,
         ...identity,
+        deviceId: getOrCreateDeviceId(),
       });
 
       // Lưu identity: per-room (để room page khỏi hỏi lại) + global (nhớ qua phòng khác)
@@ -87,13 +101,6 @@ function JoinRoomForm() {
     }
   };
 
-  const handleClearMemory = () => {
-    localStorage.removeItem("student_identity_global");
-    setStudentCode("");
-    setFullName("");
-    setClassName("");
-    setHasRememberedIdentity(false);
-  };
 
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -123,21 +130,10 @@ function JoinRoomForm() {
             </div>
 
             <div className="pt-2 border-t">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium">Thông tin sinh viên (bắt buộc)</p>
-                {hasRememberedIdentity && (
-                  <button
-                    type="button"
-                    onClick={handleClearMemory}
-                    className="text-xs text-zinc-500 hover:text-red-600 underline underline-offset-2"
-                  >
-                    Đổi thông tin
-                  </button>
-                )}
-              </div>
+              <p className="text-sm font-medium mb-3">Thông tin sinh viên (bắt buộc)</p>
               {hasRememberedIdentity && (
                 <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                  ✓ Đã nhớ thông tin của bạn từ lần trước. Bạn chỉ cần nhập mã phòng và bấm Tham gia.
+                  ✓ Đã nhớ thông tin của bạn. Bạn chỉ cần nhập mã phòng và bấm Tham gia.
                 </div>
               )}
               

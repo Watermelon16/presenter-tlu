@@ -2913,10 +2913,15 @@ function PresenterPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredAndSortedStudents.map((p: { _id: string; studentCode: string; fullName: string; className: string; joinedAt: number }, idx) => (
-                        <tr key={p._id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                      {filteredAndSortedStudents.map((p: { _id: string; studentCode: string; fullName: string; className: string; joinedAt: number; flagged?: boolean; flagReason?: string }, idx) => (
+                        <tr key={p._id} className={`border-b border-zinc-100 ${p.flagged ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-zinc-50"}`}>
                           <td className="px-2 py-2 text-zinc-500">{idx + 1}</td>
-                          <td className="px-2 py-2 font-mono">{p.studentCode}</td>
+                          <td className="px-2 py-2 font-mono flex items-center gap-1.5">
+                            {p.studentCode}
+                            {p.flagged && (
+                              <span title={p.flagReason || "Có dấu hiệu gian lận"} className="text-red-600 text-xs cursor-help">🚩</span>
+                            )}
+                          </td>
                           <td className="px-2 py-2 font-medium">{p.fullName}</td>
                           <td className="px-2 py-2 text-zinc-600">{p.className}</td>
                           <td className="px-2 py-2 text-xs text-zinc-500">

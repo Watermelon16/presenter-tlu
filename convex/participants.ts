@@ -2,12 +2,18 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
+//
+// CHỐNG GIAN LẬN (điểm danh hộ / làm bài hộ):
+// - 1 thiết bị (deviceId) chỉ được dùng cho 1 studentCode duy nhất trong 1 phòng
+// - Nếu cố join code khác từ cùng thiết bị → reject (báo "thiết bị đã đăng ký SV khác")
+// - Nếu studentCode đã có nhưng từ thiết bị khác → flag participant để giảng viên kiểm tra
 export const joinSession = mutation({
   args: {
     code: v.string(),
     studentCode: v.string(),
     fullName: v.string(),
     className: v.string(),
+    deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const session = await ctx.db
@@ -23,33 +29,68 @@ export const joinSession = mutation({
       throw new Error("Phòng đã kết thúc");
     }
 
-    // Kiểm tra xem mã sinh viên đã tham gia chưa trong phòng này
+    const studentCode = args.studentCode.trim();
+    const fullName = args.fullName.trim();
+    const className = args.className.trim();
+    const deviceId = args.deviceId?.trim() || undefined;
+
+    // CHECK 1: Thiết bị này đã đăng ký SV khác trong phòng này chưa?
+    if (deviceId) {
+      const sameDevice = await ctx.db
+        .query("participants")
+        .withIndex("by_session_and_device", (q) =>
+          q.eq("sessionId", session._id).eq("deviceId", deviceId)
+        )
+        .first();
+
+      if (sameDevice && sameDevice.studentCode !== studentCode) {
+        throw new Error(
+          `Thiết bị này đã đăng ký với mã SV "${sameDevice.studentCode}" (${sameDevice.fullName}) trong buổi này. Mỗi thiết bị chỉ được dùng cho 1 SV.`
+        );
+      }
+    }
+
+    // Tìm participant theo studentCode
     const existing = await ctx.db
       .query("participants")
       .withIndex("by_session_and_student", (q) =>
-        q.eq("sessionId", session._id).eq("studentCode", args.studentCode.trim())
+        q.eq("sessionId", session._id).eq("studentCode", studentCode)
       )
       .first();
 
     if (existing) {
-      // Nếu đã tham gia trước đó, cập nhật lại thông tin (hỗ trợ sửa tên/lớp)
-      await ctx.db.patch(existing._id, {
-        fullName: args.fullName.trim(),
-        className: args.className.trim(),
-      });
-      return { participantId: existing._id, sessionId: session._id };
+      // CHECK 2: studentCode đã có nhưng đang join từ thiết bị khác → flag (có thể là điểm danh hộ)
+      const patch: Record<string, unknown> = {
+        fullName,
+        className,
+      };
+
+      if (deviceId && existing.deviceId && existing.deviceId !== deviceId) {
+        // Đổi thiết bị giữa chừng — flag để giảng viên kiểm tra
+        patch.deviceId = deviceId;
+        patch.flagged = true;
+        patch.flagReason = `Đăng nhập từ ${(existing.deviceChangeCount ?? 0) + 2} thiết bị khác nhau (nghi vấn điểm danh hộ)`;
+        patch.deviceChangeCount = (existing.deviceChangeCount ?? 0) + 1;
+      } else if (deviceId && !existing.deviceId) {
+        patch.deviceId = deviceId;
+      }
+
+      await ctx.db.patch(existing._id, patch);
+      return { participantId: existing._id, sessionId: session._id, flagged: !!patch.flagged };
     }
 
     // Tạo bản ghi mới
     const participantId = await ctx.db.insert("participants", {
       sessionId: session._id,
-      studentCode: args.studentCode.trim(),
-      fullName: args.fullName.trim(),
-      className: args.className.trim(),
+      studentCode,
+      fullName,
+      className,
       joinedAt: Date.now(),
+      deviceId,
+      deviceChangeCount: 0,
     });
 
-    return { participantId, sessionId: session._id };
+    return { participantId, sessionId: session._id, flagged: false };
   },
 });
 

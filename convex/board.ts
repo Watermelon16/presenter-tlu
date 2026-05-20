@@ -27,6 +27,7 @@ export const createBoardPost = mutation({
     columnId: v.string(),
     imageStorageId: v.optional(v.id("_storage")), // ID từ Convex Storage
     studentCode: v.optional(v.string()),
+    deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);

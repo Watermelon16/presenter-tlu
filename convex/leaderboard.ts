@@ -71,10 +71,17 @@ export const getParticipationLeaderboard = query({
       .collect();
 
     const scoreMap = new Map<string, number>();
+    // Tổng và đếm thời gian phản hồi để tính TB (ms)
+    const responseTimeSum = new Map<string, number>();
+    const responseTimeCount = new Map<string, number>();
+    // Lưu thời gian phản hồi nhanh nhất (ms)
+    const fastestResponse = new Map<string, number>();
 
     // Khởi tạo điểm
     participants.forEach((p) => {
       scoreMap.set(p.studentCode, 0);
+      responseTimeSum.set(p.studentCode, 0);
+      responseTimeCount.set(p.studentCode, 0);
     });
 
     // CHỈ tính điểm cho activities có requiresStudentCode=true (giảng viên bật ghi nhận điểm)
@@ -130,6 +137,19 @@ export const getParticipationLeaderboard = query({
 
       const current = scoreMap.get(studentCode) || 0;
       scoreMap.set(studentCode, current + total);
+
+      // Tính thời gian phản hồi (ms) — từ lúc activity bắt đầu đến lúc SV submit
+      if (activity.startedAt && resp.submittedAt) {
+        const elapsedMs = resp.submittedAt - activity.startedAt;
+        if (elapsedMs > 0) {
+          responseTimeSum.set(studentCode, (responseTimeSum.get(studentCode) || 0) + elapsedMs);
+          responseTimeCount.set(studentCode, (responseTimeCount.get(studentCode) || 0) + 1);
+          const prevFastest = fastestResponse.get(studentCode);
+          if (prevFastest === undefined || elapsedMs < prevFastest) {
+            fastestResponse.set(studentCode, elapsedMs);
+          }
+        }
+      }
     }
 
     // Tính điểm từ Board posts — chỉ cho board activity có requiresStudentCode
@@ -143,13 +163,30 @@ export const getParticipationLeaderboard = query({
 
     // Tạo danh sách kết quả
     const allParticipants = participants
-      .map((p) => ({
-        studentCode: p.studentCode,
-        fullName: p.fullName,
-        className: p.className,
-        score: scoreMap.get(p.studentCode) || 0,
-      }))
-      .sort((a, b) => b.score - a.score);
+      .map((p) => {
+        const count = responseTimeCount.get(p.studentCode) || 0;
+        const sum = responseTimeSum.get(p.studentCode) || 0;
+        const avgMs = count > 0 ? Math.round(sum / count) : null;
+        const fastestMs = fastestResponse.get(p.studentCode) ?? null;
+        return {
+          studentCode: p.studentCode,
+          fullName: p.fullName,
+          className: p.className,
+          score: Math.round((scoreMap.get(p.studentCode) || 0) * 10) / 10,
+          answeredCount: count,
+          avgResponseMs: avgMs,
+          fastestResponseMs: fastestMs,
+          flagged: !!p.flagged,
+          flagReason: p.flagReason,
+        };
+      })
+      .sort((a, b) => {
+        // Sort theo điểm giảm dần, tie-break theo avgResponseMs tăng dần (nhanh hơn = cao hơn)
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.avgResponseMs === null) return 1;
+        if (b.avgResponseMs === null) return -1;
+        return a.avgResponseMs - b.avgResponseMs;
+      });
 
     const leaderboard = allParticipants
       .slice(0, 10)
@@ -160,11 +197,13 @@ export const getParticipationLeaderboard = query({
 
     const totalParticipants = participants.length;
     const participantsWithScore = allParticipants.filter(p => p.score > 0).length;
+    const flaggedCount = allParticipants.filter(p => p.flagged).length;
 
     return {
       leaderboard,
       totalParticipants,
       participantsWithScore,
+      flaggedCount,
     };
   },
 });
