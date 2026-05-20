@@ -93,16 +93,46 @@ export default function ParticipantRoomPage() {
   // Timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
-  // Load danh tính từ localStorage khi vào phòng
+  // Load danh tính: ưu tiên per-room, fallback global identity (nhớ qua các phòng)
   useEffect(() => {
     if (!upperCode) return;
-    const saved = localStorage.getItem(`student_${upperCode}`);
-    if (saved) {
+
+    // 1. Per-room (lưu sau khi SV join phòng này)
+    const perRoom = localStorage.getItem(`student_${upperCode}`);
+    if (perRoom) {
       try {
-        const parsed = JSON.parse(saved) as StudentIdentity;
-        setIdentity(parsed);
+        const parsed = JSON.parse(perRoom) as StudentIdentity;
+        if (parsed.studentCode && parsed.fullName && parsed.className) {
+          setIdentity(parsed);
+          return;
+        }
       } catch {}
     }
+
+    // 2. Fallback: global identity từ lần trước
+    const global = localStorage.getItem("student_identity_global");
+    if (global) {
+      try {
+        const parsed = JSON.parse(global) as StudentIdentity;
+        if (parsed.studentCode && parsed.fullName && parsed.className) {
+          // Tự động đăng ký vào phòng này với identity đã nhớ
+          joinSession({
+            code: upperCode,
+            studentCode: parsed.studentCode,
+            fullName: parsed.fullName,
+            className: parsed.className,
+          })
+            .then(() => {
+              localStorage.setItem(`student_${upperCode}`, JSON.stringify(parsed));
+              setIdentity(parsed);
+            })
+            .catch(() => {
+              // Phòng đã đóng hoặc không tồn tại — không tự đăng ký, để SV nhập thủ công
+            });
+        }
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upperCode]);
 
   // Tính hạng cá nhân
@@ -174,6 +204,8 @@ export default function ParticipantRoomPage() {
       });
 
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(newIdentity));
+      // Lưu global để nhớ qua các phòng khác
+      localStorage.setItem("student_identity_global", JSON.stringify(newIdentity));
       setIdentity(newIdentity);
       setShowIdentityForm(false);
       setStudentCodeInput("");
@@ -396,9 +428,27 @@ export default function ParticipantRoomPage() {
         {identity && (
           <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center gap-3">
             <div className="text-emerald-600 text-lg leading-none mt-0.5">✓</div>
-            <div className="text-sm text-emerald-800">
-              <span className="font-medium">{identity.fullName}</span> ({identity.studentCode}) — Thông tin của bạn đã được ghi nhận để tính điểm tham gia.
+            <div className="text-sm text-emerald-800 flex-1">
+              <span className="font-medium">{identity.fullName}</span>{" "}
+              <span className="text-emerald-700">({identity.studentCode})</span>
+              <span className="text-emerald-600"> · {identity.className}</span>
             </div>
+            <button
+              onClick={() => {
+                if (!confirm("Xóa thông tin đã nhớ để nhập lại? (chỉ làm khi bạn không phải SV này)")) return;
+                localStorage.removeItem(`student_${upperCode}`);
+                localStorage.removeItem("student_identity_global");
+                setIdentity(null);
+                setStudentCodeInput("");
+                setFullNameInput("");
+                setClassNameInput("");
+                setShowIdentityForm(true);
+                toast.success("Đã xóa. Nhập lại thông tin ở dưới.");
+              }}
+              className="text-xs text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+            >
+              Đổi thông tin
+            </button>
           </div>
         )}
 

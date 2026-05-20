@@ -19,17 +19,35 @@ export default function JoinRoomPage() {
 function JoinRoomForm() {
   const searchParams = useSearchParams();
   const [code, setCode] = useState("");
-
-  // Tự động điền mã phòng khi sinh viên quét QR (URL có ?code=...)
-  useEffect(() => {
-    const qrCode = searchParams.get("code");
-    if (qrCode) setCode(qrCode.toUpperCase());
-  }, [searchParams]);
   const [studentCode, setStudentCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [className, setClassName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hasRememberedIdentity, setHasRememberedIdentity] = useState(false);
+
+  // Tự động điền mã phòng khi sinh viên quét QR (URL có ?code=...)
+  // + Tự động điền identity từ lần trước (localStorage global)
+  useEffect(() => {
+    const qrCode = searchParams.get("code");
+    if (qrCode) setCode(qrCode.toUpperCase());
+
+    // Đọc identity đã lưu (nhớ qua các phòng)
+    try {
+      const saved = localStorage.getItem("student_identity_global");
+      if (saved) {
+        const parsed = JSON.parse(saved) as { studentCode: string; fullName: string; className: string };
+        if (parsed.studentCode && parsed.fullName && parsed.className) {
+          setStudentCode(parsed.studentCode);
+          setFullName(parsed.fullName);
+          setClassName(parsed.className);
+          setHasRememberedIdentity(true);
+        }
+      }
+    } catch {
+      // bỏ qua nếu JSON lỗi
+    }
+  }, [searchParams]);
 
   const joinSession = useMutation(api.participants.joinSession);
   const router = useRouter();
@@ -44,20 +62,37 @@ function JoinRoomForm() {
     setError("");
 
     try {
-      await joinSession({
-        code: code.trim(),
+      const upperCode = code.trim().toUpperCase();
+      const identity = {
         studentCode: studentCode.trim(),
         fullName: fullName.trim(),
         className: className.trim(),
+      };
+
+      await joinSession({
+        code: upperCode,
+        ...identity,
       });
 
-      // Sau khi join thành công, chuyển vào phòng (sẽ phát triển sau)
-      router.push(`/room/${code.trim().toUpperCase()}`);
-    } catch (err: any) {
-      setError(err.message || "Không thể tham gia phòng. Vui lòng kiểm tra lại mã.");
+      // Lưu identity: per-room (để room page khỏi hỏi lại) + global (nhớ qua phòng khác)
+      localStorage.setItem(`student_${upperCode}`, JSON.stringify(identity));
+      localStorage.setItem("student_identity_global", JSON.stringify(identity));
+
+      router.push(`/room/${upperCode}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể tham gia phòng. Vui lòng kiểm tra lại mã.";
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearMemory = () => {
+    localStorage.removeItem("student_identity_global");
+    setStudentCode("");
+    setFullName("");
+    setClassName("");
+    setHasRememberedIdentity(false);
   };
 
   return (
@@ -88,7 +123,23 @@ function JoinRoomForm() {
             </div>
 
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Thông tin sinh viên (bắt buộc)</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium">Thông tin sinh viên (bắt buộc)</p>
+                {hasRememberedIdentity && (
+                  <button
+                    type="button"
+                    onClick={handleClearMemory}
+                    className="text-xs text-zinc-500 hover:text-red-600 underline underline-offset-2"
+                  >
+                    Đổi thông tin
+                  </button>
+                )}
+              </div>
+              {hasRememberedIdentity && (
+                <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  ✓ Đã nhớ thông tin của bạn từ lần trước. Bạn chỉ cần nhập mã phòng và bấm Tham gia.
+                </div>
+              )}
               
               <div className="space-y-3">
                 <div>
