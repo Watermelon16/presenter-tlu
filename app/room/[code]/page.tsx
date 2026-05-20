@@ -619,8 +619,12 @@ export default function ParticipantRoomPage() {
             {/* Form trả lời - Poll */}
             {activeActivity.type === "poll" && !hasSubmitted && (
               <div className="bg-white border rounded-3xl p-6 shadow-sm">
-                <div className="mb-3 text-xs text-emerald-600">
-                  Thông tin của bạn đã được ghi nhận để tính điểm tham gia.
+                <div className="mb-3 text-xs">
+                  {activeActivity.requiresStudentCode ? (
+                    <span className="text-emerald-600">📋 Câu trả lời được ghi nhận để tính điểm tham gia.</span>
+                  ) : (
+                    <span className="text-zinc-500">🕶️ Khảo sát ẩn danh — không tính điểm cá nhân.</span>
+                  )}
                 </div>
 
                 <div className="mb-4 flex items-center justify-between text-sm">
@@ -937,7 +941,9 @@ export default function ParticipantRoomPage() {
                 <p className={isQuiz ? (isCorrect ? "text-emerald-700" : "text-red-600") : "text-emerald-700"}>
                   {isQuiz
                     ? (isCorrect ? "Bạn đã chọn đúng đáp án." : "Đáp án đúng được đánh dấu bên dưới.")
-                    : "Cảm ơn bạn đã đóng góp. Phần tham gia của bạn đang được ghi nhận để tính điểm."}
+                    : activeActivity.requiresStudentCode
+                      ? "Cảm ơn bạn đã trả lời. Câu trả lời được ghi nhận để tính điểm tham gia."
+                      : "Cảm ơn bạn đã trả lời. Hoạt động này là khảo sát ẩn danh, không tính điểm."}
                 </p>
 
                 {/* Quiz: hiển thị đáp án đúng */}

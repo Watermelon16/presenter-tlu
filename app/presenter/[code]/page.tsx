@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -29,6 +29,68 @@ import {
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+
+/**
+ * Input row dùng cho danh sách (Poll options, Board columns).
+ * Có local state để TRÁNH parent re-render mỗi keystroke — fix bug
+ * dính từ khi gõ tiếng Việt (IME bị reset bởi controlled value).
+ * Sync về parent khi blur hoặc khi composition kết thúc.
+ */
+const TextInputRow = React.memo(function TextInputRow({
+  initialValue,
+  placeholder,
+  onUpdate,
+  onRemove,
+  showRemove,
+  className,
+  ariaLabel,
+}: {
+  initialValue: string;
+  placeholder: string;
+  onUpdate: (value: string) => void;
+  onRemove?: () => void;
+  showRemove: boolean;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  const [local, setLocal] = useState(initialValue);
+
+  // Sync nếu parent đổi initialValue (vd: openEditModal load lại)
+  useEffect(() => {
+    setLocal(initialValue);
+  }, [initialValue]);
+
+  return (
+    <div className="flex gap-2 items-center">
+      <input
+        type="text"
+        aria-label={ariaLabel}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={() => {
+          if (local !== initialValue) onUpdate(local);
+        }}
+        onCompositionEnd={(e) => {
+          // Sync sau khi IME kết thúc composition (gõ tiếng Việt xong 1 từ)
+          const v = e.currentTarget.value;
+          setLocal(v);
+          if (v !== initialValue) onUpdate(v);
+        }}
+        placeholder={placeholder}
+        className={className ?? "flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"}
+      />
+      {showRemove && onRemove && (
+        <button
+          onClick={onRemove}
+          className="px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+          title="Xóa"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+});
 
 function PresenterPage() {
   const { code } = useParams<{ code: string }>();
@@ -234,11 +296,40 @@ function PresenterPage() {
   const [showCreatePicker, setShowCreatePicker] = useState(false);
   // Dropdown "⋯ Thêm" trong block Kịch bản
   const [showScriptMenu, setShowScriptMenu] = useState(false);
+  // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
 
   // === Overlay toàn màn hình: QR mã phòng / kết quả activity / slide PDF ===
   // null = ẩn, "qr" = QR + mã phòng (Q), "result" = kết quả activity (F), "slides" = slide PDF (S)
   const [fullscreenOverlay, setFullscreenOverlay] = useState<null | "qr" | "result" | "slides">(null);
+  // Nếu đang ở "slides" rồi bấm F (hoặc Q) → khi Esc, quay lại "slides" thay vì đóng hoàn toàn
+  const [overlayReturnTo, setOverlayReturnTo] = useState<null | "slides">(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
+
+  // Helper: chuyển overlay với context (lưu trạng thái cũ nếu là "slides")
+  const switchOverlay = useCallback((next: null | "qr" | "result" | "slides") => {
+    setFullscreenOverlay((prev) => {
+      // Nếu đang ở slides và chuyển sang result/qr → nhớ để quay về
+      if (prev === "slides" && (next === "result" || next === "qr")) {
+        setOverlayReturnTo("slides");
+      }
+      // Nếu chuyển về null/slides → reset returnTo
+      if (next === null || next === "slides") {
+        setOverlayReturnTo(null);
+      }
+      return next;
+    });
+  }, []);
+
+  // Esc / đóng: nếu có returnTo, quay về slides; nếu không, đóng hẳn
+  const closeOverlay = useCallback(() => {
+    if (overlayReturnTo) {
+      setFullscreenOverlay(overlayReturnTo);
+      setOverlayReturnTo(null);
+    } else {
+      setFullscreenOverlay(null);
+    }
+  }, [overlayReturnTo]);
 
   // === Slide PDF upload + chiếu ===
   const setSessionPdf = useMutation(api.sessions.setSessionPdf);
@@ -345,7 +436,7 @@ function PresenterPage() {
 
       if (e.key === "Escape" && fullscreenOverlay) {
         e.preventDefault();
-        setFullscreenOverlay(null);
+        closeOverlay();
         return;
       }
 
@@ -365,21 +456,34 @@ function PresenterPage() {
 
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
-        setFullscreenOverlay((prev) => (prev === "result" ? null : "result"));
+        if (fullscreenOverlay === "result") {
+          closeOverlay();
+        } else {
+          switchOverlay("result");
+        }
       }
       if (e.key === "q" || e.key === "Q") {
         e.preventDefault();
-        setFullscreenOverlay((prev) => (prev === "qr" ? null : "qr"));
+        if (fullscreenOverlay === "qr") {
+          closeOverlay();
+        } else {
+          switchOverlay("qr");
+        }
       }
       if (e.key === "s" || e.key === "S") {
         e.preventDefault();
-        setFullscreenOverlay((prev) => (prev === "slides" ? null : "slides"));
+        if (fullscreenOverlay === "slides") {
+          setFullscreenOverlay(null);
+          setOverlayReturnTo(null);
+        } else {
+          switchOverlay("slides");
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fullscreenOverlay, hasPdf, pdfCurrentPage, pdfTotalPages]);
+  }, [fullscreenOverlay, hasPdf, pdfCurrentPage, pdfTotalPages, closeOverlay, switchOverlay]);
 
   const [isStarting, setIsStarting] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1416,15 +1520,19 @@ function PresenterPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-zinc-200">
+          <div className="flex items-center gap-3">
+            {/* Số SV tham gia — click để xem danh sách */}
+            <button
+              onClick={() => setShowParticipantsModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
+              title="Xem danh sách sinh viên đã tham gia"
+            >
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm">
-                {totalParticipants} sinh viên tham gia
-              </span>
-            </div>
+              <span className="text-sm font-medium">{totalParticipants} sinh viên</span>
+              <span className="text-xs text-zinc-400">▸</span>
+            </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <input
                 ref={pdfFileInputRef}
                 type="file"
@@ -1437,55 +1545,49 @@ function PresenterPage() {
               />
               {hasPdf ? (
                 <button
-                  onClick={() => setFullscreenOverlay("slides")}
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors"
+                  onClick={() => switchOverlay("slides")}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors"
                   title={`Chiếu slide PDF (${session.pdfFileName}, ${pdfTotalPages} trang) — phím S`}
                 >
-                  📑 Chiếu slide <span className="text-[10px] opacity-70">(S)</span>
+                  📑 Slide <span className="text-[10px] opacity-70">(S)</span>
                 </button>
               ) : (
                 <button
                   onClick={() => pdfFileInputRef.current?.click()}
                   disabled={isUploadingPdf}
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
-                  title="Upload PDF slide (thay PowerPoint, chiếu trong cùng tab)"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
+                  title="Upload PDF slide"
                 >
                   {isUploadingPdf ? "Đang tải..." : "📑 Upload PDF"}
                 </button>
               )}
 
               <button
-                onClick={() => setFullscreenOverlay("result")}
+                onClick={() => switchOverlay("result")}
                 disabled={!activeActivity}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                title="Chiếu kết quả hoạt động đang diễn ra lên màn hình (phím F)"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Chiếu kết quả hoạt động đang diễn ra (phím F)"
               >
-                📺 Chiếu kết quả <span className="text-[10px] opacity-70">(F)</span>
+                📺 Kết quả <span className="text-[10px] opacity-70">(F)</span>
               </button>
 
               <button
-                onClick={handleExportResults}
-                disabled={!exportData || isExporting}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
+                onClick={() => {
+                  window.open(`/presenter/${upperCode}/leaderboard`, 'leaderboard', 'width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-colors"
+                title="Mở Bảng thành tích để chiếu (Top 10, cập nhật realtime)"
               >
-                {isExporting ? "Đang xuất..." : "Xuất CSV"}
+                🏆 Bảng thành tích
               </button>
 
               <button
                 onClick={handleExportExcel}
                 disabled={!exportData || isExporting}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 disabled:opacity-60 transition-colors text-white font-medium"
-                title="Xuất file .xlsx (Excel) để chấm điểm và đẩy lên LMS"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 disabled:opacity-60 transition-colors text-white font-medium"
+                title="Xuất file .xlsx để đẩy lên LMS"
               >
-                {isExporting ? "Đang xuất..." : "Xuất Excel"}
-              </button>
-
-              <button
-                onClick={handleExportPDF}
-                disabled={!exportData || isExporting}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 transition-colors text-white font-medium"
-              >
-                {isExporting ? "Đang xuất..." : "Xuất PDF báo cáo"}
+                {isExporting ? "Đang xuất..." : "💾 Excel"}
               </button>
             </div>
 
@@ -1658,58 +1760,14 @@ function PresenterPage() {
                     <div className="fixed inset-0 z-30" onClick={() => setShowScriptMenu(false)} />
                     <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-zinc-200 rounded-xl shadow-lg z-40 py-1">
                       <button
-                        onClick={() => { openCompanionWindow(); setShowScriptMenu(false); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                      >
-                        📍 Trợ lý điều khiển (popup)
-                      </button>
-                      <button
                         onClick={() => {
                           window.open(`/presenter/${upperCode}/companion?pip=true`, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
                           setShowScriptMenu(false);
                         }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
+                        title="Cửa sổ điều khiển nhỏ kéo vào góc màn hình laptop khi PPT fullscreen"
                       >
-                        🖼️ Picture-in-Picture nhỏ
-                      </button>
-                      <button
-                        onClick={() => {
-                          window.open(`/presenter/${upperCode}/leaderboard`, 'leaderboard', 'width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
-                          setShowScriptMenu(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                      >
-                        🏆 Bảng thành tích (chiếu)
-                      </button>
-                      <div className="my-1 border-t border-zinc-200" />
-                      <button
-                        onClick={async () => {
-                          const name = prompt("Tên kịch bản mẫu (vd: Đập và Hồ chứa - Buổi 1):");
-                          setShowScriptMenu(false);
-                          if (!name || !session?._id) return;
-                          try {
-                            await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
-                            toast.success("Đã lưu kịch bản mẫu");
-                          } catch (e: unknown) {
-                            toast.error(e instanceof Error ? e.message : "Lỗi");
-                          }
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                      >
-                        💾 Lưu thành mẫu
-                      </button>
-                      <button
-                        onClick={() => { setShowTemplatesModal(true); setShowScriptMenu(false); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                      >
-                        📚 Mẫu đã lưu
-                      </button>
-                      <div className="my-1 border-t border-zinc-200" />
-                      <button
-                        onClick={() => { setShowScoringConfig(true); setShowScriptMenu(false); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-center gap-2"
-                      >
-                        ⚙️ Cấu hình điểm thành tích
+                        🖼️ Trợ lý PiP (cửa sổ nhỏ)
                       </button>
                     </div>
                   </>
@@ -1718,6 +1776,41 @@ function PresenterPage() {
             </div>
           </div>
         )}
+
+        {/* === Hàng tiện ích: Lưu mẫu / Mẫu đã lưu / Cấu hình điểm === */}
+        <div className="mb-6 flex items-center gap-2 flex-wrap">
+          <button
+            onClick={async () => {
+              const name = prompt("Tên kịch bản mẫu (vd: Đập và Hồ chứa - Buổi 1):");
+              if (!name || !session?._id) return;
+              try {
+                await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
+                toast.success("Đã lưu kịch bản mẫu");
+              } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : "Lỗi");
+              }
+            }}
+            disabled={sortedActivities.length === 0}
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700 disabled:opacity-50"
+            title="Lưu danh sách hoạt động hiện tại thành mẫu để dùng lại buổi sau"
+          >
+            💾 Lưu mẫu kịch bản
+          </button>
+          <button
+            onClick={() => setShowTemplatesModal(true)}
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
+            title="Mở danh sách mẫu đã lưu để áp dụng vào buổi này"
+          >
+            📚 Mẫu đã lưu
+          </button>
+          <button
+            onClick={() => setShowScoringConfig(true)}
+            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
+            title="Tùy chỉnh điểm cho từng loại hoạt động trong Bảng thành tích"
+          >
+            ⚙️ Cấu hình điểm thành tích
+          </button>
+        </div>
 
         {/* === Slide PDF status (nếu đã upload) === */}
         {hasPdf && (
@@ -2336,26 +2429,19 @@ function PresenterPage() {
                         {options.map((opt, idx) => (
                           <div key={idx} className="flex gap-2 items-center">
                             <span className="w-6 text-center text-xs text-zinc-500 font-mono">{idx + 1}.</span>
-                            <input
-                              type="text"
-                              value={opt}
-                              onChange={(e) => {
-                                const next = [...options];
-                                next[idx] = e.target.value;
-                                setOptions(next);
-                              }}
+                            <TextInputRow
+                              initialValue={opt}
                               placeholder={`Lựa chọn ${idx + 1}${idx === 0 ? " (VD: Đập bê tông trọng lực)" : ""}`}
-                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                              showRemove={options.length > 2}
+                              onUpdate={(val) => {
+                                setOptions((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = val;
+                                  return next;
+                                });
+                              }}
+                              onRemove={() => setOptions((prev) => prev.filter((_, i) => i !== idx))}
                             />
-                            {options.length > 2 && (
-                              <button
-                                onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                                className="px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg"
-                                title="Xóa lựa chọn này"
-                              >
-                                ✕
-                              </button>
-                            )}
                           </div>
                         ))}
                         <button
@@ -2569,25 +2655,19 @@ function PresenterPage() {
                         {boardColumns.map((col, idx) => (
                           <div key={col.id} className="flex gap-2 items-center">
                             <span className="w-6 text-center text-xs text-zinc-500 font-mono">{idx + 1}.</span>
-                            <input
-                              type="text"
-                              value={col.title}
-                              onChange={(e) => {
-                                const next = [...boardColumns];
-                                next[idx] = { ...col, title: e.target.value };
-                                setBoardColumns(next);
-                              }}
+                            <TextInputRow
+                              initialValue={col.title}
                               placeholder={`Tên cột ${idx + 1}`}
-                              className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+                              showRemove={boardColumns.length > 1}
+                              onUpdate={(val) => {
+                                setBoardColumns((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = { ...prev[idx], title: val };
+                                  return next;
+                                });
+                              }}
+                              onRemove={() => setBoardColumns((prev) => prev.filter((_, i) => i !== idx))}
                             />
-                            {boardColumns.length > 1 && (
-                              <button
-                                onClick={() => setBoardColumns(boardColumns.filter((_, i) => i !== idx))}
-                                className="px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg"
-                              >
-                                ✕
-                              </button>
-                            )}
                           </div>
                         ))}
                         <button
@@ -2698,6 +2778,58 @@ function PresenterPage() {
                     ? (editingActivity ? "Đang lưu..." : "Đang tạo...")
                     : (editingActivity ? "Lưu thay đổi" : "Tạo hoạt động")}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== MODAL DANH SÁCH SINH VIÊN ==================== */}
+        {showParticipantsModal && (
+          <div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[120] p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowParticipantsModal(false); }}
+          >
+            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
+                <div>
+                  <div className="text-lg font-semibold">Danh sách sinh viên tham gia</div>
+                  <div className="text-xs text-zinc-600 mt-0.5">{totalParticipants} người · cập nhật realtime</div>
+                </div>
+                <button onClick={() => setShowParticipantsModal(false)} className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none">×</button>
+              </div>
+
+              <div className="p-4">
+                {totalParticipants === 0 ? (
+                  <div className="text-center py-12 text-zinc-500">
+                    <div className="text-4xl mb-2">👥</div>
+                    Chưa có sinh viên nào tham gia. Bấm <kbd className="px-1.5 py-0.5 bg-zinc-100 border border-zinc-300 rounded text-xs">Q</kbd> để chiếu QR cho SV quét.
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-zinc-500 border-b border-zinc-200">
+                      <tr>
+                        <th className="text-left px-2 py-2 font-medium">#</th>
+                        <th className="text-left px-2 py-2 font-medium">Mã SV</th>
+                        <th className="text-left px-2 py-2 font-medium">Họ tên</th>
+                        <th className="text-left px-2 py-2 font-medium">Lớp</th>
+                        <th className="text-left px-2 py-2 font-medium">Vào lúc</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAndSortedStudents.map((p: { _id: string; studentCode: string; fullName: string; className: string; joinedAt: number }, idx) => (
+                        <tr key={p._id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                          <td className="px-2 py-2 text-zinc-500">{idx + 1}</td>
+                          <td className="px-2 py-2 font-mono">{p.studentCode}</td>
+                          <td className="px-2 py-2 font-medium">{p.fullName}</td>
+                          <td className="px-2 py-2 text-zinc-600">{p.className}</td>
+                          <td className="px-2 py-2 text-xs text-zinc-500">
+                            {new Date(p.joinedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           </div>
@@ -2818,7 +2950,7 @@ function PresenterPage() {
       {/* ==================== FULLSCREEN OVERLAYS (QR + Kết quả - dùng khi chiếu) ==================== */}
       {fullscreenOverlay === "qr" && (
         <div
-          onClick={() => setFullscreenOverlay(null)}
+          onClick={closeOverlay}
           className="fixed inset-0 z-[100] bg-zinc-950 flex items-center justify-center cursor-pointer"
         >
           <div className="text-center">
@@ -2840,7 +2972,7 @@ function PresenterPage() {
       {fullscreenOverlay === "result" && (
         <div className="fixed inset-0 z-[100] bg-zinc-950 text-white overflow-auto">
           <button
-            onClick={() => setFullscreenOverlay(null)}
+            onClick={closeOverlay}
             className="fixed top-6 right-6 px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 z-10"
           >
             Đóng (Esc)
@@ -3057,7 +3189,7 @@ function PresenterPage() {
                   {activeActivity.type === "board" && boardPosts && `${boardPosts.length} bài đăng`}
                 </div>
                 <button
-                  onClick={() => setFullscreenOverlay("result")}
+                  onClick={() => switchOverlay("result")}
                   className="mt-3 w-full px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400"
                 >
                   Chiếu to kết quả (F)
