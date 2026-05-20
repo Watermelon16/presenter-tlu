@@ -65,7 +65,7 @@ export default function CreateRoomPage() {
             <div>
               <label className="text-sm font-medium mb-1.5 block">Tên buổi giảng</label>
               <Input
-                placeholder="Ví dụ: Kỹ thuật phần mềm - Tuần 5"
+                placeholder="Ví dụ: Đập và Hồ chứa - Buổi 1"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
@@ -75,7 +75,7 @@ export default function CreateRoomPage() {
             <div>
               <label className="text-sm font-medium mb-1.5 block">Tên giảng viên (tùy chọn)</label>
               <Input
-                placeholder="TS. Nguyễn Văn A"
+                placeholder="TS. Lê Hồng Phương"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}

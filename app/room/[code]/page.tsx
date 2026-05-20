@@ -477,21 +477,21 @@ export default function ParticipantRoomPage() {
                   <div className="space-y-3">
                     <input
                       type="text"
-                      placeholder="Mã sinh viên"
+                      placeholder="Mã sinh viên (VD: 2351150001)"
                       value={studentCodeInput}
                       onChange={(e) => setStudentCodeInput(e.target.value.toUpperCase())}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white font-mono"
                     />
                     <input
                       type="text"
-                      placeholder="Họ và tên"
+                      placeholder="Họ và tên (VD: Trần Văn An)"
                       value={fullNameInput}
                       onChange={(e) => setFullNameInput(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
                     />
                     <input
                       type="text"
-                      placeholder="Lớp"
+                      placeholder="Lớp (VD: 65CTL1)"
                       value={classNameInput}
                       onChange={(e) => setClassNameInput(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
@@ -592,7 +592,7 @@ export default function ParticipantRoomPage() {
                       handleSubmit();
                     }
                   }}
-                  placeholder="Ví dụ: sáng tạo, khó hiểu, thực tiễn..."
+                  placeholder="Ví dụ: cao trình đỉnh đập, dung tích hồ, mực nước chết..."
                   className="w-full px-5 py-4 rounded-2xl border border-zinc-200 text-lg focus:outline-none focus:border-emerald-500"
                   disabled={isSubmitting || timeLeft === 0}
                 />

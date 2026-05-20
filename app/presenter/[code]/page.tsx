@@ -1526,14 +1526,14 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* === Tạo nhanh (dành cho test B) */}
+        {/* === Tạo nhanh (mẫu Đập và Hồ chứa) */}
         <div className="mb-4">
-          <div className="text-xs text-blue-400 font-medium mb-1.5 px-1">Tạo nhanh (test B)</div>
+          <div className="text-xs text-blue-400 font-medium mb-1.5 px-1">Tạo nhanh — Mẫu hoạt động (gắn mốc slide)</div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => quickCreateActivity("wordcloud", "Word Cloud - Xu hướng hiểu bài", "Slide 5")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Word Cloud</button>
-            <button onClick={() => quickCreateActivity("poll", "Poll - Mức độ hiểu", "Slide 12")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Poll</button>
-            <button onClick={() => quickCreateActivity("qa", "Q&A - Câu hỏi thêm", "Slide 18")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Q&A</button>
-            <button onClick={() => quickCreateActivity("rating", "Thang điểm - Hiểu rõ không", "Slide 22")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Rating</button>
+            <button onClick={() => quickCreateActivity("wordcloud", "Liên tưởng về Đập và Hồ chứa", "Slide 3")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Word Cloud</button>
+            <button onClick={() => quickCreateActivity("poll", "Mức độ hiểu phân loại đập", "Slide 10")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Poll</button>
+            <button onClick={() => quickCreateActivity("qa", "Câu hỏi về cấu tạo đập đất", "Slide 18")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Q&A</button>
+            <button onClick={() => quickCreateActivity("rating", "Đánh giá mức nắm vững công thức tính lưu lượng tràn", "Slide 24")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Rating</button>
           </div>
         </div>
 
@@ -1971,7 +1971,7 @@ function PresenterPage() {
                   ))}
                 </div>
 
-                <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} placeholder="Tiêu đề hoạt động" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2" />
+                <input type="text" value={pollTitle} onChange={(e) => setPollTitle(e.target.value)} placeholder="Tiêu đề hoạt động (VD: Phân loại đập theo vật liệu)" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2" />
 
                 <div className="flex gap-3">
                   <button onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 rounded-xl border border-zinc-700">Hủy</button>
