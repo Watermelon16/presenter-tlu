@@ -1085,6 +1085,46 @@ function PresenterPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isScriptMode, currentScriptIndex]);
 
+  // Mở modal ở chế độ tạo mới, pre-config theo loại được chọn
+  const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board") => {
+    // Reset form về trạng thái mặc định cho loại này
+    setEditingActivity(null);
+    setCreateType(type);
+    setPollTitle("");
+    setPollDescription("");
+    setSlideCue("");
+    setTitleError("");
+    setCreateError("");
+    setRequiresStudentCode(false);
+    setTimeLimitMode("unlimited");
+    setTimeLimitValue(1.5);
+
+    // Type-specific defaults
+    if (type === "poll") {
+      setPollType("single_choice");
+      setOptions(["", ""]);
+      setShuffleOptions(false);
+      setMinSelections(1);
+      setShowAdvanced(false);
+    } else if (type === "rating") {
+      setRatingMin(1);
+      setRatingMax(5);
+      setRatingMinLabel("Rất không hiểu");
+      setRatingMaxLabel("Rất hiểu rõ");
+    } else if (type === "qa") {
+      setQaAllowAnonymous(true);
+      setQaMaxQuestionsPerStudent(null);
+    } else if (type === "board") {
+      setBoardColumns([
+        { id: "understood", title: "Đã hiểu" },
+        { id: "not-clear", title: "Chưa hiểu rõ" },
+        { id: "question", title: "Câu hỏi thêm" },
+      ]);
+    }
+
+    setShowCreateModal(true);
+  };
+
   // Mở modal ở chế độ chỉnh sửa
   const openEditModal = (activity: any) => {
     setEditingActivity(activity);
@@ -1526,14 +1566,105 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* === Tạo nhanh (mẫu Đập và Hồ chứa) */}
-        <div className="mb-4">
-          <div className="text-xs text-blue-600 font-medium mb-1.5 px-1">Tạo nhanh — Mẫu hoạt động (gắn mốc slide)</div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => quickCreateActivity("wordcloud", "Liên tưởng về Đập và Hồ chứa", "Slide 3")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Word Cloud</button>
-            <button onClick={() => quickCreateActivity("poll", "Mức độ hiểu phân loại đập", "Slide 10")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Poll</button>
-            <button onClick={() => quickCreateActivity("qa", "Câu hỏi về cấu tạo đập đất", "Slide 18")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Q&A</button>
-            <button onClick={() => quickCreateActivity("rating", "Đánh giá mức nắm vững công thức tính lưu lượng tràn", "Slide 24")} className="px-3 py-1 text-xs rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white">Rating</button>
+        {/* === Tạo hoạt động — chọn loại có mô tả === */}
+        <div className="mb-6 bg-white border border-zinc-200 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-base font-semibold text-zinc-900">+ Tạo hoạt động mới</div>
+              <div className="text-xs text-zinc-500 mt-0.5">Chọn loại phù hợp với nội dung bạn đang giảng</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* Poll */}
+            <button
+              onClick={() => openCreateModal("poll")}
+              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-blue-400 hover:bg-blue-50/50 active:scale-[0.98] transition-all group"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">📊</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-blue-600 font-medium">POLL</span>
+              </div>
+              <div className="font-semibold text-zinc-900 mb-1">Trắc nghiệm</div>
+              <div className="text-xs text-zinc-600 leading-snug mb-2">
+                Đáp án có sẵn. SV chọn 1 hoặc nhiều ý.
+              </div>
+              <div className="text-[11px] text-blue-700 bg-blue-50 px-2 py-1 rounded leading-snug">
+                💡 Đo mức hiểu, khảo sát quan điểm
+              </div>
+            </button>
+
+            {/* Word Cloud */}
+            <button
+              onClick={() => openCreateModal("wordcloud")}
+              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-sky-400 hover:bg-sky-50/50 active:scale-[0.98] transition-all group"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">☁️</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-sky-600 font-medium">WORD CLOUD</span>
+              </div>
+              <div className="font-semibold text-zinc-900 mb-1">Đám mây từ</div>
+              <div className="text-xs text-zinc-600 leading-snug mb-2">
+                SV nhập từ khóa ngắn. Từ trùng nhau → cụm to.
+              </div>
+              <div className="text-[11px] text-sky-700 bg-sky-50 px-2 py-1 rounded leading-snug">
+                💡 Brainstorm, liên tưởng nhanh
+              </div>
+            </button>
+
+            {/* Rating */}
+            <button
+              onClick={() => openCreateModal("rating")}
+              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-amber-400 hover:bg-amber-50/50 active:scale-[0.98] transition-all group"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">⭐</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-amber-600 font-medium">RATING</span>
+              </div>
+              <div className="font-semibold text-zinc-900 mb-1">Thang điểm</div>
+              <div className="text-xs text-zinc-600 leading-snug mb-2">
+                Chấm 1–N với nhãn thấp/cao tùy chỉnh.
+              </div>
+              <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded leading-snug">
+                💡 Đo tự tin, mức độ hiểu bài
+              </div>
+            </button>
+
+            {/* Q&A */}
+            <button
+              onClick={() => openCreateModal("qa")}
+              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/50 active:scale-[0.98] transition-all group"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">❓</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-emerald-600 font-medium">Q&A</span>
+              </div>
+              <div className="font-semibold text-zinc-900 mb-1">Hỏi đáp</div>
+              <div className="text-xs text-zinc-600 leading-snug mb-2">
+                SV đặt câu hỏi tự do, có upvote &amp; moderation.
+              </div>
+              <div className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded leading-snug">
+                💡 Hỏi đáp giữa giờ, gom thắc mắc
+              </div>
+            </button>
+
+            {/* Board */}
+            <button
+              onClick={() => openCreateModal("board")}
+              className="text-left p-4 rounded-xl border-2 border-zinc-200 hover:border-purple-400 hover:bg-purple-50/50 active:scale-[0.98] transition-all group"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">📌</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-purple-600 font-medium">BOARD</span>
+              </div>
+              <div className="font-semibold text-zinc-900 mb-1">Bảng cộng tác</div>
+              <div className="text-xs text-zinc-600 leading-snug mb-2">
+                Padlet — SV đăng text + ảnh, chia cột.
+              </div>
+              <div className="text-[11px] text-purple-700 bg-purple-50 px-2 py-1 rounded leading-snug">
+                💡 Thảo luận nhóm, ý kiến đa dạng
+              </div>
+            </button>
           </div>
         </div>
 
@@ -1953,36 +2084,30 @@ function PresenterPage() {
               </div>
 
               <div className="px-6 py-5 space-y-5">
-                {/* ===== Loại hoạt động ===== */}
-                <div>
-                  <label className="text-sm font-semibold text-zinc-700 block mb-2">
-                    Loại hoạt động {editingActivity && <span className="text-xs text-zinc-500 font-normal">(không thể đổi khi chỉnh sửa)</span>}
-                  </label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {(["poll", "wordcloud", "rating", "qa", "board"] as const).map((t) => {
-                      const labels: Record<string, { icon: string; name: string }> = {
-                        poll: { icon: "📊", name: "Poll" },
-                        wordcloud: { icon: "☁️", name: "Word Cloud" },
-                        rating: { icon: "⭐", name: "Rating" },
-                        qa: { icon: "❓", name: "Q&A" },
-                        board: { icon: "📌", name: "Board" },
-                      };
-                      return (
-                        <button
-                          key={t}
-                          onClick={() => !editingActivity && setCreateType(t)}
-                          disabled={!!editingActivity}
-                          className={`px-2 py-3 text-xs rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
-                            createType === t
-                              ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-semibold"
-                              : "border-zinc-200 hover:border-zinc-400 text-zinc-700"
-                          } ${editingActivity ? "opacity-60 cursor-not-allowed" : ""}`}
-                        >
-                          <span className="text-2xl">{labels[t].icon}</span>
-                          <span>{labels[t].name}</span>
-                        </button>
-                      );
-                    })}
+                {/* ===== Loại hoạt động (chỉ hiển thị badge, không cho đổi) ===== */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200">
+                  <div className="text-2xl">
+                    {createType === "poll" && "📊"}
+                    {createType === "wordcloud" && "☁️"}
+                    {createType === "rating" && "⭐"}
+                    {createType === "qa" && "❓"}
+                    {createType === "board" && "📌"}
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-zinc-900">
+                      {createType === "poll" && "Trắc nghiệm (Poll)"}
+                      {createType === "wordcloud" && "Đám mây từ (Word Cloud)"}
+                      {createType === "rating" && "Thang điểm (Rating)"}
+                      {createType === "qa" && "Hỏi đáp (Q&A)"}
+                      {createType === "board" && "Bảng cộng tác (Board)"}
+                    </div>
+                    <div className="text-xs text-zinc-600 mt-0.5">
+                      {createType === "poll" && "SV chọn 1 hoặc nhiều đáp án từ danh sách có sẵn"}
+                      {createType === "wordcloud" && "SV nhập từ khóa ngắn, các từ trùng gom thành cụm to"}
+                      {createType === "rating" && "SV chấm điểm theo thang số bạn đặt"}
+                      {createType === "qa" && "SV đặt câu hỏi tự do, có thể upvote câu hay"}
+                      {createType === "board" && "SV đăng text + ảnh theo cột phân loại"}
+                    </div>
                   </div>
                 </div>
 
