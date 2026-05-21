@@ -102,6 +102,82 @@ export const setScriptPosition = mutation({
   },
 });
 
+/**
+ * Reset phiên giảng — bắt đầu PHIÊN MỚI với cùng kịch bản hoạt động.
+ *
+ * Xóa: tất cả response, participant, board posts, scoring tạm.
+ * Reset: trạng thái activity về NHÁP, script position về 0.
+ * Giữ: activities (tiêu đề, config, options, slide cue), session info, PDF nếu có, scoring config.
+ *
+ * Dùng khi: dạy cùng nội dung cho 1 lớp khác (cùng giảng viên, cùng kịch bản).
+ */
+export const resetSessionForNewRun = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new Error("Không tìm thấy buổi giảng");
+
+    // Xóa tất cả responses của session
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const r of responses) {
+      await ctx.db.delete(r._id);
+    }
+
+    // Xóa tất cả board posts
+    const boardPosts = await ctx.db
+      .query("boardPosts")
+      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .collect();
+    for (const p of boardPosts) {
+      await ctx.db.delete(p._id);
+    }
+
+    // Xóa tất cả participants (SV phải join lại với phiên mới)
+    const participants = await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const p of participants) {
+      await ctx.db.delete(p._id);
+    }
+
+    // Reset trạng thái tất cả activities về NHÁP, xóa thời gian start/close
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    let resetActivityCount = 0;
+    for (const a of activities) {
+      await ctx.db.patch(a._id, {
+        status: "draft",
+        startedAt: undefined,
+        closedAt: undefined,
+      });
+      resetActivityCount++;
+    }
+
+    // Reset script position
+    await ctx.db.patch(args.sessionId, {
+      isScriptRunning: false,
+      currentScriptPosition: 0,
+      status: "active",  // Khôi phục trạng thái active nếu đã ended
+      endedAt: undefined,
+      pdfCurrentPage: 1, // Reset slide PDF về trang 1
+    });
+
+    return {
+      success: true,
+      activitiesReset: resetActivityCount,
+      responsesDeleted: responses.length,
+      participantsDeleted: participants.length,
+      boardPostsDeleted: boardPosts.length,
+    };
+  },
+});
+
 // === Slide PDF (chiếu thay PowerPoint) ===
 
 // Gán file PDF cho buổi giảng (sau khi upload xong vào Convex Storage)

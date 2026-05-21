@@ -296,6 +296,7 @@ function PresenterPage() {
   const deleteActivity = useMutation(api.activities.deleteActivity);
   const updateCollectStudentCode = useMutation(api.sessions.updateCollectStudentCode);
   const endSession = useMutation(api.sessions.endSession);
+  const resetSessionForNewRun = useMutation(api.sessions.resetSessionForNewRun);
 
   // Script Runner mutations (B: server-backed kịch bản)
   const startScriptRunner = useMutation(api.activities.startScriptRunner);
@@ -1794,6 +1795,30 @@ function PresenterPage() {
                 {isExporting ? "Đang xuất..." : "💾 Excel"}
               </button>
             </div>
+
+            {/* Bắt đầu phiên mới — giữ activities, xóa responses + participants */}
+            <button
+              className="px-3 py-2 text-sm rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+              onClick={async () => {
+                if (!session?._id) return;
+                if (!confirm(
+                  "BẮT ĐẦU PHIÊN MỚI?\n\n" +
+                  "• Xóa tất cả câu trả lời + danh sách SV + bài Board hiện tại\n" +
+                  "• Reset các hoạt động về trạng thái NHÁP\n" +
+                  "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm\n\n" +
+                  "Dùng khi dạy cùng nội dung cho lớp khác. Không hồi phục được sau khi xóa."
+                )) return;
+                try {
+                  const result = await resetSessionForNewRun({ sessionId: session._id });
+                  toast.success(`Đã bắt đầu phiên mới. Reset ${result.activitiesReset} hoạt động.`);
+                } catch (e: unknown) {
+                  toast.error(e instanceof Error ? e.message : "Không thể reset phiên");
+                }
+              }}
+              title="Xóa response + participant, giữ activities — bắt đầu phiên mới với cùng kịch bản"
+            >
+              🔄 Phiên mới
+            </button>
 
             {session.status === "ended" ? (
               <div className="px-4 py-2 text-sm rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-600">
