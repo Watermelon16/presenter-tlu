@@ -3459,29 +3459,43 @@ function PresenterPage() {
               </div>
             </div>
           ) : (
-            <div className="min-h-screen p-12 flex flex-col">
-              <div className="mb-8">
-                <div className="text-emerald-400 text-lg tracking-[6px] mb-2">
-                  {displayActivity.type.toUpperCase()} •{" "}
+            <div className="min-h-screen px-8 py-10 flex flex-col items-center">
+              {/* ===== HEADER CENTERED — đề bài + cách trả lời, font lớn cho projector ===== */}
+              <div className="w-full max-w-6xl text-center mb-8">
+                <div className="text-emerald-400 text-base md:text-lg tracking-[6px] mb-3">
+                  {displayActivity.type === "poll" ? "TRẮC NGHIỆM"
+                    : displayActivity.type === "wordcloud" ? "ĐÁM MÂY TỪ"
+                    : displayActivity.type === "rating" ? "THANG ĐIỂM"
+                    : displayActivity.type === "qa" ? "HỎI ĐÁP"
+                    : displayActivity.type === "opentext" ? "TRẢ LỜI NGẮN"
+                    : "BẢNG CỘNG TÁC"}
+                  {" • "}
                   {displayActivity.status === "active" ? "ĐANG DIỄN RA"
                     : displayActivity.status === "closed" ? "ĐÃ ĐÓNG"
                     : displayActivity.status === "expired" ? "HẾT GIỜ"
                     : "NHÁP"}
                 </div>
-                <div className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">{displayActivity.title}</div>
+
+                {/* Tiêu đề activity (đề câu hỏi chính) — to nhất */}
+                <div className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-tight">
+                  {displayActivity.title}
+                </div>
+
+                {/* Mô tả thêm */}
                 {(() => {
                   const desc = (displayActivity.config as { description?: string } | undefined)?.description;
                   return desc ? (
-                    <div className="mt-3 text-xl md:text-2xl text-zinc-300 leading-snug whitespace-pre-wrap max-w-5xl">
+                    <div className="mt-5 text-2xl md:text-3xl text-zinc-300 leading-snug whitespace-pre-wrap max-w-5xl mx-auto">
                       {desc}
                     </div>
                   ) : null;
                 })()}
+
                 {displayActivity.slideCue && (
-                  <div className="mt-3 text-amber-400 text-xl">📍 {fmtSlide(displayActivity.slideCue)}</div>
+                  <div className="mt-4 text-amber-400 text-xl">📍 {fmtSlide(displayActivity.slideCue)}</div>
                 )}
 
-                {/* ===== Cách trả lời + đáp án (luôn hiện cho mọi loại) ===== */}
+                {/* ===== Block hướng dẫn + đáp án (CENTER, font to) ===== */}
                 {(() => {
                   const t = displayActivity.type;
                   const cfg = (displayActivity.config || {}) as {
@@ -3497,27 +3511,38 @@ function PresenterPage() {
                     minSelections?: number;
                   };
                   return (
-                    <div className="mt-4 inline-block bg-zinc-900/80 border border-zinc-700 rounded-xl px-4 py-3">
+                    <div className="mt-8 mx-auto max-w-5xl bg-zinc-900/80 border border-zinc-700 rounded-2xl px-8 py-6">
                       {t === "poll" && (
                         <>
-                          <div className="text-sm text-zinc-300 mb-2 flex items-center gap-2">
+                          <div className="text-xl md:text-2xl text-zinc-200 mb-5 flex items-center justify-center gap-3">
                             <span>📋</span>
                             <span>
                               {cfg.pollType === "multiple_choice"
-                                ? `SV chọn nhiều đáp án${cfg.minSelections && cfg.minSelections > 1 ? ` (ít nhất ${cfg.minSelections})` : ""}`
-                                : "SV chọn 1 đáp án"}
-                              {cfg.isQuiz && <span className="ml-2 text-amber-300">· 🎯 Quiz (có đáp án đúng)</span>}
+                                ? `Chọn nhiều đáp án${cfg.minSelections && cfg.minSelections > 1 ? ` (ít nhất ${cfg.minSelections})` : ""}`
+                                : "Chọn 1 đáp án"}
+                              {cfg.isQuiz && (
+                                <span className="ml-3 text-amber-300">· 🎯 Có đáp án đúng</span>
+                              )}
                             </span>
                           </div>
                           {(cfg.options || []).length > 0 && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-base text-zinc-300">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-2xl md:text-3xl text-left">
                               {cfg.options!.map((o, i) => {
+                                // Chỉ hiển thị ✓ đáp án đúng KHI đã reveal (shouldShowResults).
                                 const isCorrect = cfg.isQuiz && (cfg.correctOptionIds || []).includes(o.id);
+                                const revealCorrect = isCorrect && shouldShowResults;
                                 return (
-                                  <div key={o.id} className={`flex items-center gap-2 ${isCorrect ? "text-emerald-400 font-medium" : ""}`}>
-                                    <span className="text-zinc-500 font-mono">{String.fromCharCode(65 + i)}.</span>
-                                    <span>{o.text}</span>
-                                    {isCorrect && <span title="Đáp án đúng">✓</span>}
+                                  <div
+                                    key={o.id}
+                                    className={`flex items-baseline gap-3 px-4 py-2 rounded-lg ${
+                                      revealCorrect
+                                        ? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-semibold"
+                                        : "text-zinc-200"
+                                    }`}
+                                  >
+                                    <span className="text-zinc-500 font-mono shrink-0">{String.fromCharCode(65 + i)}.</span>
+                                    <span className="flex-1">{o.text}</span>
+                                    {revealCorrect && <span className="text-emerald-400 text-2xl shrink-0">✓</span>}
                                   </div>
                                 );
                               })}
@@ -3526,49 +3551,49 @@ function PresenterPage() {
                         </>
                       )}
                       {t === "wordcloud" && (
-                        <div className="text-base text-zinc-300 flex items-center gap-2">
+                        <div className="text-2xl md:text-3xl text-zinc-200 flex items-center justify-center gap-3 leading-snug">
                           <span>☁️</span>
-                          <span>SV nhập từ khóa ngắn (tối đa 30 ký tự) — từ trùng nhau gom thành cụm to</span>
+                          <span>Nhập từ khóa ngắn (tối đa 30 ký tự)</span>
                         </div>
                       )}
                       {t === "opentext" && (
-                        <div className="text-base text-zinc-300 flex items-center gap-2">
+                        <div className="text-2xl md:text-3xl text-zinc-200 flex items-center justify-center gap-3 leading-snug">
                           <span>✏️</span>
-                          <span>SV nhập câu trả lời ngắn 1–2 câu (tối đa 500 ký tự)</span>
+                          <span>Nhập câu trả lời ngắn 1–2 câu</span>
                         </div>
                       )}
                       {t === "rating" && (
-                        <div className="text-base text-zinc-300">
-                          <div className="flex items-center gap-2">
+                        <div className="text-zinc-200">
+                          <div className="text-2xl md:text-3xl flex items-center justify-center gap-3">
                             <span>⭐</span>
-                            <span>SV chấm điểm <strong>{cfg.min ?? 1}–{cfg.max ?? 5}</strong></span>
+                            <span>Chấm điểm <strong className="text-amber-300">{cfg.min ?? 1}–{cfg.max ?? 5}</strong></span>
                           </div>
                           {(cfg.minLabel || cfg.maxLabel) && (
-                            <div className="text-sm text-zinc-400 mt-1 ml-7">
-                              <strong>{cfg.min ?? 1}:</strong> {cfg.minLabel || "—"}
-                              <span className="mx-2">·</span>
-                              <strong>{cfg.max ?? 5}:</strong> {cfg.maxLabel || "—"}
+                            <div className="text-xl md:text-2xl text-zinc-400 mt-3 flex items-center justify-center gap-6">
+                              <span><strong className="text-zinc-200">{cfg.min ?? 1}:</strong> {cfg.minLabel || "—"}</span>
+                              <span className="text-zinc-600">↔</span>
+                              <span><strong className="text-zinc-200">{cfg.max ?? 5}:</strong> {cfg.maxLabel || "—"}</span>
                             </div>
                           )}
                         </div>
                       )}
                       {t === "qa" && (
-                        <div className="text-base text-zinc-300 flex items-center gap-2">
+                        <div className="text-2xl md:text-3xl text-zinc-200 flex items-center justify-center gap-3 leading-snug">
                           <span>❓</span>
-                          <span>SV đặt câu hỏi tự do · có thể upvote câu hay · giảng viên trả lời / ẩn / xóa</span>
+                          <span>Đặt câu hỏi tự do — có thể upvote câu hay</span>
                         </div>
                       )}
                       {t === "board" && (
-                        <div className="text-base text-zinc-300">
-                          <div className="flex items-center gap-2">
+                        <div className="text-zinc-200">
+                          <div className="text-2xl md:text-3xl flex items-center justify-center gap-3">
                             <span>📌</span>
-                            <span>SV đăng text + ảnh vào các cột</span>
+                            <span>Đăng text + ảnh vào các cột</span>
                           </div>
                           {(cfg.columns || []).length > 0 && (
-                            <div className="text-sm text-zinc-400 mt-1 ml-7 flex flex-wrap gap-x-3">
+                            <div className="text-xl md:text-2xl mt-4 flex flex-wrap justify-center gap-x-6 gap-y-2">
                               {cfg.columns!.map((c) => (
-                                <span key={c.id} className="inline-flex items-center gap-1">
-                                  <span className="w-2 h-2 rounded-full bg-purple-400" />{c.title}
+                                <span key={c.id} className="inline-flex items-center gap-2">
+                                  <span className="w-3 h-3 rounded-full bg-purple-400" />{c.title}
                                 </span>
                               ))}
                             </div>
