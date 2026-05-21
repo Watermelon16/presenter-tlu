@@ -120,7 +120,9 @@ YÊU CẦU:
       },
     };
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    // Cho phép override model qua env GEMINI_MODEL (vd nếu model mặc định hết quota)
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: "POST",
