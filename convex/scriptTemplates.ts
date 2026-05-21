@@ -92,3 +92,16 @@ export const applyTemplateToSession = mutation({
     return { success: true, appliedCount: snapshot.length };
   },
 });
+
+// Xóa mẫu kịch bản đã lưu
+export const deleteTemplate = mutation({
+  args: { templateId: v.id("scriptTemplates") },
+  handler: async (ctx, args) => {
+    const template = await ctx.db.get(args.templateId);
+    if (!template) {
+      throw new Error("Không tìm thấy mẫu để xóa");
+    }
+    await ctx.db.delete(args.templateId);
+    return { success: true, name: template.name };
+  },
+});

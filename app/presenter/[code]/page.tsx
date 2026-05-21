@@ -228,6 +228,7 @@ function PresenterPage() {
   // Lưu kịch bản thành mẫu
   const saveScriptAsTemplate = useMutation(api.scriptTemplates.saveScriptAsTemplate);
   const applyTemplate = useMutation(api.scriptTemplates.applyTemplateToSession);
+  const deleteTemplate = useMutation(api.scriptTemplates.deleteTemplate);
   const templatesList = useQuery(api.scriptTemplates.listTemplates);
   const leaderboardData = useQuery(
     api.leaderboard.getParticipationLeaderboard,
@@ -533,6 +534,50 @@ function PresenterPage() {
     }
   };
 
+  const goPdfPage = async (page: number) => {
+    if (!session?._id || !hasPdf) return;
+    const clamped = Math.max(1, Math.min(pdfTotalPages, Math.floor(page)));
+    if (clamped !== pdfCurrentPage) {
+      await setPdfCurrentPage({ sessionId: session._id, page: clamped });
+    }
+  };
+
+  // Slide jump shortcut: trong overlay "slides", gõ số (vd "12") + Enter → nhảy slide 12.
+  // Buffer tự clear sau 1.5s không gõ. Esc cũng clear.
+  const [slideJumpBuffer, setSlideJumpBuffer] = useState("");
+  const slideJumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetSlideJumpBuffer = useCallback((delayed = false) => {
+    if (slideJumpTimerRef.current) {
+      clearTimeout(slideJumpTimerRef.current);
+      slideJumpTimerRef.current = null;
+    }
+    if (delayed) {
+      slideJumpTimerRef.current = setTimeout(() => setSlideJumpBuffer(""), 1500);
+    } else {
+      setSlideJumpBuffer("");
+    }
+  }, []);
+
+  // Big text mode — scale up text trên màn chiếu cho SV ngồi cuối lớp
+  const [bigTextMode, setBigTextMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("big_text_mode_v1") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleBigTextMode = useCallback(() => {
+    setBigTextMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("big_text_mode_v1", next ? "1" : "0");
+      } catch {}
+      toast.message(next ? "Đã bật text lớn cho SV ngồi xa" : "Tắt text lớn");
+      return next;
+    });
+  }, []);
+
   // Sinh QR code khi có upperCode
   useEffect(() => {
     if (!upperCode) return;
@@ -570,12 +615,43 @@ function PresenterPage() {
 
       if (e.key === "Escape" && fullscreenOverlay) {
         e.preventDefault();
+        // Nếu đang gõ slide jump buffer → chỉ clear buffer, không đóng overlay
+        if (fullscreenOverlay === "slides" && slideJumpBuffer.length > 0) {
+          resetSlideJumpBuffer(false);
+          return;
+        }
         closeOverlay();
         return;
       }
 
       // Phím chuyển slide (khi đang ở slide mode)
       if (fullscreenOverlay === "slides") {
+        // Slide jump: gõ số → tích vào buffer; Enter → nhảy; Backspace → xoá; Esc đã xử lý ở trên
+        if (e.key >= "0" && e.key <= "9") {
+          e.preventDefault();
+          setSlideJumpBuffer((prev) => (prev + e.key).slice(0, 5));
+          resetSlideJumpBuffer(true);
+          return;
+        }
+        if (e.key === "Backspace" && slideJumpBuffer.length > 0) {
+          e.preventDefault();
+          setSlideJumpBuffer((prev) => prev.slice(0, -1));
+          resetSlideJumpBuffer(true);
+          return;
+        }
+        if (e.key === "Enter" && slideJumpBuffer.length > 0) {
+          e.preventDefault();
+          const page = parseInt(slideJumpBuffer, 10);
+          if (page > 0) {
+            if (page > pdfTotalPages) {
+              toast.error(`Slide ${page} vượt quá số trang (${pdfTotalPages})`);
+            } else {
+              goPdfPage(page);
+            }
+          }
+          resetSlideJumpBuffer(false);
+          return;
+        }
         if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
           e.preventDefault();
           goPdfNext();
@@ -589,6 +665,11 @@ function PresenterPage() {
         if (e.key === "Home") {
           e.preventDefault();
           goPdfFirst();
+          return;
+        }
+        if (e.key === "End") {
+          e.preventDefault();
+          goPdfPage(pdfTotalPages);
           return;
         }
       }
@@ -703,6 +784,8 @@ function PresenterPage() {
     // Cập nhật closure khi activity / display thay đổi để A/X/R nhận state mới nhất
     activeActivity?._id, displayActivity?._id, displayActivity?.status,
     isScriptMode, sortedActivities.length,
+    // Slide jump buffer
+    slideJumpBuffer, resetSlideJumpBuffer,
   ]);
 
   const [isStarting, setIsStarting] = useState<string | null>(null);
@@ -2022,6 +2105,22 @@ function PresenterPage() {
                 title="Mở Bảng thành tích để chiếu (Top 10, cập nhật realtime)"
               >
                 🏆 Bảng thành tích
+              </button>
+
+              <button
+                onClick={toggleBigTextMode}
+                className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                  bigTextMode
+                    ? "bg-amber-100 border-amber-400 text-amber-900 font-semibold"
+                    : "bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-700"
+                }`}
+                title="Bật/tắt text lớn trên màn chiếu cho SV ngồi cuối lớp"
+                aria-pressed={bigTextMode}
+              >
+                <span className="font-mono">{bigTextMode ? "A+" : "A"}</span>
+                <span className="text-[10px] opacity-70 hidden sm:inline">
+                  {bigTextMode ? "TEXT LỚN" : "TEXT THƯỜNG"}
+                </span>
               </button>
 
               <button
@@ -3516,33 +3615,51 @@ function PresenterPage() {
               ) : (
                 <div className="space-y-3">
                   {templatesList.map((tpl: any) => (
-                    <div key={tpl._id} className="bg-zinc-100 border border-zinc-300 rounded-xl p-4 flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">{tpl.name}</div>
+                    <div key={tpl._id} className="bg-zinc-100 border border-zinc-300 rounded-xl p-4 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium truncate">{tpl.name}</div>
                         <div className="text-xs text-zinc-500">
                           {tpl.activitiesSnapshot?.length || 0} hoạt động • {new Date(tpl.createdAt).toLocaleDateString('vi-VN')}
                         </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (!session?._id) return;
-                          if (!confirm(`Áp dụng kịch bản "${tpl.name}" vào buổi này? Toàn bộ hoạt động hiện tại sẽ bị thay thế.`)) return;
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={async () => {
+                            if (!session?._id) return;
+                            if (!confirm(`Áp dụng kịch bản "${tpl.name}" vào buổi này? Toàn bộ hoạt động hiện tại sẽ bị thay thế.`)) return;
 
-                          try {
-                            await applyTemplate({
-                              sessionId: session._id,
-                              templateId: tpl._id,
-                            });
-                            toast.success("Đã áp dụng kịch bản mẫu!");
-                            setShowTemplatesModal(false);
-                          } catch (e: any) {
-                            toast.error(e.message || "Không thể áp dụng");
-                          }
-                        }}
-                        className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 font-medium"
-                      >
-                        Áp dụng
-                      </button>
+                            try {
+                              await applyTemplate({
+                                sessionId: session._id,
+                                templateId: tpl._id,
+                              });
+                              toast.success("Đã áp dụng kịch bản mẫu!");
+                              setShowTemplatesModal(false);
+                            } catch (e: any) {
+                              toast.error(e.message || "Không thể áp dụng");
+                            }
+                          }}
+                          className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 font-medium text-white"
+                        >
+                          Áp dụng
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Xóa mẫu "${tpl.name}"? Hành động không hồi phục.`)) return;
+                            try {
+                              await deleteTemplate({ templateId: tpl._id });
+                              toast.success(`Đã xóa "${tpl.name}"`);
+                            } catch (e: any) {
+                              toast.error(e.message || "Không thể xóa");
+                            }
+                          }}
+                          className="p-2 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                          title={`Xóa mẫu "${tpl.name}"`}
+                          aria-label="Xóa mẫu"
+                        >
+                          🗑
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3590,6 +3707,7 @@ function PresenterPage() {
               startedAt={activeActivity.startedAt}
               timeLimitMinutes={activeActivity.timeLimit}
               position="center-top"
+              big={bigTextMode}
             />
           )}
           {/* Tab switcher ở trên cùng */}
@@ -3743,7 +3861,13 @@ function PresenterPage() {
                 </div>
 
                 {/* Tiêu đề activity (đề câu hỏi chính) — to nhất */}
-                <div className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-tight">
+                <div
+                  className={`font-bold tracking-tight leading-tight ${
+                    bigTextMode
+                      ? "text-6xl md:text-7xl lg:text-8xl"
+                      : "text-5xl md:text-6xl lg:text-7xl"
+                  }`}
+                >
                   {displayActivity.title}
                 </div>
 
@@ -3793,7 +3917,7 @@ function PresenterPage() {
                             </span>
                           </div>
                           {(cfg.options || []).length > 0 && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-2xl md:text-3xl text-left">
+                            <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 text-left ${bigTextMode ? "text-3xl md:text-4xl" : "text-2xl md:text-3xl"}`}>
                               {cfg.options!.map((o, i) => {
                                 // Chỉ hiển thị ✓ đáp án đúng KHI đã reveal (shouldShowResults).
                                 const isCorrect = cfg.isQuiz && (cfg.correctOptionIds || []).includes(o.id);
@@ -4110,7 +4234,17 @@ function PresenterPage() {
               startedAt={activeActivity.startedAt}
               timeLimitMinutes={activeActivity.timeLimit}
               position="top-left"
+              big={bigTextMode}
             />
+          )}
+
+          {/* Slide jump buffer indicator — chỉ hiện khi đang gõ số */}
+          {slideJumpBuffer.length > 0 && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[115] bg-amber-500/95 text-black px-5 py-2 rounded-xl shadow-2xl flex items-center gap-3 font-mono font-bold animate-pulse">
+              <span className="text-sm tracking-widest opacity-80">SLIDE</span>
+              <span className="text-3xl tabular-nums">{slideJumpBuffer}</span>
+              <span className="text-xs text-zinc-700 ml-1">↵ để nhảy</span>
+            </div>
           )}
           {/* Slide viewer chiếm phần lớn không gian */}
           <div className="flex-1 relative">

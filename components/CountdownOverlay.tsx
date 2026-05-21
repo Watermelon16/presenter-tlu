@@ -6,6 +6,7 @@ interface Props {
   startedAt: number;          // epoch ms khi activity bắt đầu
   timeLimitMinutes: number;   // tổng thời gian (phút)
   position?: "top-right" | "center-top" | "top-left";
+  big?: boolean;              // scale lên cho SV ngồi cuối lớp
   onElapsed?: () => void;     // callback khi hết giờ (chỉ gọi 1 lần)
 }
 
@@ -17,6 +18,7 @@ export function CountdownOverlay({
   startedAt,
   timeLimitMinutes,
   position = "top-right",
+  big = false,
   onElapsed,
 }: Props) {
   const totalMs = Math.round(timeLimitMinutes * 60 * 1000);
@@ -66,8 +68,8 @@ export function CountdownOverlay({
   };
 
   // SVG circular progress
-  const size = 96;
-  const stroke = 8;
+  const size = big ? 132 : 96;
+  const stroke = big ? 10 : 8;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - percentLeft);
@@ -107,10 +109,10 @@ export function CountdownOverlay({
           </div>
         </div>
         <div className="flex flex-col">
-          <div className="text-[10px] tracking-widest opacity-80 font-semibold">
+          <div className={`tracking-widest opacity-80 font-semibold ${big ? "text-xs" : "text-[10px]"}`}>
             THỜI GIAN
           </div>
-          <div className="font-mono font-bold text-4xl tabular-nums leading-none">
+          <div className={`font-mono font-bold tabular-nums leading-none ${big ? "text-6xl" : "text-4xl"}`}>
             {timeText}
           </div>
         </div>
