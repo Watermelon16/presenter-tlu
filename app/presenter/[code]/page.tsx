@@ -16,6 +16,8 @@ import { VnInput, VnTextarea } from "@/components/VnInput";
 import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
+import { SmartInsightsModal } from "@/components/SmartInsightsModal";
+import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 
 import {
   DndContext,
@@ -458,6 +460,8 @@ function PresenterPage() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const [showAiGenModal, setShowAiGenModal] = useState(false);
+  const [showInsightsModal, setShowInsightsModal] = useState(false);
+  const [gradingActivityId, setGradingActivityId] = useState<Id<"activities"> | null>(null);
 
   const handleUploadPdf = async (file: File) => {
     if (!session?._id) return;
@@ -818,6 +822,8 @@ function PresenterPage() {
   // Form state for creating Poll
   const [pollTitle, setPollTitle] = useState("");
   const [pollDescription, setPollDescription] = useState("");
+  // Opentext: đáp án mẫu để AI chấm tự động (optional)
+  const [referenceAnswer, setReferenceAnswer] = useState("");
   const [pollType, setPollType] = useState<"single_choice" | "multiple_choice">("single_choice");
   const [options, setOptions] = useState<string[]>(["", ""]);
   const [requiresStudentCode, setRequiresStudentCode] = useState(false);
@@ -1486,6 +1492,9 @@ function PresenterPage() {
         }
       } else if (effectiveType === "opentext") {
         config.maxLength = 500;
+        if (referenceAnswer.trim()) {
+          config.referenceAnswer = referenceAnswer.trim();
+        }
       } else if (effectiveType === "wordcloud") {
         config.maxLength = 30;
       } else if (effectiveType === "rating") {
@@ -1544,6 +1553,7 @@ function PresenterPage() {
       // Reset toàn bộ form
       setPollTitle("");
       setPollDescription("");
+      setReferenceAnswer("");
       setOptions(["", ""]);
       setRequiresStudentCode(false);
       setTimeLimitMode("unlimited");
@@ -1714,6 +1724,7 @@ function PresenterPage() {
     setCreateType(type);
     setPollTitle("");
     setPollDescription("");
+    setReferenceAnswer("");
     setSlideCue("");
     setTitleError("");
     setCreateError("");
@@ -1760,6 +1771,7 @@ function PresenterPage() {
     // ===== Bước 2: Reset toàn bộ state về default (tránh stale state từ edit/create trước) =====
     setPollTitle(activity.title || "");
     setPollDescription(activity.config?.description || "");
+    setReferenceAnswer(activity.config?.referenceAnswer || "");
     setSlideCue(activity.slideCue || "");
     setRequiresStudentCode(activity.requiresStudentCode || false);
     setCreateError("");
@@ -1974,6 +1986,19 @@ function PresenterPage() {
             </button>
           )}
 
+          {/* AI chấm opentext — chỉ hiện khi opentext có đáp án mẫu + đã đóng */}
+          {activity.type === "opentext" &&
+            activity.config?.referenceAnswer &&
+            (activity.status === "closed" || activity.status === "expired") && (
+              <button
+                onClick={() => setGradingActivityId(activity._id)}
+                className="px-3 py-1.5 text-xs rounded-lg bg-violet-100 border border-violet-300 text-violet-800 hover:bg-violet-200 font-medium transition-colors"
+                title="Mở modal chấm AI tự động + review từng câu"
+              >
+                🤖 Chấm AI
+              </button>
+            )}
+
           <button
             onClick={onEdit}
             disabled={activity.status === "active"}
@@ -2116,6 +2141,14 @@ function PresenterPage() {
                 title="Mở Bảng thành tích để chiếu (Top 10, cập nhật realtime)"
               >
                 🏆 Bảng thành tích
+              </button>
+
+              <button
+                onClick={() => setShowInsightsModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors"
+                title="AI phân tích kết quả buổi giảng — top mistakes, themes, summary cho GV và SV"
+              >
+                🧠 Phân tích AI
               </button>
 
               <button
@@ -3203,9 +3236,27 @@ function PresenterPage() {
 
                 {/* ===== OPEN TEXT-specific ===== */}
                 {createType === "opentext" && (
-                  <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-sm text-zinc-700">
-                    <div className="text-sm font-semibold text-teal-900 mb-2">⚙️ Cấu hình Trả lời ngắn</div>
-                    SV nhập câu trả lời ngắn (tối đa 500 ký tự). Khác Word Cloud: <strong>không gom tần suất</strong>, hiển thị danh sách tất cả câu trả lời. Phù hợp khi cần thu thập giải thích, ví dụ, lý do.
+                  <div className="space-y-3">
+                    <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-sm text-zinc-700">
+                      <div className="text-sm font-semibold text-teal-900 mb-2">⚙️ Cấu hình Trả lời ngắn</div>
+                      SV nhập câu trả lời ngắn (tối đa 500 ký tự). Khác Word Cloud: <strong>không gom tần suất</strong>, hiển thị danh sách tất cả câu trả lời.
+                    </div>
+
+                    <div className="p-4 bg-violet-50 border border-violet-200 rounded-xl">
+                      <label className="text-sm font-semibold text-violet-900 block mb-1.5">
+                        🤖 Đáp án mẫu (để AI tự chấm)
+                      </label>
+                      <VnTextarea
+                        value={referenceAnswer}
+                        onValueChange={setReferenceAnswer}
+                        placeholder="VD: Đập đất an toàn khi đáp ứng 3 điều kiện: ổn định mái dốc, không thấm nước quá mức, chịu được động đất."
+                        rows={3}
+                        className="w-full bg-white border border-violet-300 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-violet-500"
+                      />
+                      <div className="text-xs text-violet-700 mt-1.5">
+                        Để trống nếu không cần chấm tự động. Khi có đáp án mẫu, sau khi đóng hoạt động, bạn có thể bấm <strong>&ldquo;🤖 Chấm AI&rdquo;</strong> — AI so sánh từng câu trả lời với đáp án này → correct / partial / wrong. Bạn có thể override.
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -4470,6 +4521,24 @@ function PresenterPage() {
           existingActivityCount={activities?.length ?? 0}
           collectStudentCode={session.collectStudentCode ?? false}
           onClose={() => setShowAiGenModal(false)}
+        />
+      )}
+
+      {/* Smart insights AI modal */}
+      {showInsightsModal && session._id && (
+        <SmartInsightsModal
+          sessionId={session._id}
+          run={session.currentRun ?? 1}
+          sessionTitle={session.title}
+          onClose={() => setShowInsightsModal(false)}
+        />
+      )}
+
+      {/* AI grading opentext modal */}
+      {gradingActivityId && (
+        <OpentextGradingModal
+          activityId={gradingActivityId}
+          onClose={() => setGradingActivityId(null)}
         />
       )}
     </div>

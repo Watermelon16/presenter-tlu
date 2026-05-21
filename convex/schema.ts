@@ -111,6 +111,16 @@ export default defineSchema({
 
     // === Phiên (run) — response thuộc phiên nào ===
     run: v.optional(v.number()),
+
+    // === AI chấm tự động cho opentext (config.referenceAnswer + enableAiGrading) ===
+    aiGrade: v.optional(v.union(
+      v.literal("correct"),
+      v.literal("partial"),
+      v.literal("wrong")
+    )),
+    aiGradeReason: v.optional(v.string()),   // 1 câu giải thích từ AI
+    aiGradeModel: v.optional(v.string()),    // model nào chấm
+    manualGrade: v.optional(v.boolean()),    // GV đã override grade
   })
     .index("by_activity", ["activityId"])
     .index("by_session_and_student", ["sessionId", "studentCode"]),

@@ -161,6 +161,22 @@ async function computeSessionRunScores(
       }
     }
 
+    // Opentext AI grading: nếu có aiGrade, scale điểm theo độ chính xác.
+    // correct = 1x, partial = 0.5x, wrong = 0x. Chỉ áp dụng khi activity có referenceAnswer.
+    if (activity.type === "opentext") {
+      const cfg = activity.config as { referenceAnswer?: string } | undefined;
+      const hasReference = !!cfg?.referenceAnswer?.trim();
+      if (hasReference && resp.aiGrade) {
+        if (resp.aiGrade === "correct") {
+          // giữ basePoints
+        } else if (resp.aiGrade === "partial") {
+          basePoints = Math.round(basePoints * 0.5 * 10) / 10;
+        } else {
+          basePoints = 0;
+        }
+      }
+    }
+
     const speedBonus = computeSpeedBonus(basePoints, activity, resp.submittedAt);
     const total = basePoints + speedBonus;
 
