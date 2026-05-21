@@ -3448,21 +3448,23 @@ function PresenterPage() {
               </div>
             )}
 
-            {/* Card mã phòng + QR ở góc — SV vẫn join được khi đang chiếu slide */}
+            {/* Card mã phòng + QR ở góc trên phải — SV vẫn join được khi đang chiếu slide */}
             {hasPdf && (
-              <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-xl p-3 text-white shadow-2xl flex items-center gap-3">
+              <div className="absolute top-4 right-4 bg-black/75 backdrop-blur-md rounded-2xl p-3 text-white shadow-2xl text-center">
+                {/* Hàng 1: Mã phòng */}
+                <div className="text-[10px] text-zinc-400 tracking-[4px] font-semibold">MÃ PHÒNG</div>
+                <div className="font-mono font-bold tracking-[6px] text-3xl my-1 leading-none">{upperCode}</div>
+
+                {/* Hàng 2: QR code to */}
                 {qrDataUrl && (
                   <img
                     src={qrDataUrl}
                     alt="QR mã phòng"
-                    className="w-20 h-20 rounded-md bg-white p-1"
+                    className="w-44 h-44 rounded-lg bg-white p-1.5 mt-2 mx-auto"
                   />
                 )}
-                <div>
-                  <div className="text-[10px] text-zinc-400 tracking-widest">MÃ PHÒNG</div>
-                  <div className="font-mono font-bold tracking-[4px] text-xl">{upperCode}</div>
-                  <div className="text-[9px] text-zinc-500 mt-0.5">Quét QR hoặc nhập mã</div>
-                </div>
+
+                <div className="text-[10px] text-zinc-400 mt-1.5">Quét QR để tham gia</div>
               </div>
             )}
 
