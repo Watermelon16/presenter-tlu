@@ -133,19 +133,30 @@ function PresenterPage() {
   // displayActivity = activity đang được "focus" để hiện kết quả: active hoặc activity vừa đóng
   const displayActivity = activeActivity || revealedActivity || undefined;
 
-  // Ẩn/Hiện kết quả — declared trước shouldShowResults
-  const [resultsRevealed, setResultsRevealed] = useState(false);
+  // Reveal được bind vào key (activityId + startedAt) — đổi activity HOẶC restart =
+  // mất reveal NGAY trong render. Không dùng useEffect (chạy sau render → flash đáp án quiz).
+  const [answerRevealedKey, setAnswerRevealedKey] = useState<string | null>(null);
+  const currentRevealKey = displayActivity
+    ? `${displayActivity._id}:${displayActivity.startedAt ?? 0}`
+    : null;
+  const resultsRevealed = !!currentRevealKey && answerRevealedKey === currentRevealKey;
+  const setResultsRevealed = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      if (!currentRevealKey) return;
+      setAnswerRevealedKey((prevKey) => {
+        const prev = prevKey === currentRevealKey;
+        const value = typeof next === "function" ? next(prev) : next;
+        return value ? currentRevealKey : null;
+      });
+    },
+    [currentRevealKey]
+  );
 
   // Chỉ hiển thị chi tiết kết quả khi: activity đã đóng/hết giờ, HOẶC giảng viên đã reveal
   const shouldShowResults =
     !displayActivity ? false
     : displayActivity.status !== "active" ? true
     : resultsRevealed;
-
-  // Reset reveal khi đổi activity
-  useEffect(() => {
-    setResultsRevealed(false);
-  }, [displayActivity?._id]);
 
   // Lấy số lượng sinh viên
   const participants = useQuery(

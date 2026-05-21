@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { toast } from "sonner";
+import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -143,8 +144,33 @@ export function AiGenFromPdfModal({
         toast.success(`AI đã đề xuất ${editable.length} hoạt động`);
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Có lỗi khi gọi AI";
-      toast.error(msg);
+      // ConvexError có .data với { code, message, model } từ action
+      let msg = "Có lỗi khi gọi AI";
+      let isQuota = false;
+      if (e instanceof ConvexError) {
+        const data = e.data as { code?: string; message?: string; model?: string } | undefined;
+        if (data?.message) msg = data.message;
+        if (data?.code === "quota_exceeded") isQuota = true;
+      } else if (e instanceof Error) {
+        msg = e.message;
+        if (/quota|429|exceeded/i.test(msg)) isQuota = true;
+      }
+
+      if (isQuota) {
+        // Auto-suggest model khác (skip cái hiện tại)
+        const next = GEMINI_MODELS.find((m) => m.id !== selectedModel);
+        toast.error(msg, {
+          duration: 10000,
+          action: next
+            ? {
+                label: `Đổi sang ${next.label}`,
+                onClick: () => handleSelectModel(next.id),
+              }
+            : undefined,
+        });
+      } else {
+        toast.error(msg, { duration: 8000 });
+      }
       setStage("idle");
       setProgress("");
     }

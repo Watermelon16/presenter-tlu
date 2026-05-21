@@ -1,7 +1,7 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 /**
  * Generate gợi ý hoạt động từ text các slide PDF — gọi Google Gemini.
@@ -27,9 +27,10 @@ export const generateActivitiesFromPdf = action({
   handler: async (_ctx, args) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error(
-        "GEMINI_API_KEY chưa được cấu hình. Chạy: npx convex env set GEMINI_API_KEY <key>"
-      );
+      throw new ConvexError({
+        code: "no_key",
+        message: "GEMINI_API_KEY chưa được cấu hình trên server. Liên hệ admin.",
+      });
     }
 
     const maxSuggestions = Math.max(1, Math.min(args.maxSuggestions ?? 8, 20));
@@ -43,9 +44,10 @@ export const generateActivitiesFromPdf = action({
       .filter((p) => p.text.length > 20);
 
     if (cleanPages.length === 0) {
-      throw new Error(
-        "Không trích xuất được text có nghĩa từ PDF. Có thể slide là ảnh scan — cần OCR trước."
-      );
+      throw new ConvexError({
+        code: "empty_pdf",
+        message: "Không trích xuất được text có nghĩa từ PDF. Có thể slide là ảnh scan — cần OCR trước.",
+      });
     }
 
     // Build context, truncate để tránh vượt token (Gemini Flash ~1M nhưng input lớn vẫn tốn quota)
@@ -143,9 +145,27 @@ YÊU CẦU:
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(
-        `Gemini API lỗi (${response.status}): ${errText.slice(0, 300)}`
-      );
+      // ConvexError → message hiện được trên client (Error thường bị che thành "Server Error")
+      if (response.status === 429) {
+        throw new ConvexError({
+          code: "quota_exceeded",
+          model,
+          message: `Model "${model}" đã hết free quota hôm nay. Đổi sang model khác trong dropdown và thử lại.`,
+        });
+      }
+      if (response.status === 403 || response.status === 401) {
+        throw new ConvexError({
+          code: "auth",
+          model,
+          message: `GEMINI_API_KEY không hợp lệ hoặc bị thu hồi. Kiểm tra: npx convex env get --prod GEMINI_API_KEY`,
+        });
+      }
+      throw new ConvexError({
+        code: "gemini_error",
+        model,
+        status: response.status,
+        message: `Gemini API lỗi (${response.status}, model ${model}): ${errText.slice(0, 200)}`,
+      });
     }
 
     const data = (await response.json()) as {
@@ -162,21 +182,28 @@ YÊU CẦU:
     };
 
     if (data.promptFeedback?.blockReason) {
-      throw new Error(
-        `Gemini từ chối xử lý: ${data.promptFeedback.blockReason}`
-      );
+      throw new ConvexError({
+        code: "blocked",
+        message: `Gemini từ chối xử lý: ${data.promptFeedback.blockReason}`,
+      });
     }
 
     const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textContent) {
-      throw new Error("Gemini trả về dữ liệu rỗng. Thử lại sau.");
+      throw new ConvexError({
+        code: "empty_response",
+        message: "Gemini trả về dữ liệu rỗng. Thử lại sau hoặc đổi model.",
+      });
     }
 
     let parsed: { suggestions?: unknown };
     try {
       parsed = JSON.parse(textContent);
     } catch {
-      throw new Error("Gemini trả về JSON không hợp lệ");
+      throw new ConvexError({
+        code: "invalid_json",
+        message: "Gemini trả về JSON không hợp lệ. Thử model khác.",
+      });
     }
 
     const rawList = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
