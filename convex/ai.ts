@@ -22,6 +22,7 @@ export const generateActivitiesFromPdf = action({
     ),
     maxSuggestions: v.optional(v.number()),
     sessionTitle: v.optional(v.string()),
+    model: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -120,8 +121,18 @@ YÊU CẦU:
       },
     };
 
-    // Cho phép override model qua env GEMINI_MODEL (vd nếu model mặc định hết quota)
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    // Priority: arg model > env > default. Whitelist để chặn injection.
+    const ALLOWED_MODELS = new Set([
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-pro",
+      "gemini-flash-latest",
+      "gemini-flash-lite-latest",
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+    ]);
+    const requested = args.model || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = ALLOWED_MODELS.has(requested) ? requested : "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
@@ -218,6 +229,7 @@ YÊU CẦU:
       suggestions: cleaned,
       tokenUsage: data.usageMetadata ?? null,
       pagesProcessed: cleanPages.length,
+      modelUsed: model,
     };
   },
 });

@@ -10,6 +10,19 @@ import { Input } from "@/components/ui/input";
 
 type SuggestionType = "poll" | "wordcloud" | "opentext";
 
+// Whitelist phải khớp với ALLOWED_MODELS bên convex/ai.ts
+const GEMINI_MODELS: { id: string; label: string; hint: string }[] = [
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", hint: "Cân bằng — Mặc định, free 1500 req/ngày" },
+  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", hint: "Nhanh, nhẹ — quota free cao nhất" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", hint: "Thông minh nhất — free quota thấp (~50/ngày)" },
+  { id: "gemini-flash-latest", label: "Flash (latest)", hint: "Auto-route bản Flash mới nhất" },
+  { id: "gemini-flash-lite-latest", label: "Flash Lite (latest)", hint: "Auto-route bản Lite mới nhất" },
+  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", hint: "Phiên bản cũ — có thể đã hết quota" },
+  { id: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", hint: "Phiên bản cũ" },
+];
+
+const MODEL_STORAGE_KEY = "ai_gen_model_v1";
+
 type Suggestion = {
   slidePage: number;
   type: SuggestionType;
@@ -53,7 +66,24 @@ export function AiGenFromPdfModal({
   const [suggestions, setSuggestions] = useState<EditableSuggestion[]>([]);
   const [tokenInfo, setTokenInfo] = useState<string>("");
   const [maxSuggestions, setMaxSuggestions] = useState(8);
-  const [requiresStudentCode, setRequiresStudentCode] = useState(collectStudentCode);
+  // Default OFF — SV đã nhập danh tính khi vào phòng, không cần ép từng activity.
+  // Lecturer bật tay nếu muốn tính điểm cho hoạt động cụ thể.
+  const [requiresStudentCode, setRequiresStudentCode] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (typeof window === "undefined") return GEMINI_MODELS[0].id;
+    try {
+      const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (saved && GEMINI_MODELS.some((m) => m.id === saved)) return saved;
+    } catch {}
+    return GEMINI_MODELS[0].id;
+  });
+
+  const handleSelectModel = (id: string) => {
+    setSelectedModel(id);
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, id);
+    } catch {}
+  };
 
   const extractPdfText = async (): Promise<{ pageNumber: number; text: string }[]> => {
     setStage("extracting");
@@ -83,11 +113,12 @@ export function AiGenFromPdfModal({
       const pages = await extractPdfText();
 
       setStage("generating");
-      setProgress("Đang gửi cho AI phân tích...");
+      setProgress(`Đang gửi cho AI (${selectedModel})...`);
       const result = await generate({
         pages,
         maxSuggestions,
         sessionTitle,
+        model: selectedModel,
       });
 
       const editable: EditableSuggestion[] = result.suggestions.map((s, idx) => ({
@@ -97,9 +128,13 @@ export function AiGenFromPdfModal({
       }));
       setSuggestions(editable);
 
-      if (result.tokenUsage?.totalTokenCount) {
-        setTokenInfo(`${result.tokenUsage.totalTokenCount} tokens · ${result.pagesProcessed} trang`);
-      }
+      const tokens = result.tokenUsage?.totalTokenCount;
+      const modelLabel = result.modelUsed ?? selectedModel;
+      setTokenInfo(
+        [tokens ? `${tokens} tokens` : null, `${result.pagesProcessed} trang`, modelLabel]
+          .filter(Boolean)
+          .join(" · ")
+      );
 
       setStage("review");
       if (editable.length === 0) {
@@ -228,7 +263,8 @@ export function AiGenFromPdfModal({
           requiresStudentCode,
           timeLimit: s.suggestedTimeLimit > 0 ? s.suggestedTimeLimit : undefined,
           order: nextOrder++,
-          slideCue: `Slide ${s.slidePage}`,
+          // CHỈ điền số trang — parser app dùng /^\d+$/ để auto-match slide.
+          slideCue: String(s.slidePage),
         });
         saved++;
       } catch (e) {
@@ -290,6 +326,24 @@ export function AiGenFromPdfModal({
               <p className="text-xs text-zinc-500">AI sẽ phân bổ các hoạt động qua các trang slide.</p>
             </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Model AI</label>
+              <select
+                value={selectedModel}
+                onChange={(e) => handleSelectModel(e.target.value)}
+                className="w-full h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
+              >
+                {GEMINI_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label} — {m.hint}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-zinc-500">
+                Đổi model nếu gặp lỗi <span className="font-mono">quota exceeded</span>. Tất cả đều free tier.
+              </p>
+            </div>
+
             <label className="flex items-start gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -299,10 +353,14 @@ export function AiGenFromPdfModal({
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Yêu cầu mã sinh viên</span> (ghi nhận điểm danh)
+                <span className="font-medium">Tính điểm cho các hoạt động này</span>
+                <span className="block text-xs text-zinc-500 mt-0.5">
+                  Mặc định TẮT — bật nếu muốn hoạt động AI gen ghi nhận điểm cho từng SV.
+                  SV đã nhập danh tính lúc vào phòng nên không bị hỏi lại.
+                </span>
                 {!collectStudentCode && (
                   <span className="block text-xs text-amber-600 mt-0.5">
-                    Buổi giảng đang tắt thu thập mã SV — bật trong cài đặt nếu cần.
+                    Buổi giảng đang tắt thu thập mã SV — không thể bật.
                   </span>
                 )}
               </span>
