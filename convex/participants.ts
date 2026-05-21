@@ -58,15 +58,17 @@ export const joinSession = mutation({
       )
       .first();
 
-    if (existing) {
-      // CHECK 2: studentCode đã có nhưng đang join từ thiết bị khác → flag (có thể là điểm danh hộ)
+    const currentRun = session.currentRun ?? 1;
+
+    // CHECK 2: tìm participant của SV này trong PHIÊN HIỆN TẠI (run filter)
+    // Nếu existing là của phiên trước → tạo participant mới cho phiên này
+    if (existing && (existing.run ?? 1) === currentRun) {
       const patch: Record<string, unknown> = {
         fullName,
         className,
       };
 
       if (deviceId && existing.deviceId && existing.deviceId !== deviceId) {
-        // Đổi thiết bị giữa chừng — flag để giảng viên kiểm tra
         patch.deviceId = deviceId;
         patch.flagged = true;
         patch.flagReason = `Đăng nhập từ ${(existing.deviceChangeCount ?? 0) + 2} thiết bị khác nhau (nghi vấn điểm danh hộ)`;
@@ -79,7 +81,7 @@ export const joinSession = mutation({
       return { participantId: existing._id, sessionId: session._id, flagged: !!patch.flagged };
     }
 
-    // Tạo bản ghi mới
+    // Tạo bản ghi mới — gắn currentRun
     const participantId = await ctx.db.insert("participants", {
       sessionId: session._id,
       studentCode,
@@ -88,6 +90,7 @@ export const joinSession = mutation({
       joinedAt: Date.now(),
       deviceId,
       deviceChangeCount: 0,
+      run: currentRun,
     });
 
     return { participantId, sessionId: session._id, flagged: false };
@@ -98,10 +101,13 @@ export const joinSession = mutation({
 export const listParticipants = query({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const session = await ctx.db.get(args.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    const all = await ctx.db
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .order("desc")
       .collect();
+    return all.filter((p) => (p.run ?? 1) === currentRun);
   },
 });

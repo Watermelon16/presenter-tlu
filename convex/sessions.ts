@@ -16,14 +16,21 @@ export const createSession = mutation({
       code,
       title: args.title.trim(),
       hostName: args.hostName?.trim(),
-      collectStudentCode: args.collectStudentCode ?? true,   // Mặc định thu thập (phù hợp mục đích tính điểm)
+      collectStudentCode: args.collectStudentCode ?? true,
       status: "active",
       createdAt: Date.now(),
+      currentRun: 1,  // Phiên đầu tiên
     });
 
     return { sessionId, code };
   },
 });
+
+// Đọc số phiên hiện tại của session — backward compat: undefined → 1
+export async function readCurrentRun(ctx: { db: { get: (id: string) => Promise<{ currentRun?: number } | null> } }, sessionId: string): Promise<number> {
+  const s = await ctx.db.get(sessionId);
+  return s?.currentRun ?? 1;
+}
 
 // Lấy thông tin phòng theo mã
 export const getSessionByCode = query({
@@ -103,13 +110,13 @@ export const setScriptPosition = mutation({
 });
 
 /**
- * Reset phiên giảng — bắt đầu PHIÊN MỚI với cùng kịch bản hoạt động.
+ * Bắt đầu PHIÊN MỚI cho session — giữ lịch sử các phiên cũ.
  *
- * Xóa: tất cả response, participant, board posts, scoring tạm.
- * Reset: trạng thái activity về NHÁP, script position về 0.
- * Giữ: activities (tiêu đề, config, options, slide cue), session info, PDF nếu có, scoring config.
+ * Tăng currentRun, reset activities về NHÁP. KHÔNG xóa data — responses,
+ * participants, boardPosts của các phiên cũ vẫn còn trong DB (filtered ra
+ * khi query bằng run number).
  *
- * Dùng khi: dạy cùng nội dung cho 1 lớp khác (cùng giảng viên, cùng kịch bản).
+ * Dùng khi: dạy cùng nội dung cho 1 lớp khác.
  */
 export const resetSessionForNewRun = mutation({
   args: { sessionId: v.id("sessions") },
@@ -117,64 +124,90 @@ export const resetSessionForNewRun = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new Error("Không tìm thấy buổi giảng");
 
-    // Xóa tất cả responses của session
-    const responses = await ctx.db
-      .query("responses")
-      .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
-    for (const r of responses) {
-      await ctx.db.delete(r._id);
-    }
+    const oldRun = session.currentRun ?? 1;
+    const newRun = oldRun + 1;
 
-    // Xóa tất cả board posts
-    const boardPosts = await ctx.db
-      .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
-      .collect();
-    for (const p of boardPosts) {
-      await ctx.db.delete(p._id);
-    }
-
-    // Xóa tất cả participants (SV phải join lại với phiên mới)
-    const participants = await ctx.db
-      .query("participants")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
-    for (const p of participants) {
-      await ctx.db.delete(p._id);
-    }
-
-    // Reset trạng thái tất cả activities về NHÁP, xóa thời gian start/close
+    // Reset trạng thái tất cả activities về NHÁP
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
-    let resetActivityCount = 0;
     for (const a of activities) {
       await ctx.db.patch(a._id, {
         status: "draft",
         startedAt: undefined,
         closedAt: undefined,
       });
-      resetActivityCount++;
     }
 
-    // Reset script position
+    // Tăng currentRun + reset session state, KHÔNG xóa data cũ
     await ctx.db.patch(args.sessionId, {
       isScriptRunning: false,
       currentScriptPosition: 0,
-      status: "active",  // Khôi phục trạng thái active nếu đã ended
+      status: "active",
       endedAt: undefined,
-      pdfCurrentPage: 1, // Reset slide PDF về trang 1
+      pdfCurrentPage: 1,
+      currentRun: newRun,
     });
 
     return {
       success: true,
-      activitiesReset: resetActivityCount,
-      responsesDeleted: responses.length,
-      participantsDeleted: participants.length,
-      boardPostsDeleted: boardPosts.length,
+      activitiesReset: activities.length,
+      oldRun,
+      newRun,
     };
+  },
+});
+
+/**
+ * Liệt kê các phiên đã chạy của session (kèm số participant + response của mỗi phiên).
+ */
+export const listRuns = query({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return { current: 1, runs: [] };
+
+    const currentRun = session.currentRun ?? 1;
+
+    const participants = await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    // Gom số participant + response theo run
+    const runStats = new Map<number, { participantCount: number; responseCount: number }>();
+    for (let i = 1; i <= currentRun; i++) {
+      runStats.set(i, { participantCount: 0, responseCount: 0 });
+    }
+    for (const p of participants) {
+      const r = p.run ?? 1;
+      const stat = runStats.get(r) || { participantCount: 0, responseCount: 0 };
+      stat.participantCount++;
+      runStats.set(r, stat);
+    }
+    for (const res of responses) {
+      const r = res.run ?? 1;
+      const stat = runStats.get(r) || { participantCount: 0, responseCount: 0 };
+      stat.responseCount++;
+      runStats.set(r, stat);
+    }
+
+    const runs = Array.from(runStats.entries())
+      .map(([number, stat]) => ({
+        number,
+        isCurrent: number === currentRun,
+        participantCount: stat.participantCount,
+        responseCount: stat.responseCount,
+      }))
+      .sort((a, b) => b.number - a.number); // mới nhất trước
+
+    return { current: currentRun, runs };
   },
 });
 

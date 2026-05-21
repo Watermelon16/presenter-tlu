@@ -34,9 +34,11 @@ export const submitResponse = mutation({
       throw new Error("Hoạt động này yêu cầu nhập mã sinh viên");
     }
 
-    // Kiểm tra xem đã trả lời chưa (tránh trả lời nhiều lần)
+    // Kiểm tra đã trả lời chưa (theo PHIÊN HIỆN TẠI — phiên mới SV được trả lời lại)
+    const sessionForCheck = await ctx.db.get(activity.sessionId);
+    const runForCheck = sessionForCheck?.currentRun ?? 1;
     if (args.studentCode) {
-      const existing = await ctx.db
+      const existings = await ctx.db
         .query("responses")
         .withIndex("by_session_and_student", (q) =>
           q
@@ -44,9 +46,10 @@ export const submitResponse = mutation({
             .eq("studentCode", args.studentCode)
         )
         .filter((q) => q.eq(q.field("activityId"), args.activityId))
-        .first();
+        .collect();
 
-      if (existing) {
+      const existingInCurrentRun = existings.find((r) => (r.run ?? 1) === runForCheck);
+      if (existingInCurrentRun) {
         throw new Error("Bạn đã trả lời hoạt động này rồi");
       }
     }
@@ -71,6 +74,10 @@ export const submitResponse = mutation({
       }
     }
 
+    // Lấy currentRun từ session
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
     await ctx.db.insert("responses", {
       activityId: args.activityId,
       sessionId: activity.sessionId,
@@ -80,6 +87,7 @@ export const submitResponse = mutation({
       submittedAt: Date.now(),
       deviceId: args.deviceId,
       deviceMismatch,
+      run: currentRun,
     });
 
     return { success: true, deviceMismatch: !!deviceMismatch };
@@ -97,31 +105,34 @@ export const getMyHistoryInSession = query({
   },
   handler: async (ctx, args) => {
     if (!args.studentCode) {
-      return { items: [], stats: { participatedCount: 0, totalAnswered: 0, totalActivities: 0 } };
+      return { items: [], stats: { participatedCount: 0, totalAnswered: 0, totalActivities: 0 }, run: 1 };
     }
+
+    const session = await ctx.db.get(args.sessionId);
+    const currentRun = session?.currentRun ?? 1;
 
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
 
-    // Bỏ qua draft (SV chưa nhìn thấy)
     const visible = activities
       .filter((a) => a.status !== "draft")
       .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
-    // Tất cả responses của SV trong buổi
-    const myResponses = await ctx.db
+    // Tất cả responses của SV — filter theo phiên hiện tại
+    const myAllResponses = await ctx.db
       .query("responses")
       .withIndex("by_session_and_student", (q) =>
         q.eq("sessionId", args.sessionId).eq("studentCode", args.studentCode)
       )
       .collect();
+    const myResponses = myAllResponses.filter((r) => (r.run ?? 1) === currentRun);
 
     const responseByActivity = new Map(myResponses.map((r) => [r.activityId, r]));
 
-    // Board posts của SV
-    const boardPosts = await ctx.db
+    // Board posts của SV — filter theo phiên
+    const allBoardPosts = await ctx.db
       .query("boardPosts")
       .filter((q) =>
         q.and(
@@ -130,6 +141,7 @@ export const getMyHistoryInSession = query({
         )
       )
       .collect();
+    const boardPosts = allBoardPosts.filter((p) => (p.run ?? 1) === currentRun);
 
     const boardPostsByActivity = new Map<string, typeof boardPosts>();
     for (const p of boardPosts) {
@@ -138,11 +150,12 @@ export const getMyHistoryInSession = query({
       boardPostsByActivity.set(p.activityId, arr);
     }
 
-    // Đếm tổng số response cho từng activity (để hiển thị "X SV đã trả lời")
-    const allResponses = await ctx.db
+    // Đếm tổng response — filter theo phiên
+    const allResponsesRaw = await ctx.db
       .query("responses")
       .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
       .collect();
+    const allResponses = allResponsesRaw.filter((r) => (r.run ?? 1) === currentRun);
 
     const totalResponseCountByActivity = new Map<string, number>();
     for (const r of allResponses) {
@@ -188,6 +201,7 @@ export const getMyHistoryInSession = query({
         totalAnswered,
         totalActivities: items.length,
       },
+      run: currentRun,
     };
   },
 });
@@ -204,15 +218,19 @@ export const getMyResponse = query({
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return null;
 
-    const existing = await ctx.db
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const candidates = await ctx.db
       .query("responses")
       .withIndex("by_session_and_student", (q) =>
         q.eq("sessionId", activity.sessionId).eq("studentCode", args.studentCode)
       )
       .filter((q) => q.eq(q.field("activityId"), args.activityId))
-      .first();
+      .collect();
 
-    return existing;
+    // Chỉ trả response thuộc phiên hiện tại (để SV không bị chặn submit khi phiên mới)
+    return candidates.find((r) => (r.run ?? 1) === currentRun) ?? null;
   },
 });
 
@@ -220,10 +238,16 @@ export const getMyResponse = query({
 export const getActivityResponses = query({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return [];
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const all = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .collect();
+    return all.filter((r) => (r.run ?? 1) === currentRun);
   },
 });
 
@@ -252,11 +276,17 @@ export const getActivityResults = query({
 export const getWordCloudResults = query({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {
-    const responses = await ctx.db
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return { words: [], totalResponses: 0 };
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const all = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .filter((q) => q.eq(q.field("status"), "answered"))
       .collect();
+    const responses = all.filter((r) => (r.run ?? 1) === currentRun);
 
     const wordCounts = new Map<string, number>();
 
@@ -284,11 +314,17 @@ export const getWordCloudResults = query({
 export const getRatingResults = query({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {
-    const responses = await ctx.db
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return { distribution: {}, average: 0, total: 0 };
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const all = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .filter((q) => q.eq(q.field("status"), "answered"))
       .collect();
+    const responses = all.filter((r) => (r.run ?? 1) === currentRun);
 
     const distribution: Record<number, number> = {};
     let sum = 0;
@@ -406,14 +442,19 @@ export const createNoResponseRecords = mutation({
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .collect();
 
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    // Lọc participants + responses theo run hiện tại
+    const currentParticipants = participants.filter((p) => (p.run ?? 1) === currentRun);
     const respondedCodes = new Set(
       existingResponses
-        .filter((r) => r.studentCode)
+        .filter((r) => r.studentCode && (r.run ?? 1) === currentRun)
         .map((r) => r.studentCode)
     );
 
-    // Tạo no_response cho những người chưa trả lời
-    for (const participant of participants) {
+    // Tạo no_response cho những người chưa trả lời trong phiên hiện tại
+    for (const participant of currentParticipants) {
       if (!respondedCodes.has(participant.studentCode)) {
         await ctx.db.insert("responses", {
           activityId: args.activityId,
@@ -422,6 +463,7 @@ export const createNoResponseRecords = mutation({
           value: null,
           status: "no_response",
           submittedAt: Date.now(),
+          run: currentRun,
         });
       }
     }
@@ -432,15 +474,18 @@ export const createNoResponseRecords = mutation({
 // Các query hỗ trợ UI (dành cho giảng viên)
 // ============================================
 
-// Lấy danh sách sinh viên đã tham gia buổi (có mã sinh viên)
+// Lấy danh sách sinh viên đã tham gia buổi (có mã sinh viên) — phiên hiện tại
 export const listSessionParticipants = query({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const session = await ctx.db.get(args.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    const all = await ctx.db
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .order("asc")
       .collect();
+    return all.filter((p) => (p.run ?? 1) === currentRun);
   },
 });
 
@@ -453,11 +498,17 @@ export const getPollVoteCounts = query({
       return { options: [], totalAnswered: 0 };
     }
 
-    const responses = await ctx.db
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .filter((q) => q.eq(q.field("status"), "answered"))
       .collect();
+
+    // Lọc theo phiên hiện tại (undefined = run 1, backward compat)
+    const responses = allResponses.filter((r) => (r.run ?? 1) === currentRun);
 
     const config = activity.config as { options?: { id: string; text: string }[] } | undefined;
     const options = config?.options || [];
@@ -505,15 +556,20 @@ export const getActivityParticipationStatus = query({
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return [];
 
-    const participants = await ctx.db
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const allParticipants = await ctx.db
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", activity.sessionId))
       .collect();
+    const participants = allParticipants.filter((p) => (p.run ?? 1) === currentRun);
 
-    const responses = await ctx.db
+    const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .collect();
+    const responses = allResponses.filter((r) => (r.run ?? 1) === currentRun);
 
     const responseMap = new Map(
       responses.map((r) => [r.studentCode, r])
@@ -549,10 +605,14 @@ export const getDetailedPollResults = query({
       return null;
     }
 
-    const responses = await ctx.db
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .collect();
+    const responses = allResponses.filter((r) => (r.run ?? 1) === currentRun);
 
     const answeredResponses = responses.filter((r) => r.status === "answered");
     const noResponseCount = responses.filter((r) => r.status === "no_response").length;
@@ -691,10 +751,14 @@ export const getActivityResponsesWithStudents = query({
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return [];
 
-    const responses = await ctx.db
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .collect();
+    const responses = allResponses.filter((r) => (r.run ?? 1) === currentRun);
 
     if (!activity.requiresStudentCode) {
       return responses.map((r) => ({
@@ -735,14 +799,21 @@ export const getActivityResponsesWithStudents = query({
  * Rất hữu ích để giảng viên chấm điểm tham gia.
  */
 export const getSessionFullExport = query({
-  args: { sessionId: v.id("sessions") },
+  args: {
+    sessionId: v.id("sessions"),
+    run: v.optional(v.number()), // mặc định: phiên hiện tại
+  },
   handler: async (ctx, args) => {
-    // Lấy tất cả sinh viên đã tham gia
-    const participants = await ctx.db
+    const session = await ctx.db.get(args.sessionId);
+    const targetRun = args.run ?? session?.currentRun ?? 1;
+
+    // Lấy participants của phiên target
+    const allParticipants = await ctx.db
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .order("asc")
       .collect();
+    const participants = allParticipants.filter((p) => (p.run ?? 1) === targetRun);
 
     // Lấy tất cả hoạt động theo thứ tự
     const activities = await ctx.db
@@ -752,22 +823,24 @@ export const getSessionFullExport = query({
 
     const sortedActivities = activities.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
-    // Lấy tất cả responses của buổi
+    // Lấy responses của phiên target
     const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
       .collect();
+    const filteredResponses = allResponses.filter((r) => (r.run ?? 1) === targetRun);
 
-    // Lấy tất cả board posts của buổi (qua mọi activity)
-    const allBoardPosts = await ctx.db
+    // Lấy board posts của phiên target
+    const allBoardPostsRaw = await ctx.db
       .query("boardPosts")
       .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
       .collect();
+    const allBoardPosts = allBoardPostsRaw.filter((p) => (p.run ?? 1) === targetRun);
 
     // Gom responses theo studentCode + activityId
     const responseMap = new Map<string, any>(); // key = `${studentCode}:${activityId}`
 
-    allResponses.forEach((res) => {
+    filteredResponses.forEach((res) => {
       if (res.studentCode) {
         const key = `${res.studentCode}:${res.activityId}`;
         responseMap.set(key, res);
@@ -834,6 +907,7 @@ export const getSessionFullExport = query({
         requiresStudentCode: a.requiresStudentCode,
       })),
       students,
+      run: targetRun,
     };
   },
 });

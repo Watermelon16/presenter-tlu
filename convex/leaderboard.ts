@@ -43,32 +43,39 @@ export const updateScoringConfig = mutation({
 
 // Tính điểm tham gia của sinh viên trong buổi
 export const getParticipationLeaderboard = query({
-  args: { sessionId: v.id("sessions") },
+  args: {
+    sessionId: v.id("sessions"),
+    run: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
     if (!session) return [];
 
     const config = session.scoringConfig ?? DEFAULT_SCORING;
+    const targetRun = args.run ?? session.currentRun ?? 1;
 
-    const participants = await ctx.db
+    const participantsRaw = await ctx.db
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
+    const participants = participantsRaw.filter((p) => (p.run ?? 1) === targetRun);
 
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
 
-    const responses = await ctx.db
+    const allResponses = await ctx.db
       .query("responses")
       .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
       .collect();
+    const responses = allResponses.filter((r) => (r.run ?? 1) === targetRun);
 
-    const boardPosts = await ctx.db
+    const allBoardPosts = await ctx.db
       .query("boardPosts")
       .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
       .collect();
+    const boardPosts = allBoardPosts.filter((p) => (p.run ?? 1) === targetRun);
 
     const scoreMap = new Map<string, number>();
     // Tổng và đếm thời gian phản hồi để tính TB (ms)

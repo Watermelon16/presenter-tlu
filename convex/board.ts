@@ -1,18 +1,26 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-// Lấy danh sách tất cả bài đăng của một Board (realtime)
+// Lấy danh sách tất cả bài đăng của một Board (realtime) — chỉ phiên hiện tại
 export const listBoardPosts = query({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return [];
+
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
     const posts = await ctx.db
       .query("boardPosts")
       .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
       .filter((q) => q.eq(q.field("status"), "visible"))
       .collect();
 
-    // Sắp xếp: theo likes giảm dần, rồi mới nhất trước
-    return posts.sort((a, b) => {
+    // Filter theo run hiện tại (undefined = run 1, backward compat)
+    const currentRunPosts = posts.filter((p) => (p.run ?? 1) === currentRun);
+
+    return currentRunPosts.sort((a, b) => {
       if (b.likes !== a.likes) return b.likes - a.likes;
       return b.createdAt - a.createdAt;
     });
@@ -61,6 +69,9 @@ export const createBoardPost = mutation({
       }
     }
 
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
     const postId = await ctx.db.insert("boardPosts", {
       activityId: args.activityId,
       sessionId: activity.sessionId,
@@ -71,6 +82,7 @@ export const createBoardPost = mutation({
       likes: 0,
       status: "visible",
       createdAt: Date.now(),
+      run: currentRun,
     });
 
     return postId;

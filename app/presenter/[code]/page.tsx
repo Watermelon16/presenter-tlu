@@ -1732,7 +1732,14 @@ function PresenterPage() {
             <div className="h-8 w-px bg-zinc-100" />
 
             <div>
-              <div className="text-sm text-zinc-600">Buổi giảng</div>
+              <div className="text-sm text-zinc-600 flex items-center gap-1.5">
+                Buổi giảng
+                {(session.currentRun ?? 1) > 1 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
+                    PHIÊN #{session.currentRun}
+                  </span>
+                )}
+              </div>
               <div className="text-lg font-medium">{session.title}</div>
             </div>
           </div>
@@ -1813,21 +1820,23 @@ function PresenterPage() {
               className="px-3 py-2 text-sm rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
               onClick={async () => {
                 if (!session?._id) return;
+                const nextRun = (session.currentRun ?? 1) + 1;
                 if (!confirm(
-                  "BẮT ĐẦU PHIÊN MỚI?\n\n" +
-                  "• Xóa tất cả câu trả lời + danh sách SV + bài Board hiện tại\n" +
-                  "• Reset các hoạt động về trạng thái NHÁP\n" +
+                  `BẮT ĐẦU PHIÊN #${nextRun}?\n\n` +
+                  `• Lịch sử phiên #${session.currentRun ?? 1} (SV, câu trả lời, board) được LƯU LẠI trong DB\n` +
+                  "• Hoạt động reset về NHÁP để chạy lại từ đầu\n" +
+                  "• SV cũ cần join lại với tư cách phiên mới\n" +
                   "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm\n\n" +
-                  "Dùng khi dạy cùng nội dung cho lớp khác. Không hồi phục được sau khi xóa."
+                  "Dùng khi dạy cùng nội dung cho lớp khác."
                 )) return;
                 try {
                   const result = await resetSessionForNewRun({ sessionId: session._id });
-                  toast.success(`Đã bắt đầu phiên mới. Reset ${result.activitiesReset} hoạt động.`);
+                  toast.success(`Đã bắt đầu Phiên #${result.newRun}. Reset ${result.activitiesReset} hoạt động.`);
                 } catch (e: unknown) {
                   toast.error(e instanceof Error ? e.message : "Không thể reset phiên");
                 }
               }}
-              title="Xóa response + participant, giữ activities — bắt đầu phiên mới với cùng kịch bản"
+              title="Tăng số phiên, reset activities. Giữ lịch sử các phiên cũ trong DB."
             >
               🔄 Phiên mới
             </button>

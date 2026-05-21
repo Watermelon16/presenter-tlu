@@ -31,6 +31,11 @@ export default defineSchema({
     pdfFileName: v.optional(v.string()),
     pdfNumPages: v.optional(v.number()),
     pdfCurrentPage: v.optional(v.number()),  // Trang đang chiếu (sync giữa các tab)
+
+    // === Phiên giảng (run) — 1 buổi giảng có thể chạy lại nhiều lần cho nhiều lớp ===
+    // currentRun bắt đầu từ 1 và tăng mỗi lần "Bắt đầu phiên mới"
+    // Records cũ không có field run → coi như run = 1 (backward compat)
+    currentRun: v.optional(v.number()),
   })
     .index("by_code", ["code"])
     .index("by_created", ["createdAt"]),
@@ -48,6 +53,9 @@ export default defineSchema({
     flagged: v.optional(v.boolean()),         // Có dấu hiệu bất thường (đổi thiết bị giữa chừng v.v.)
     flagReason: v.optional(v.string()),       // Lý do để giảng viên xem
     deviceChangeCount: v.optional(v.number()),// Số lần đổi thiết bị
+
+    // === Phiên (run) — participant join trong phiên nào ===
+    run: v.optional(v.number()),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])
@@ -99,6 +107,9 @@ export default defineSchema({
     submittedAt: v.number(),
     deviceId: v.optional(v.string()),      // Thiết bị submit — để chống làm bài hộ
     deviceMismatch: v.optional(v.boolean()),// Khác device của participant → flag
+
+    // === Phiên (run) — response thuộc phiên nào ===
+    run: v.optional(v.number()),
   })
     .index("by_activity", ["activityId"])
     .index("by_session_and_student", ["sessionId", "studentCode"]),
@@ -114,6 +125,9 @@ export default defineSchema({
     likes: v.number(),                     // Số lượt like
     status: v.union(v.literal("visible"), v.literal("hidden")),
     createdAt: v.number(),
+
+    // === Phiên (run) — bài đăng thuộc phiên nào ===
+    run: v.optional(v.number()),
   })
     .index("by_activity", ["activityId"])
     .index("by_activity_and_column", ["activityId", "columnId"]),
