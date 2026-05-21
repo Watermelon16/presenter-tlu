@@ -664,9 +664,10 @@ function PresenterPage() {
         }
       }
 
-      // R = Reveal — công bố / ẩn chi tiết kết quả
+      // R = Reveal — công bố / ẩn chi tiết kết quả (chỉ có hiệu lực khi activity còn active;
+      // khi closed thì shouldShowResults đã = true rồi nên toggle không ảnh hưởng)
       if (e.key === "r" || e.key === "R") {
-        if (fullscreenOverlay === "result" && displayActivity && displayActivity.status === "active") {
+        if (fullscreenOverlay === "result") {
           e.preventDefault();
           setResultsRevealed((prev) => {
             const next = !prev;
@@ -679,7 +680,12 @@ function PresenterPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fullscreenOverlay, hasPdf, pdfCurrentPage, pdfTotalPages, closeOverlay, switchOverlay]);
+  }, [
+    fullscreenOverlay, hasPdf, pdfCurrentPage, pdfTotalPages, closeOverlay, switchOverlay,
+    // Cập nhật closure khi activity / display thay đổi để A/X/R nhận state mới nhất
+    activeActivity?._id, displayActivity?._id, displayActivity?.status,
+    isScriptMode, sortedActivities.length,
+  ]);
 
   const [isStarting, setIsStarting] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
