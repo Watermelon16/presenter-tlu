@@ -9,10 +9,13 @@
  */
 
 import type * as activities from "../activities.js";
+import type * as ai from "../ai.js";
 import type * as board from "../board.js";
 import type * as files from "../files.js";
 import type * as leaderboard from "../leaderboard.js";
 import type * as participants from "../participants.js";
+import type * as push from "../push.js";
+import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as responses from "../responses.js";
 import type * as scriptTemplates from "../scriptTemplates.js";
 import type * as sessions from "../sessions.js";
@@ -25,10 +28,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activities: typeof activities;
+  ai: typeof ai;
   board: typeof board;
   files: typeof files;
   leaderboard: typeof leaderboard;
   participants: typeof participants;
+  push: typeof push;
+  pushSubscriptions: typeof pushSubscriptions;
   responses: typeof responses;
   scriptTemplates: typeof scriptTemplates;
   sessions: typeof sessions;

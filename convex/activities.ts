@@ -61,6 +61,8 @@ export const startActivity = mutation({
     const activity = await ctx.db.get(args.activityId);
     if (!activity) throw new Error("Không tìm thấy hoạt động");
 
+    const session = await ctx.db.get(activity.sessionId);
+
     const now = Date.now();
 
     await ctx.db.patch(args.activityId, {
@@ -77,6 +79,29 @@ export const startActivity = mutation({
         internal.activities.internalExpireActivity,
         { activityId: args.activityId }
       );
+    }
+
+    // Gửi push notification cho SV đã subscribe (nếu VAPID đã cấu hình)
+    if (session) {
+      const typeLabel =
+        activity.type === "poll"
+          ? "Trắc nghiệm"
+          : activity.type === "wordcloud"
+            ? "Word Cloud"
+            : activity.type === "rating"
+              ? "Đánh giá"
+              : activity.type === "board"
+                ? "Bảng tương tác"
+                : activity.type === "qa"
+                  ? "Hỏi đáp"
+                  : "Câu hỏi mở";
+      await ctx.scheduler.runAfter(0, internal.push.sendActivityNotification, {
+        sessionId: activity.sessionId,
+        activityId: args.activityId,
+        title: `🟢 ${typeLabel} mới`,
+        body: activity.title,
+        url: `/room/${session.code}`,
+      });
     }
 
     return true;

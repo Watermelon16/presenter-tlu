@@ -59,7 +59,8 @@ export default defineSchema({
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])
-    .index("by_session_and_device", ["sessionId", "deviceId"]),
+    .index("by_session_and_device", ["sessionId", "deviceId"])
+    .index("by_student", ["studentCode"]),
 
   // Hoạt động trong buổi giảng (Poll, Board, Q&A...)
   activities: defineTable({
@@ -131,6 +132,18 @@ export default defineSchema({
   })
     .index("by_activity", ["activityId"])
     .index("by_activity_and_column", ["activityId", "columnId"]),
+
+  // Web Push subscriptions — để gửi notification khi giảng viên kích hoạt activity
+  pushSubscriptions: defineTable({
+    sessionId: v.id("sessions"),
+    studentCode: v.optional(v.string()),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_endpoint", ["endpoint"]),
 
   // Kịch bản mẫu (lưu để tái sử dụng cho các buổi sau)
   scriptTemplates: defineTable({

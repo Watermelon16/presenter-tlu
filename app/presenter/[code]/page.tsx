@@ -13,6 +13,8 @@ import QRCode from "qrcode";
 import * as XLSX from "xlsx";
 import { PdfSlideViewer } from "@/components/PdfSlideViewer";
 import { VnInput, VnTextarea } from "@/components/VnInput";
+import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
+import { CountdownOverlay } from "@/components/CountdownOverlay";
 
 import {
   DndContext,
@@ -442,6 +444,7 @@ function PresenterPage() {
   );
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
+  const [showAiGenModal, setShowAiGenModal] = useState(false);
 
   const handleUploadPdf = async (file: File) => {
     if (!session?._id) return;
@@ -1962,13 +1965,22 @@ function PresenterPage() {
                 className="hidden"
               />
               {hasPdf ? (
-                <button
-                  onClick={() => switchOverlay("slides")}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors"
-                  title={`Chiếu slide PDF (${session.pdfFileName}, ${pdfTotalPages} trang) — phím S`}
-                >
-                  📑 Slide <span className="text-[10px] opacity-70">(S)</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => switchOverlay("slides")}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors"
+                    title={`Chiếu slide PDF (${session.pdfFileName}, ${pdfTotalPages} trang) — phím S`}
+                  >
+                    📑 Slide <span className="text-[10px] opacity-70">(S)</span>
+                  </button>
+                  <button
+                    onClick={() => setShowAiGenModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors"
+                    title="Dùng AI sinh hoạt động từ nội dung PDF"
+                  >
+                    🤖 AI gen
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={() => pdfFileInputRef.current?.click()}
@@ -3559,6 +3571,14 @@ function PresenterPage() {
 
       {fullscreenOverlay === "result" && (
         <div className="fixed inset-0 z-[100] bg-zinc-950 text-white overflow-auto">
+          {/* Countdown lớn — chiếu cho SV thấy thời gian còn lại */}
+          {activeActivity?.timeLimit && activeActivity?.startedAt && (
+            <CountdownOverlay
+              startedAt={activeActivity.startedAt}
+              timeLimitMinutes={activeActivity.timeLimit}
+              position="center-top"
+            />
+          )}
           {/* Tab switcher ở trên cùng */}
           <div className="sticky top-0 z-20 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 py-3">
             <div className="flex items-center gap-2">
@@ -4071,6 +4091,14 @@ function PresenterPage() {
 
       {fullscreenOverlay === "slides" && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+          {/* Countdown lớn — top-left để tránh đè QR card top-right */}
+          {activeActivity?.timeLimit && activeActivity?.startedAt && (
+            <CountdownOverlay
+              startedAt={activeActivity.startedAt}
+              timeLimitMinutes={activeActivity.timeLimit}
+              position="top-left"
+            />
+          )}
           {/* Slide viewer chiếm phần lớn không gian */}
           <div className="flex-1 relative">
             {hasPdf && pdfUrl ? (
@@ -4285,6 +4313,19 @@ function PresenterPage() {
           currentScriptActivity={currentScriptActivity}
         />,
         pipContainer
+      )}
+
+      {/* AI gen từ PDF modal */}
+      {showAiGenModal && hasPdf && pdfUrl && session._id && (
+        <AiGenFromPdfModal
+          sessionId={session._id}
+          sessionTitle={session.title}
+          pdfUrl={pdfUrl}
+          numPages={pdfTotalPages}
+          existingActivityCount={activities?.length ?? 0}
+          collectStudentCode={session.collectStudentCode ?? false}
+          onClose={() => setShowAiGenModal(false)}
+        />
       )}
     </div>
   );

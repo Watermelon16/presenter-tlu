@@ -1,11 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect } from "react";
 import { VnInput, VnTextarea } from "@/components/VnInput";
+import {
+  isPushSupported,
+  getNotificationPermission,
+  getExistingSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/lib/pushClient";
 
 interface StudentIdentity {
   studentCode: string;
@@ -114,6 +122,15 @@ export default function ParticipantRoomPage() {
   // Timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
+  // Web Push notification state
+  const [pushStatus, setPushStatus] = useState<
+    "unsupported" | "default" | "denied" | "subscribed" | "unsubscribed" | "checking"
+  >("checking");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushDismissed, setPushDismissed] = useState(false);
+  const registerPushSubscription = useMutation(api.pushSubscriptions.registerSubscription);
+  const unregisterPushSubscription = useMutation(api.pushSubscriptions.unregisterSubscription);
+
   // Load danh tính: ưu tiên per-room, fallback global identity (nhớ qua các phòng)
   useEffect(() => {
     if (!upperCode) return;
@@ -176,6 +193,115 @@ export default function ParticipantRoomPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?._id, session?.currentRun, identity?.studentCode]);
+
+  // Đọc trạng thái push hiện tại + auto-resubscribe nếu đã subscribed trước đó.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isPushSupported()) {
+        if (!cancelled) setPushStatus("unsupported");
+        return;
+      }
+      const permission = getNotificationPermission();
+      if (permission === "denied") {
+        if (!cancelled) setPushStatus("denied");
+        return;
+      }
+      const existing = await getExistingSubscription();
+      if (!cancelled) {
+        if (existing && permission === "granted") {
+          setPushStatus("subscribed");
+        } else if (permission === "granted") {
+          setPushStatus("unsubscribed");
+        } else {
+          setPushStatus("default");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Khi đã subscribed + có identity + session → đảm bảo subscription được lưu cho session này
+  useEffect(() => {
+    if (pushStatus !== "subscribed") return;
+    if (!session?._id || !identity?.studentCode) return;
+    (async () => {
+      const sub = await getExistingSubscription();
+      if (!sub) return;
+      const p256dh = sub.getKey("p256dh");
+      const auth = sub.getKey("auth");
+      if (!p256dh || !auth) return;
+      const toB64 = (buf: ArrayBuffer) => {
+        const bytes = new Uint8Array(buf);
+        let s = "";
+        for (const b of bytes) s += String.fromCharCode(b);
+        return btoa(s);
+      };
+      try {
+        await registerPushSubscription({
+          sessionId: session._id,
+          studentCode: identity.studentCode,
+          endpoint: sub.endpoint,
+          p256dh: toB64(p256dh),
+          auth: toB64(auth),
+        });
+      } catch {
+        // im lặng
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushStatus, session?._id, identity?.studentCode]);
+
+  const handleEnablePush = async () => {
+    if (!session?._id || !identity?.studentCode) {
+      toast.error("Cần vào phòng trước khi bật thông báo");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const serialized = await subscribeToPush();
+      if (!serialized) {
+        toast.error("Trình duyệt không hỗ trợ thông báo");
+        return;
+      }
+      await registerPushSubscription({
+        sessionId: session._id,
+        studentCode: identity.studentCode,
+        endpoint: serialized.endpoint,
+        p256dh: serialized.p256dh,
+        auth: serialized.auth,
+      });
+      setPushStatus("subscribed");
+      toast.success("Đã bật thông báo. Điện thoại sẽ rung khi có hoạt động mới.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Không thể bật thông báo";
+      toast.error(msg);
+      const perm = getNotificationPermission();
+      if (perm === "denied") setPushStatus("denied");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushBusy(true);
+    try {
+      const endpoint = await unsubscribeFromPush();
+      if (endpoint) {
+        try {
+          await unregisterPushSubscription({ endpoint });
+        } catch {
+          // ignore
+        }
+      }
+      setPushStatus("unsubscribed");
+      toast.message("Đã tắt thông báo.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   // Lịch sử hoạt động của SV
   const myHistory = useQuery(
@@ -541,6 +667,54 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
+        {/* Banner bật thông báo Web Push (chỉ khi support, có identity, chưa subscribed, chưa dismiss) */}
+        {identity &&
+          !pushDismissed &&
+          (pushStatus === "default" || pushStatus === "unsubscribed") && (
+            <div className="mb-4 bg-sky-50 border border-sky-200 rounded-xl p-3 flex items-start gap-3">
+              <div className="text-2xl shrink-0">🔔</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-sky-900">
+                  Bật thông báo để không bỏ lỡ hoạt động
+                </div>
+                <div className="text-xs text-sky-700 mt-0.5">
+                  Điện thoại sẽ rung khi giảng viên kích hoạt câu hỏi mới — dù bạn không mở app.
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleEnablePush}
+                    disabled={pushBusy}
+                    className="px-3 py-1 text-xs rounded-md bg-sky-600 hover:bg-sky-500 text-white font-medium disabled:opacity-60"
+                  >
+                    {pushBusy ? "Đang bật..." : "Bật thông báo"}
+                  </button>
+                  <button
+                    onClick={() => setPushDismissed(true)}
+                    className="px-3 py-1 text-xs rounded-md text-sky-700 hover:bg-sky-100"
+                  >
+                    Để sau
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        {identity && pushStatus === "denied" && !pushDismissed && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2">
+            <div>⚠</div>
+            <div className="flex-1">
+              Trình duyệt đang chặn thông báo cho trang này. Mở phần Cài đặt
+              site để cho phép thông báo nếu bạn muốn nhận cảnh báo hoạt động.
+            </div>
+            <button
+              onClick={() => setPushDismissed(true)}
+              className="text-amber-700 hover:text-amber-900"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* THÀNH TÍCH CÁ NHÂN — rank, score, speed + top 3 mini */}
         {identity && myRankData && (
           <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
@@ -570,6 +744,16 @@ export default function ParticipantRoomPage() {
               <div className="text-xs text-zinc-600 mt-2">
                 {rankData?.participantsWithScore || 0} / {rankData?.totalParticipants || 0} sinh viên có điểm
               </div>
+            </div>
+
+            {/* Link xem lịch sử xuyên buổi */}
+            <div className="px-5 pt-3">
+              <Link
+                href={`/me?code=${encodeURIComponent(identity.studentCode)}`}
+                className="text-xs text-emerald-700 hover:text-emerald-900 hover:underline underline-offset-2"
+              >
+                📊 Xem thành tích qua các buổi khác →
+              </Link>
             </div>
 
             {/* Top 3 nhỏ */}

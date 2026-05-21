@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -188,6 +189,19 @@ function JoinRoomForm() {
             </p>
           </CardContent>
         </Card>
+
+        <div className="text-center mt-4">
+          <Link
+            href={
+              studentCode.trim()
+                ? `/me?code=${encodeURIComponent(studentCode.trim())}`
+                : "/me"
+            }
+            className="text-sm text-zinc-600 hover:text-zinc-900 underline underline-offset-4"
+          >
+            🏆 Xem thành tích của tôi qua các buổi
+          </Link>
+        </div>
       </div>
     </div>
   );
