@@ -478,6 +478,13 @@ function PresenterPage() {
   const pdfTotalPages = session?.pdfNumPages ?? 0;
   const hasPdf = !!session?.pdfStorageId && !!pdfUrl;
 
+  const goPdfFirst = async () => {
+    if (!session?._id || !hasPdf) return;
+    if (pdfCurrentPage !== 1) {
+      await setPdfCurrentPage({ sessionId: session._id, page: 1 });
+    }
+  };
+
   const goPdfPrev = async () => {
     if (!session?._id || !hasPdf) return;
     const next = Math.max(1, pdfCurrentPage - 1);
@@ -545,6 +552,11 @@ function PresenterPage() {
         if (e.key === "ArrowLeft" || e.key === "PageUp") {
           e.preventDefault();
           goPdfPrev();
+          return;
+        }
+        if (e.key === "Home") {
+          e.preventDefault();
+          goPdfFirst();
           return;
         }
       }
@@ -3293,12 +3305,24 @@ function PresenterPage() {
                 🏆 Bảng thành tích
               </button>
             </div>
-            <button
-              onClick={closeOverlay}
-              className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
-            >
-              Đóng (Esc)
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Nút Đóng activity — chỉ hiện khi đang có active */}
+              {activeActivity && (
+                <button
+                  onClick={() => handleCloseAndReveal(activeActivity._id)}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+                  title="Đóng hoạt động đang chạy (phím X) — SV không gửi thêm được"
+                >
+                  ⏹ Đóng hoạt động (X)
+                </button>
+              )}
+              <button
+                onClick={closeOverlay}
+                className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+              >
+                Đóng (Esc)
+              </button>
+            </div>
           </div>
 
           {/* TAB LEADERBOARD */}
@@ -3386,9 +3410,17 @@ function PresenterPage() {
                     : displayActivity.status === "expired" ? "HẾT GIỜ"
                     : "NHÁP"}
                 </div>
-                <div className="text-5xl md:text-6xl font-bold tracking-tight">{displayActivity.title}</div>
+                <div className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">{displayActivity.title}</div>
+                {(() => {
+                  const desc = (displayActivity.config as { description?: string } | undefined)?.description;
+                  return desc ? (
+                    <div className="mt-3 text-xl md:text-2xl text-zinc-300 leading-snug whitespace-pre-wrap max-w-5xl">
+                      {desc}
+                    </div>
+                  ) : null;
+                })()}
                 {displayActivity.slideCue && (
-                  <div className="mt-3 text-amber-400 text-2xl">📍 {fmtSlide(displayActivity.slideCue)}</div>
+                  <div className="mt-3 text-amber-400 text-xl">📍 {fmtSlide(displayActivity.slideCue)}</div>
                 )}
               </div>
 
@@ -3721,11 +3753,19 @@ function PresenterPage() {
               Đóng (Esc)
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={goPdfFirst}
+                disabled={!hasPdf || pdfCurrentPage <= 1}
+                className="px-3 py-1.5 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30"
+                title="Về slide đầu (trang 1)"
+              >
+                ⏮ Đầu
+              </button>
               <button
                 onClick={goPdfPrev}
                 disabled={!hasPdf || pdfCurrentPage <= 1}
-                className="px-4 py-1.5 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30"
+                className="px-3 py-1.5 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30"
               >
                 ← Trước
               </button>
