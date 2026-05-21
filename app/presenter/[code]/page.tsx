@@ -1089,6 +1089,10 @@ function PresenterPage() {
 
     if (!session?._id) return;
 
+    // SAFETY: Khi đang edit, type CỐ ĐỊNH theo editingActivity.type (không cho phép đổi type qua state).
+    // Khi tạo mới, dùng createType bình thường.
+    const effectiveType = editingActivity ? editingActivity.type : createType;
+
     // Field-level validation
     if (!isTitleValid) {
       setCreateError("Vui lòng nhập tiêu đề hoạt động.");
@@ -1096,7 +1100,7 @@ function PresenterPage() {
     }
 
     // Poll-specific validation
-    if (createType === "poll" && !isOptionsValid) {
+    if (effectiveType === "poll" && !isOptionsValid) {
       setCreateError("Vui lòng nhập ít nhất 2 lựa chọn hợp lệ.");
       return;
     }
@@ -1108,7 +1112,7 @@ function PresenterPage() {
         description: pollDescription.trim() || undefined,
       };
 
-      if (createType === "poll") {
+      if (effectiveType === "poll") {
         config.pollType = pollType;
         config.options = validOptions.map((text, i) => ({
           id: `opt_${i}`,
@@ -1127,19 +1131,19 @@ function PresenterPage() {
             .filter((i) => i < validOptions.length)
             .map((i) => `opt_${i}`);
         }
-      } else if (createType === "opentext") {
+      } else if (effectiveType === "opentext") {
         config.maxLength = 500;
-      } else if (createType === "wordcloud") {
+      } else if (effectiveType === "wordcloud") {
         config.maxLength = 30;
-      } else if (createType === "rating") {
+      } else if (effectiveType === "rating") {
         config.min = ratingMin;
         config.max = ratingMax;
         config.minLabel = ratingMinLabel.trim();
         config.maxLabel = ratingMaxLabel.trim();
-      } else if (createType === "qa") {
+      } else if (effectiveType === "qa") {
         config.allowAnonymous = qaAllowAnonymous;
         config.maxQuestionsPerStudent = qaMaxQuestionsPerStudent;
-      } else if (createType === "board") {
+      } else if (effectiveType === "board") {
         // Lưu cấu hình cột đẹp (id + title)
         config.columns = boardColumns.filter(c => c.title.trim());
       }
@@ -1164,7 +1168,7 @@ function PresenterPage() {
         // Chế độ tạo mới
         await createActivity({
           sessionId: session._id,
-          type: createType,
+          type: effectiveType,
           title: pollTitle.trim(),
           config,
           requiresStudentCode,
@@ -1387,11 +1391,16 @@ function PresenterPage() {
   const openEditModal = (activity: any) => {
     setEditingActivity(activity);
 
-    // Reset một số state chung
+    // ===== Bước 1: Set createType theo activity (LUÔN LUÔN — quan trọng để không nhầm loại) =====
+    setCreateType(activity.type);
+
+    // ===== Bước 2: Reset toàn bộ state về default (tránh stale state từ edit/create trước) =====
     setPollTitle(activity.title || "");
     setPollDescription(activity.config?.description || "");
     setSlideCue(activity.slideCue || "");
     setRequiresStudentCode(activity.requiresStudentCode || false);
+    setCreateError("");
+    setTitleError("");
 
     const timeLimit = activity.timeLimit;
     if (timeLimit) {
@@ -1402,12 +1411,31 @@ function PresenterPage() {
       setTimeLimitValue(1.5);
     }
 
-    // Reset các state theo loại hoạt động
+    // Defaults (cho các loại không match — đảm bảo không leak state cũ)
+    setPollType("single_choice");
+    setOptions(["", ""]);
+    setShuffleOptions(false);
+    setMinSelections(1);
+    setShowAdvanced(false);
+    setIsQuizMode(false);
+    setCorrectOptionIndexes([]);
+    setRatingMin(1);
+    setRatingMax(5);
+    setRatingMinLabel("Rất không hiểu");
+    setRatingMaxLabel("Rất hiểu rõ");
+    setQaAllowAnonymous(true);
+    setQaMaxQuestionsPerStudent(null);
+    setBoardColumns([
+      { id: "understood", title: "Đã hiểu" },
+      { id: "not-clear", title: "Chưa hiểu rõ" },
+      { id: "question", title: "Câu hỏi thêm" },
+    ]);
+
+    // ===== Bước 3: Load state đặc thù cho loại của activity =====
     if (activity.type === "poll") {
-      setCreateType("poll");
       setPollType(activity.config?.pollType || "single_choice");
       const opts = activity.config?.options || [];
-      setOptions(opts.map((o: any) => o.text) || ["", ""]);
+      setOptions(opts.length > 0 ? opts.map((o: any) => o.text) : ["", ""]);
       setShuffleOptions(activity.config?.shuffleOptions || false);
       setMinSelections(activity.config?.minSelections || 1);
       setShowAdvanced(!!(activity.config?.shuffleOptions || activity.config?.minSelections));
@@ -1421,27 +1449,25 @@ function PresenterPage() {
           .filter((i) => i >= 0)
       );
     }
-    else if (activity.type === "wordcloud") {
-      setCreateType("wordcloud");
-    } 
     else if (activity.type === "rating") {
-      setCreateType("rating");
-      setRatingMin(activity.config?.min || 1);
-      setRatingMax(activity.config?.max || 5);
+      setRatingMin(activity.config?.min ?? 1);
+      setRatingMax(activity.config?.max ?? 5);
       setRatingMinLabel(activity.config?.minLabel || "Rất không hiểu");
       setRatingMaxLabel(activity.config?.maxLabel || "Rất hiểu rõ");
     }
+    else if (activity.type === "qa") {
+      setQaAllowAnonymous(activity.config?.allowAnonymous ?? true);
+      setQaMaxQuestionsPerStudent(activity.config?.maxQuestionsPerStudent ?? null);
+    }
     else if (activity.type === "board") {
-      setCreateType("board");
       const savedCols = activity.config?.columns;
       if (Array.isArray(savedCols) && savedCols.length > 0) {
         setBoardColumns(savedCols);
       }
     }
+    // wordcloud + opentext: không có state đặc thù
 
     setShowCreateModal(true);
-    setCreateError("");
-    setTitleError("");
   };
 
   const handleDragEnd = async (event: any) => {
