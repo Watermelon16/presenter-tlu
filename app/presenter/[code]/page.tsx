@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -321,6 +321,9 @@ function PresenterPage() {
     api.responses.getSessionFullExport,
     session?._id ? { sessionId: session._id } : "skip"
   );
+
+  // Convex client để gọi query đặc biệt (vd: export phiên cũ)
+  const convex = useConvex();
 
   // === Kịch bản (Script) state - BÂY GIỜ DÙNG SERVER (realtime) ===
   // isScriptMode + currentScriptIndex được lấy từ Convex để companion window hoạt động mượt
@@ -967,6 +970,78 @@ function PresenterPage() {
   };
 
   // Xuất Excel chuẩn (.xlsx) — nhiều sheet, dễ đẩy lên LMS chấm điểm
+  // Build sheets cho 1 phiên (tái sử dụng cho both single + multi-run export)
+  const buildSheetsForRun = (runData: {
+    activities: Array<{ _id: string; title: string; type: string; order?: number; requiresStudentCode?: boolean }>;
+    students: Array<{
+      studentCode: string;
+      fullName: string;
+      className: string;
+      joinedAt: number;
+      responses: Record<string, { status: string; value: unknown; submittedAt?: number | null }>;
+      boardStats: { postCount: number; totalLikes: number };
+    }>;
+  }, runLabel: string) => {
+    const { activities, students } = runData;
+
+    const overviewRows = students.map((s) => {
+      const row: Record<string, unknown> = {
+        "Mã SV": s.studentCode,
+        "Họ và tên": s.fullName,
+        "Lớp": s.className,
+        "Tham gia lúc": new Date(s.joinedAt).toLocaleString("vi-VN"),
+      };
+      activities.forEach((act) => {
+        const res = s.responses[act._id];
+        let cell = "Không trả lời";
+        if (res && res.status === "answered") {
+          const v = res.value as Record<string, unknown> | string | undefined;
+          if (act.type === "poll") {
+            cell = v && typeof v === "object" && (v as { choiceIds?: string[] }).choiceIds
+              ? `Chọn: ${(v as { choiceIds: string[] }).choiceIds.join(", ")}`
+              : "Đã chọn";
+          } else if (act.type === "wordcloud" || act.type === "opentext") {
+            cell = typeof v === "string" ? v : String((v as { text?: string } | undefined)?.text ?? "");
+          } else if (act.type === "rating") {
+            cell = String((v as { rating?: number } | undefined)?.rating ?? v ?? "");
+          } else if (act.type === "qa") {
+            cell = (v as { text?: string } | undefined)?.text ? `Hỏi: ${(v as { text: string }).text}` : "Đã hỏi";
+          } else if (act.type === "board") {
+            cell = "Đã đăng";
+          } else {
+            cell = String(v ?? "");
+          }
+        }
+        row[act.title] = cell;
+      });
+
+      const answeredCount = activities.filter((a) => s.responses[a._id]?.status === "answered").length;
+      row["Board - Số bài"] = s.boardStats.postCount;
+      row["Board - Tổng likes"] = s.boardStats.totalLikes;
+      row["Tổng HĐ tham gia"] = answeredCount;
+      row["Tỉ lệ (%)"] = activities.length > 0 ? Math.round((answeredCount / activities.length) * 100) : 0;
+      return row;
+    });
+
+    const gradingRows = students.map((s) => {
+      const answeredCount = activities.filter((a) => s.responses[a._id]?.status === "answered").length;
+      const rate = activities.length > 0 ? Math.round((answeredCount / activities.length) * 100) : 0;
+      return {
+        "Mã SV": s.studentCode,
+        "Họ và tên": s.fullName,
+        "Lớp": s.className,
+        "Số HĐ tham gia": answeredCount,
+        "Tổng HĐ": activities.length,
+        "Tỉ lệ (%)": rate,
+        "Bài Board": s.boardStats.postCount,
+        "Điểm gợi ý (thang 10)": Math.min(10, Math.round((rate / 10) + (s.boardStats.postCount * 0.5))),
+      };
+    });
+
+    return { overviewRows, gradingRows, runLabel };
+  };
+
+  // Export Excel cho phiên hiện tại (giữ tương thích với nút cũ)
   const handleExportExcel = async () => {
     if (!exportData || !session) return;
 
@@ -1061,6 +1136,76 @@ function PresenterPage() {
       setIsExporting(false);
     }
   };
+
+  // Export Excel cho TẤT CẢ các phiên đã có (1 file, nhiều sheet)
+  const handleExportAllRuns = async () => {
+    if (!session) return;
+    const totalRuns = session.currentRun ?? 1;
+
+    setIsExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Tổng quan các phiên
+      const summaryRows: Array<Record<string, unknown>> = [];
+
+      // Fetch data từng phiên
+      for (let r = 1; r <= totalRuns; r++) {
+        const data = await convex.query(api.responses.getSessionFullExport, {
+          sessionId: session._id,
+          run: r,
+        });
+        const { activities, students } = data;
+
+        summaryRows.push({
+          "Phiên": `#${r}`,
+          "Số SV tham gia": students.length,
+          "Số hoạt động": activities.length,
+          "Tổng câu trả lời": students.reduce((sum: number, s) =>
+            sum + activities.filter((a) => s.responses[a._id]?.status === "answered").length, 0),
+        });
+
+        const sheets = buildSheetsForRun(data, `Phiên ${r}`);
+
+        if (students.length > 0) {
+          const ws1 = XLSX.utils.json_to_sheet(sheets.overviewRows);
+          XLSX.utils.book_append_sheet(wb, ws1, `P${r} - Chi tiết`);
+
+          const ws2 = XLSX.utils.json_to_sheet(sheets.gradingRows);
+          XLSX.utils.book_append_sheet(wb, ws2, `P${r} - Chấm điểm`);
+        }
+      }
+
+      // Sheet "Tổng quan" - đầu file
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+      // Insert at position 0
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Tổng quan");
+
+      // Sheet metadata
+      const metaRows = [
+        { "Trường": "Mã phòng", "Giá trị": upperCode },
+        { "Trường": "Tên buổi giảng", "Giá trị": session.title },
+        { "Trường": "Giảng viên", "Giá trị": session.hostName || "" },
+        { "Trường": "Ngày xuất", "Giá trị": new Date().toLocaleString("vi-VN") },
+        { "Trường": "Tổng số phiên", "Giá trị": totalRuns },
+      ];
+      const wsMeta = XLSX.utils.json_to_sheet(metaRows);
+      XLSX.utils.book_append_sheet(wb, wsMeta, "Thông tin buổi");
+
+      // Reorder: Thông tin → Tổng quan → P1 - Chi tiết → P1 - Chấm điểm → P2 → ...
+      // (XLSX append theo thứ tự, nên file đúng thứ tự logic)
+
+      const filename = `PresenterTLU_${upperCode}_AllRuns_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      toast.success(`Đã xuất file Excel với ${totalRuns} phiên!`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Xuất Excel thất bại. Vui lòng thử lại.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   // Xuất báo cáo PDF đẹp
   const handleExportPDF = async () => {
@@ -1756,8 +1901,8 @@ function PresenterPage() {
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
       {/* Top Bar */}
       <div className="border-b border-zinc-200 bg-zinc-50 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
+          <div className="flex items-center gap-3 sm:gap-6">
             <button
               onClick={() => setFullscreenOverlay("qr")}
               className="text-left group"
@@ -1793,7 +1938,7 @@ function PresenterPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Số SV tham gia — click để xem danh sách */}
             <button
               onClick={() => setShowParticipantsModal(true)}
@@ -1858,25 +2003,48 @@ function PresenterPage() {
                 onClick={handleExportExcel}
                 disabled={!exportData || isExporting}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 disabled:opacity-60 transition-colors text-white font-medium"
-                title="Xuất file .xlsx để đẩy lên LMS"
+                title={`Xuất file .xlsx cho Phiên #${session.currentRun ?? 1} hiện tại`}
               >
-                {isExporting ? "Đang xuất..." : "💾 Excel"}
+                {isExporting ? "Đang xuất..." : "💾 Excel phiên này"}
               </button>
+
+              {(session.currentRun ?? 1) > 1 && (
+                <button
+                  onClick={handleExportAllRuns}
+                  disabled={isExporting}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-700 hover:bg-blue-600 border border-blue-600 disabled:opacity-60 transition-colors text-white font-medium"
+                  title={`Xuất file .xlsx cho tất cả ${session.currentRun} phiên (multi-sheet)`}
+                >
+                  {isExporting ? "Đang xuất..." : `💾 Tất cả ${session.currentRun} phiên`}
+                </button>
+              )}
             </div>
 
-            {/* Bắt đầu phiên mới — giữ activities, xóa responses + participants */}
+            {/* Bắt đầu phiên mới — hỏi export trước, giữ activities */}
             <button
               className="px-3 py-2 text-sm rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
               onClick={async () => {
                 if (!session?._id) return;
-                const nextRun = (session.currentRun ?? 1) + 1;
+                const currentRunNum = session.currentRun ?? 1;
+                const nextRun = currentRunNum + 1;
+
+                // Bước 1: Hỏi có xuất Excel phiên hiện tại trước không
+                const wantExport = confirm(
+                  `Xuất Excel phiên #${currentRunNum} (lưu điểm danh + câu trả lời) trước khi sang phiên mới?\n\n` +
+                  "OK = Có, xuất Excel rồi tiếp tục\n" +
+                  "Cancel = Bỏ qua, chuyển luôn"
+                );
+                if (wantExport) {
+                  await handleExportExcel();
+                }
+
+                // Bước 2: Xác nhận reset
                 if (!confirm(
                   `BẮT ĐẦU PHIÊN #${nextRun}?\n\n` +
-                  `• Lịch sử phiên #${session.currentRun ?? 1} (SV, câu trả lời, board) được LƯU LẠI trong DB\n` +
-                  "• Hoạt động reset về NHÁP để chạy lại từ đầu\n" +
-                  "• SV cũ cần join lại với tư cách phiên mới\n" +
-                  "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm\n\n" +
-                  "Dùng khi dạy cùng nội dung cho lớp khác."
+                  `• Lịch sử phiên #${currentRunNum} đã ${wantExport ? "xuất Excel + " : ""}lưu trong DB\n` +
+                  "• Hoạt động reset về NHÁP\n" +
+                  "• SV cũ tự đăng ký lại khi reload (cùng mã phòng)\n" +
+                  "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm"
                 )) return;
                 try {
                   const result = await resetSessionForNewRun({ sessionId: session._id });
@@ -1885,7 +2053,7 @@ function PresenterPage() {
                   toast.error(e instanceof Error ? e.message : "Không thể reset phiên");
                 }
               }}
-              title="Tăng số phiên, reset activities. Giữ lịch sử các phiên cũ trong DB."
+              title="Hỏi xuất Excel, tăng số phiên, reset activities. Giữ lịch sử các phiên cũ trong DB."
             >
               🔄 Phiên mới
             </button>
@@ -1899,10 +2067,28 @@ function PresenterPage() {
                 className="px-4 py-2 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 onClick={async () => {
                   if (!session?._id) return;
-                  if (!confirm("Kết thúc buổi giảng? Sinh viên sẽ không thể gửi câu trả lời mới (kết quả đã có vẫn được giữ).")) return;
+                  const totalRuns = session.currentRun ?? 1;
+
+                  // Bước 1: Hỏi xuất Excel TOÀN BỘ phiên trước khi kết thúc
+                  const wantExport = confirm(
+                    `Xuất Excel TOÀN BỘ ${totalRuns} phiên của buổi giảng trước khi kết thúc?\n\n` +
+                    "(File gồm: tổng quan + chi tiết từng phiên + chấm điểm)\n\n" +
+                    "OK = Có, xuất rồi tiếp tục\n" +
+                    "Cancel = Bỏ qua"
+                  );
+                  if (wantExport) {
+                    if (totalRuns > 1) {
+                      await handleExportAllRuns();
+                    } else {
+                      await handleExportExcel();
+                    }
+                  }
+
+                  // Bước 2: Xác nhận kết thúc
+                  if (!confirm("Kết thúc buổi giảng? SV sẽ không gửi câu trả lời mới được. Kết quả vẫn lưu trong DB.")) return;
                   try {
                     await endSession({ sessionId: session._id });
-                    toast.success("Đã kết thúc buổi giảng. Bạn vẫn có thể xuất kết quả.");
+                    toast.success("Đã kết thúc buổi giảng.");
                   } catch (e: unknown) {
                     toast.error(e instanceof Error ? e.message : "Không thể kết thúc buổi");
                   }
