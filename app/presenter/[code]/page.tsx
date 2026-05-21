@@ -93,6 +93,14 @@ const TextInputRow = React.memo(function TextInputRow({
   );
 });
 
+// Format slideCue: nếu là số thì hiển thị "Slide N", nếu là text cũ thì giữ nguyên
+function fmtSlide(cue?: string | null) {
+  if (!cue) return "";
+  const trimmed = cue.trim();
+  if (/^\d+$/.test(trimmed)) return `Slide ${trimmed}`;
+  return trimmed;
+}
+
 function PresenterPage() {
   const { code } = useParams<{ code: string }>();
   const upperCode = code?.toUpperCase();
@@ -299,6 +307,9 @@ function PresenterPage() {
   const [showScriptMenu, setShowScriptMenu] = useState(false);
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+
+  // Tab cho overlay kết quả (F): "result" = kết quả activity hiện tại, "leaderboard" = bảng thành tích
+  const [resultTab, setResultTab] = useState<"result" | "leaderboard">("result");
 
   // Document Picture-in-Picture (Chrome 116+): cửa sổ nổi trên PPT, không cần Alt+Tab
   const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
@@ -1492,7 +1503,7 @@ function PresenterPage() {
             {activity.timeLimit && <span className="text-blue-600">⏱ {activity.timeLimit}p</span>}
             {activity.requiresStudentCode && <span className="text-emerald-700" title="Ghi nhận điểm tham gia">📋 Tính điểm</span>}
             {activity.slideCue && (
-              <span className="text-amber-600 flex items-center gap-1">📍 {activity.slideCue}</span>
+              <span className="text-amber-600 flex items-center gap-1">📍 {fmtSlide(activity.slideCue)}</span>
             )}
           </div>
         </div>
@@ -1809,7 +1820,7 @@ function PresenterPage() {
                   </div>
                   <span className="font-mono text-emerald-600 text-xs whitespace-nowrap">{currentScriptIndex + 1}/{scriptLength}</span>
                   {currentScriptActivity?.slideCue && (
-                    <span className="text-amber-600 text-xs font-medium whitespace-nowrap">📍 {currentScriptActivity.slideCue}</span>
+                    <span className="text-amber-600 text-xs font-medium whitespace-nowrap">📍 {fmtSlide(currentScriptActivity.slideCue)}</span>
                   )}
                 </div>
               )}
@@ -2049,7 +2060,7 @@ function PresenterPage() {
                       <div className="font-medium truncate">{draggingActivity.title}</div>
                       <div className="text-xs text-zinc-600 flex items-center gap-2 mt-0.5">
                         <span className="capitalize">{draggingActivity.type}</span>
-                        {draggingActivity.slideCue && <span className="text-amber-600">📍 {draggingActivity.slideCue}</span>}
+                        {draggingActivity.slideCue && <span className="text-amber-600">📍 {fmtSlide(draggingActivity.slideCue)}</span>}
                         {draggingActivity.timeLimit && <span>⏱ {draggingActivity.timeLimit}p</span>}
                       </div>
                     </div>
@@ -2484,14 +2495,28 @@ function PresenterPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-semibold text-zinc-700 block mb-1.5">Mốc slide PowerPoint (tùy chọn)</label>
-                  <input
-                    type="text"
-                    value={slideCue}
-                    onChange={(e) => setSlideCue(e.target.value)}
-                    placeholder="VD: Slide 7, Sau slide 12"
-                    className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
-                  />
+                  <label className="text-sm font-semibold text-zinc-700 block mb-1.5">
+                    Mốc slide (tùy chọn)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-zinc-500 shrink-0">Slide số</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={slideCue}
+                      onChange={(e) => setSlideCue(e.target.value.replace(/\D/g, ""))}
+                      placeholder="VD: 7"
+                      className="w-24 bg-white border border-zinc-300 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500 text-center font-mono"
+                    />
+                    {slideCue && (
+                      <span className="text-sm text-amber-600 font-medium">
+                        → 📍 Slide {slideCue}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Đánh dấu hoạt động này gắn với slide nào trong bài giảng PowerPoint
+                  </div>
                 </div>
 
                 {/* ===== POLL-specific ===== */}
@@ -3081,18 +3106,111 @@ function PresenterPage() {
 
       {fullscreenOverlay === "result" && (
         <div className="fixed inset-0 z-[100] bg-zinc-950 text-white overflow-auto">
-          <button
-            onClick={closeOverlay}
-            className="fixed top-6 right-6 px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 z-10"
-          >
-            Đóng (Esc)
-          </button>
-          {!activeActivity ? (
-            <div className="min-h-screen flex items-center justify-center text-center">
+          {/* Tab switcher ở trên cùng */}
+          <div className="sticky top-0 z-20 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 py-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setResultTab("result")}
+                className={`px-5 py-2 text-sm rounded-lg font-semibold transition-colors ${
+                  resultTab === "result"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+                }`}
+              >
+                📊 Kết quả hoạt động
+              </button>
+              <button
+                onClick={() => setResultTab("leaderboard")}
+                className={`px-5 py-2 text-sm rounded-lg font-semibold transition-colors ${
+                  resultTab === "leaderboard"
+                    ? "bg-amber-500 text-black"
+                    : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+                }`}
+              >
+                🏆 Bảng thành tích
+              </button>
+            </div>
+            <button
+              onClick={closeOverlay}
+              className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+            >
+              Đóng (Esc)
+            </button>
+          </div>
+
+          {/* TAB LEADERBOARD */}
+          {resultTab === "leaderboard" && (
+            <div className="min-h-[calc(100vh-60px)] p-12">
+              <div className="mb-8 text-center">
+                <div className="text-7xl mb-3">🏆</div>
+                <div className="text-5xl md:text-6xl font-bold tracking-tight">Bảng thành tích</div>
+                <div className="text-zinc-400 text-xl mt-2">{session.title}</div>
+              </div>
+
+              {leaderboardData && !Array.isArray(leaderboardData) && leaderboardData.leaderboard.length > 0 ? (
+                <div className="max-w-4xl mx-auto space-y-3">
+                  {leaderboardData.leaderboard.map((entry, idx) => {
+                    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : null;
+                    const speedTxt = entry.avgResponseMs !== null && entry.avgResponseMs !== undefined
+                      ? entry.avgResponseMs < 1000
+                        ? `${entry.avgResponseMs}ms`
+                        : entry.avgResponseMs < 60000
+                          ? `${(entry.avgResponseMs / 1000).toFixed(1)}s`
+                          : `${Math.floor(entry.avgResponseMs / 60000)}p${Math.round((entry.avgResponseMs % 60000) / 1000).toString().padStart(2, "0")}`
+                      : null;
+                    return (
+                      <div
+                        key={entry.studentCode}
+                        className={`flex items-center gap-4 px-6 py-4 rounded-2xl ${
+                          idx === 0 ? "bg-gradient-to-r from-amber-900/40 to-amber-800/30 border-2 border-amber-500"
+                          : idx === 1 ? "bg-gradient-to-r from-zinc-700/40 to-zinc-600/30 border-2 border-zinc-400"
+                          : idx === 2 ? "bg-gradient-to-r from-orange-900/40 to-orange-800/30 border-2 border-orange-700"
+                          : "bg-zinc-900 border border-zinc-800"
+                        }`}
+                      >
+                        <div className="text-4xl w-12 text-center">{medal || <span className="text-2xl font-mono text-zinc-400">{idx + 1}</span>}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-2xl font-semibold truncate">{entry.fullName}</div>
+                          <div className="text-sm text-zinc-400 truncate">{entry.studentCode} · {entry.className}</div>
+                        </div>
+                        {speedTxt && (
+                          <div className="text-right">
+                            <div className="text-xs text-zinc-500">TỐC ĐỘ TB</div>
+                            <div className="text-lg font-mono text-zinc-300">⚡ {speedTxt}</div>
+                          </div>
+                        )}
+                        <div className="text-right">
+                          <div className="text-xs text-zinc-500">ĐIỂM</div>
+                          <div className="text-3xl font-bold text-emerald-400">{entry.score}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="text-center text-zinc-500 text-sm mt-6">
+                    {(leaderboardData as { participantsWithScore: number }).participantsWithScore} / {(leaderboardData as { totalParticipants: number }).totalParticipants} sinh viên có điểm
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-zinc-400 text-xl py-16">
+                  Chưa có SV nào có điểm. Mở 1 hoạt động có bật &quot;Ghi nhận điểm tham gia&quot; để bắt đầu.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB RESULT - Activity result */}
+          {resultTab === "result" && (!activeActivity ? (
+            <div className="min-h-[calc(100vh-60px)] flex items-center justify-center text-center">
               <div>
                 <div className="text-6xl mb-4">📊</div>
                 <div className="text-3xl font-semibold mb-2">Chưa có hoạt động đang diễn ra</div>
-                <div className="text-zinc-400 text-lg">Khi có hoạt động đang chạy, bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">F</kbd> để chiếu kết quả lên màn hình</div>
+                <div className="text-zinc-400 text-lg mb-4">Chuyển sang tab 🏆 <strong>Bảng thành tích</strong> để chiếu xếp hạng.</div>
+                <button
+                  onClick={() => setResultTab("leaderboard")}
+                  className="px-5 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold"
+                >
+                  🏆 Xem bảng thành tích
+                </button>
               </div>
             </div>
           ) : (
@@ -3101,7 +3219,7 @@ function PresenterPage() {
                 <div className="text-emerald-400 text-lg tracking-[6px] mb-2">{activeActivity.type.toUpperCase()} • ĐANG DIỄN RA</div>
                 <div className="text-5xl md:text-6xl font-bold tracking-tight">{activeActivity.title}</div>
                 {activeActivity.slideCue && (
-                  <div className="mt-3 text-amber-400 text-2xl">📍 {activeActivity.slideCue}</div>
+                  <div className="mt-3 text-amber-400 text-2xl">📍 {fmtSlide(activeActivity.slideCue)}</div>
                 )}
               </div>
 
@@ -3249,7 +3367,7 @@ function PresenterPage() {
                 Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">F</kbd> hoặc <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Esc</kbd> để thoát chế độ chiếu
               </div>
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -3286,26 +3404,83 @@ function PresenterPage() {
               </div>
             )}
 
-            {/* Overlay activity result nổi lên trên slide khi có activity đang chạy */}
-            {activeActivity && (
-              <div className="absolute bottom-6 right-6 bg-zinc-900/95 backdrop-blur-sm border border-emerald-500/40 rounded-2xl p-4 max-w-md text-white shadow-2xl">
-                <div className="text-[10px] tracking-[3px] text-emerald-400 mb-1">HOẠT ĐỘNG ĐANG DIỄN RA</div>
-                <div className="font-semibold text-base mb-2">{activeActivity.title}</div>
-                <div className="text-xs text-zinc-400">
-                  {activeActivity.type === "poll" && pollResults && `${pollResults.totalAnswered} đã trả lời`}
-                  {activeActivity.type === "wordcloud" && wordCloudResults && `${wordCloudResults.totalResponses} phản hồi`}
-                  {activeActivity.type === "rating" && ratingResults && `${ratingResults.total} lượt`}
-                  {activeActivity.type === "qa" && qaResponses && `${qaResponses.length} câu hỏi`}
-                  {activeActivity.type === "board" && boardPosts && `${boardPosts.length} bài đăng`}
+            {/* Bảng điều khiển hoạt động nổi trên slide */}
+            {(() => {
+              // Activity ưu tiên hiển thị: active > script position > nextDraft
+              const focusActivity = activeActivity
+                || (isScriptMode && currentScriptActivity ? currentScriptActivity : null)
+                || sortedActivities.find((a) => a.status === "draft");
+
+              if (!focusActivity) return null;
+
+              const isDraft = focusActivity.status === "draft";
+              const isActive = focusActivity.status === "active";
+              const isClosed = focusActivity.status === "closed" || focusActivity.status === "expired";
+              const responseCount =
+                focusActivity.type === "poll" ? pollResults?.totalAnswered ?? 0 :
+                focusActivity.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
+                focusActivity.type === "rating" ? ratingResults?.total ?? 0 :
+                focusActivity.type === "qa" ? qaResponses?.length ?? 0 :
+                focusActivity.type === "board" ? boardPosts?.length ?? 0 :
+                0;
+
+              return (
+                <div className="absolute bottom-6 right-6 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-2xl p-4 w-[340px] text-white shadow-2xl">
+                  <div className="flex items-center justify-between mb-1">
+                    {isActive && <div className="text-[10px] tracking-[3px] text-emerald-400 font-semibold">● ĐANG CHẠY</div>}
+                    {isDraft && <div className="text-[10px] tracking-[3px] text-zinc-400 font-semibold">NHÁP — CHƯA KÍCH HOẠT</div>}
+                    {isClosed && <div className="text-[10px] tracking-[3px] text-zinc-500 font-semibold">ĐÃ ĐÓNG</div>}
+                    <div className="text-[10px] text-zinc-500 uppercase">{focusActivity.type}</div>
+                  </div>
+                  <div className="font-semibold text-base mb-1 leading-snug">{focusActivity.title}</div>
+                  {focusActivity.slideCue && (
+                    <div className="text-[11px] text-amber-400 mb-2">📍 {fmtSlide(focusActivity.slideCue)}</div>
+                  )}
+
+                  {isActive && (
+                    <div className="text-xl font-bold text-emerald-300 mb-2">
+                      {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="space-y-1.5">
+                    {isDraft && (
+                      <button
+                        onClick={() => handleStart(focusActivity._id)}
+                        className="w-full px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                      >
+                        ▶ Kích hoạt hoạt động
+                      </button>
+                    )}
+                    {isActive && (
+                      <>
+                        <button
+                          onClick={() => handleClose(focusActivity._id)}
+                          className="w-full px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+                        >
+                          ⏹ Đóng hoạt động
+                        </button>
+                        <button
+                          onClick={() => switchOverlay("result")}
+                          className="w-full px-3 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold"
+                        >
+                          📊 Chiếu kết quả / Thành tích (F)
+                        </button>
+                      </>
+                    )}
+                    {isClosed && (
+                      <button
+                        onClick={() => switchOverlay("result")}
+                        className="w-full px-3 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold"
+                      >
+                        📊 Xem kết quả / Thành tích
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => switchOverlay("result")}
-                  className="mt-3 w-full px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400"
-                >
-                  Chiếu to kết quả (F)
-                </button>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Thanh điều khiển slide */}
@@ -3447,7 +3622,7 @@ function PipControlPanel({
           </div>
           <div className="font-semibold text-sm leading-snug mb-1.5 line-clamp-2">{activeActivity.title}</div>
           {activeActivity.slideCue && (
-            <div className="text-[11px] text-amber-400 mb-1">📍 {activeActivity.slideCue}</div>
+            <div className="text-[11px] text-amber-400 mb-1">📍 {fmtSlide(activeActivity.slideCue)}</div>
           )}
           <div className="text-2xl font-bold text-emerald-300 mb-2">
             {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
@@ -3464,7 +3639,7 @@ function PipControlPanel({
           <div className="text-[10px] text-zinc-400 mb-1">HOẠT ĐỘNG KẾ TIẾP</div>
           <div className="font-semibold text-sm leading-snug mb-1.5 line-clamp-2">{nextDraft.title}</div>
           {nextDraft.slideCue && (
-            <div className="text-[11px] text-amber-400 mb-2">📍 {nextDraft.slideCue}</div>
+            <div className="text-[11px] text-amber-400 mb-2">📍 {fmtSlide(nextDraft.slideCue)}</div>
           )}
           <button
             onClick={() => onStart(nextDraft._id)}
@@ -3503,7 +3678,7 @@ function PipControlPanel({
             </button>
           </div>
           {currentScriptActivity?.slideCue && (
-            <div className="text-[10px] text-amber-400 mt-1.5 text-center">📍 {currentScriptActivity.slideCue}</div>
+            <div className="text-[10px] text-amber-400 mt-1.5 text-center">📍 {fmtSlide(currentScriptActivity.slideCue)}</div>
           )}
         </div>
       )}

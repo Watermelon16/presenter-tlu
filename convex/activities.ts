@@ -412,8 +412,8 @@ export const stopScriptRunner = mutation({
 });
 
 /**
- * Chuyển đến vị trí cụ thể trong kịch bản (dùng cho click filmstrip hoặc companion)
- * Tự động đóng activity cũ, start activity mới, cập nhật vị trí
+ * Chuyển đến vị trí cụ thể trong kịch bản. CHỈ cập nhật vị trí — không tự động kích hoạt.
+ * Giảng viên phải bấm "▶ Kích hoạt" rõ ràng để SV trả lời.
  */
 export const jumpToScriptPosition = mutation({
   args: {
@@ -430,56 +430,19 @@ export const jumpToScriptPosition = mutation({
     const targetPos = Math.max(0, Math.min(args.position, sorted.length - 1));
     const targetActivity = sorted[targetPos];
 
-    // Đóng activity đang active (nếu có)
-    const currentActive = await ctx.db
-      .query("activities")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-      .filter((q) => q.eq(q.field("status"), "active"))
-      .first();
-
-    if (currentActive) {
-      await ctx.db.patch(currentActive._id, {
-        status: "closed",
-        closedAt: Date.now(),
-      });
-    }
-
-    // Start hoạt động mục tiêu
-    if (targetActivity.status !== "active") {
-      const now = Date.now();
-      await ctx.db.patch(targetActivity._id, {
-        status: "active",
-        startedAt: now,
-      });
-
-      // Scheduler expire nếu có timeLimit
-      if (targetActivity.timeLimit && targetActivity.timeLimit > 0) {
-        const delayMs = Math.round(targetActivity.timeLimit * 60 * 1000);
-        await ctx.scheduler.runAfter(
-          delayMs,
-          internal.activities.internalExpireActivity,
-          { activityId: targetActivity._id }
-        );
-      }
-    }
-
-    // Cập nhật vị trí script
+    // Cập nhật vị trí script — KHÔNG tự kích hoạt activity
     await ctx.db.patch(args.sessionId, {
       isScriptRunning: true,
       currentScriptPosition: targetPos,
     });
 
-    return { position: targetPos, activityId: targetActivity._id };
+    return { position: targetPos, activityId: targetActivity._id, status: targetActivity.status };
   },
 });
 
 /**
- * TIẾP THEO trong kịch bản - hàm cốt lõi cho nút "TIẾP THEO" và phím Space
- * Đây là hàm giúp lecturer chỉ cần bấm 1 nút là:
- *  - Đóng hoạt động cũ
- *  - Bật hoạt động kế tiếp
- *  - Cập nhật vị trí script (để companion + mọi view đều thấy)
- *  - Gợi ý slide cue mạnh
+ * TIẾP THEO trong kịch bản — chỉ cập nhật vị trí, KHÔNG tự kích hoạt activity.
+ * Giảng viên chủ động bấm "▶ Kích hoạt" để SV được trả lời.
  */
 export const advanceInScript = mutation({
   args: { sessionId: v.id("sessions") },
@@ -493,7 +456,44 @@ export const advanceInScript = mutation({
     const currentPos = session.currentScriptPosition ?? 0;
     const nextPos = Math.min(currentPos + 1, sorted.length - 1);
 
-    // Nếu đã ở cuối thì không làm gì
+    if (nextPos === currentPos) {
+      return { position: currentPos, atEnd: true };
+    }
+
+    const nextActivity = sorted[nextPos];
+
+    // Chỉ cập nhật vị trí
+    await ctx.db.patch(args.sessionId, {
+      isScriptRunning: true,
+      currentScriptPosition: nextPos,
+    });
+
+    return {
+      position: nextPos,
+      total: sorted.length,
+      nextActivityId: nextActivity._id,
+      nextSlideCue: nextActivity.slideCue || null,
+      status: nextActivity.status,
+    };
+  },
+});
+
+/**
+ * (Giữ lại cho tương thích — không còn dùng trong UI mới)
+ * Auto-advance: chuyển vị trí + tự kích hoạt activity. Dùng khi script chạy tự động.
+ */
+export const advanceAndActivate = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new Error("Không tìm thấy buổi giảng");
+
+    const sorted = await getSortedActivities(ctx, args.sessionId);
+    if (sorted.length === 0) throw new Error("Kịch bản trống");
+
+    const currentPos = session.currentScriptPosition ?? 0;
+    const nextPos = Math.min(currentPos + 1, sorted.length - 1);
+
     if (nextPos === currentPos) {
       return { position: currentPos, atEnd: true };
     }
@@ -514,7 +514,6 @@ export const advanceInScript = mutation({
       });
     }
 
-    // Kích hoạt hoạt động tiếp theo
     if (nextActivity.status !== "active") {
       const now = Date.now();
       await ctx.db.patch(nextActivity._id, {
