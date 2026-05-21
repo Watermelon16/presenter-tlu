@@ -29,17 +29,20 @@ const MODELS: ModelDef[] = [
   { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Server key · auto-route" },
   { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Server key · phiên bản cũ" },
 
-  // ====== DeepSeek (cần user key) ======
-  { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat (V3.1)", hint: "Cần API key DeepSeek" },
-  { id: "deepseek-reasoner", provider: "deepseek", label: "DeepSeek Reasoner", hint: "Reasoning, chậm hơn, cần key" },
+  // ====== DeepSeek direct (cần user key + nạp balance — ko còn free) ======
+  { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat", hint: "Cần nạp ≥ $2 (DeepSeek đã bỏ free credit)" },
+  { id: "deepseek-reasoner", provider: "deepseek", label: "DeepSeek Reasoner", hint: "Reasoning · cần nạp balance" },
 
-  // ====== OpenRouter (cần user key, có model :free) ======
-  { id: "deepseek/deepseek-chat-v3.1:free", provider: "openrouter", label: "DeepSeek V3.1 (free)", hint: "OpenRouter · free tier" },
-  { id: "deepseek/deepseek-r1:free", provider: "openrouter", label: "DeepSeek R1 (free)", hint: "OpenRouter · reasoning, free" },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", provider: "openrouter", label: "Llama 3.3 70B (free)", hint: "OpenRouter · Meta" },
-  { id: "qwen/qwen3-coder:free", provider: "openrouter", label: "Qwen3 Coder (free)", hint: "OpenRouter · Alibaba" },
-  { id: "google/gemini-2.0-flash-exp:free", provider: "openrouter", label: "Gemini 2.0 Flash Exp (free)", hint: "OpenRouter route" },
-  { id: "mistralai/mistral-small-3.2-24b-instruct:free", provider: "openrouter", label: "Mistral Small 3.2 (free)", hint: "OpenRouter" },
+  // ====== OpenRouter (cần user key, model :free - verified 2026-05) ======
+  { id: "deepseek/deepseek-v4-flash:free", provider: "openrouter", label: "DeepSeek V4 Flash (free)", hint: "Context 1M, mạnh nhất nhóm free" },
+  { id: "meta-llama/llama-3.3-70b-instruct:free", provider: "openrouter", label: "Llama 3.3 70B (free)", hint: "Meta · ổn định" },
+  { id: "qwen/qwen3-next-80b-a3b-instruct:free", provider: "openrouter", label: "Qwen3 Next 80B (free)", hint: "Alibaba · context 256K" },
+  { id: "qwen/qwen3-coder:free", provider: "openrouter", label: "Qwen3 Coder 480B (free)", hint: "Alibaba · context 1M" },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free", provider: "openrouter", label: "Nemotron 3 Super 120B (free)", hint: "NVIDIA · context 1M" },
+  { id: "google/gemma-4-31b-it:free", provider: "openrouter", label: "Gemma 4 31B (free)", hint: "Google · open weights" },
+  { id: "google/gemma-4-26b-a4b-it:free", provider: "openrouter", label: "Gemma 4 26B A4B (free)", hint: "Google · MoE" },
+  { id: "openai/gpt-oss-120b:free", provider: "openrouter", label: "GPT-OSS 120B (free)", hint: "OpenAI open source" },
+  { id: "z-ai/glm-4.5-air:free", provider: "openrouter", label: "GLM 4.5 Air (free)", hint: "Zhipu AI" },
 ];
 
 const MODEL_STORAGE_KEY = "ai_gen_model_v1";
@@ -228,27 +231,35 @@ export function AiGenFromPdfModal({
         toast.success(`AI đã đề xuất ${editable.length} hoạt động`);
       }
     } catch (e: unknown) {
-      // ConvexError có .data với { code, message, model } từ action
       let msg = "Có lỗi khi gọi AI";
-      let isQuota = false;
+      let code: string | undefined;
       if (e instanceof ConvexError) {
-        const data = e.data as { code?: string; message?: string; model?: string } | undefined;
+        const data = e.data as { code?: string; message?: string } | undefined;
         if (data?.message) msg = data.message;
-        if (data?.code === "quota_exceeded") isQuota = true;
+        code = data?.code;
       } else if (e instanceof Error) {
         msg = e.message;
-        if (/quota|429|exceeded/i.test(msg)) isQuota = true;
+        if (/quota|429|exceeded/i.test(msg)) code = "quota_exceeded";
+        else if (/balance|402/i.test(msg)) code = "no_balance";
+        else if (/no endpoints|404/i.test(msg)) code = "model_not_found";
       }
 
-      if (isQuota) {
-        // Suggest model khác — ưu tiên cùng provider (đã có key), fallback model bất kỳ
-        const sameProvider = MODELS.find(
-          (m) => m.id !== selectedModel && m.provider === currentProvider
-        );
-        const anyOther = MODELS.find((m) => m.id !== selectedModel);
-        const next = sameProvider ?? anyOther;
+      // Các code này đều cần đổi model/provider
+      const switchable =
+        code === "quota_exceeded" ||
+        code === "no_balance" ||
+        code === "model_not_found";
+
+      if (switchable) {
+        // Nếu lỗi balance (DeepSeek) → suggest OpenRouter free thay vì cùng provider
+        // Nếu lỗi quota/404 → ưu tiên cùng provider (key đã có), fallback khác
+        const preferDifferentProvider = code === "no_balance";
+        const next = preferDifferentProvider
+          ? MODELS.find((m) => m.provider !== currentProvider && m.id !== selectedModel)
+          : MODELS.find((m) => m.provider === currentProvider && m.id !== selectedModel) ??
+            MODELS.find((m) => m.id !== selectedModel);
         toast.error(msg, {
-          duration: 10000,
+          duration: 12000,
           action: next
             ? {
                 label: `Đổi sang ${next.label}`,

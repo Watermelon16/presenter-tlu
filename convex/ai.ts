@@ -48,15 +48,18 @@ const ALLOWED_MODELS_BY_PROVIDER: Record<Provider, string[]> = {
     "gemini-2.0-flash-lite",
   ],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
-  // OpenRouter free models — whitelist các :free phổ biến. Nếu hết free → user
-  // chuyển sang model khác. Có thể mở rộng list theo nhu cầu.
+  // OpenRouter free models — verified từ https://openrouter.ai/api/v1/models
+  // tag :free thay đổi theo thời gian. Nếu user gặp 404 → đổi model.
   openrouter: [
-    "deepseek/deepseek-chat-v3.1:free",
-    "deepseek/deepseek-r1:free",
+    "deepseek/deepseek-v4-flash:free",
     "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
     "qwen/qwen3-coder:free",
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.2-24b-instruct:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "openai/gpt-oss-120b:free",
+    "z-ai/glm-4.5-air:free",
   ],
 };
 
@@ -249,6 +252,30 @@ function throwProviderError(
       provider,
       model,
       message: `Model "${model}" (${provider}) đã hết quota. Đổi sang model khác và thử lại.`,
+    });
+  }
+  if (status === 402) {
+    // DeepSeek "Insufficient Balance" — account hết credit
+    throw new ConvexError({
+      code: "no_balance",
+      provider,
+      model,
+      message:
+        provider === "deepseek"
+          ? "Tài khoản DeepSeek của bạn hết balance. DeepSeek đã bỏ free credit — cần nạp ≥ $2 tại platform.deepseek.com hoặc dùng OpenRouter free models thay thế."
+          : `${provider}: tài khoản hết balance / credit. Cần nạp.`,
+    });
+  }
+  if (status === 404) {
+    // OpenRouter "No endpoints found" — model id sai/retired
+    throw new ConvexError({
+      code: "model_not_found",
+      provider,
+      model,
+      message:
+        provider === "openrouter"
+          ? `Model "${model}" không còn trên OpenRouter (có thể đã retire). Đổi sang model khác trong dropdown.`
+          : `Model "${model}" không tồn tại trên ${provider}.`,
     });
   }
   if (status === 403 || status === 401) {
