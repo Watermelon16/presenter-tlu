@@ -11,18 +11,76 @@ import { Input } from "@/components/ui/input";
 
 type SuggestionType = "poll" | "wordcloud" | "opentext";
 
-// Whitelist phải khớp với ALLOWED_MODELS bên convex/ai.ts
-const GEMINI_MODELS: { id: string; label: string; hint: string }[] = [
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", hint: "Cân bằng — Mặc định, free 1500 req/ngày" },
-  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", hint: "Nhanh, nhẹ — quota free cao nhất" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", hint: "Thông minh nhất — free quota thấp (~50/ngày)" },
-  { id: "gemini-flash-latest", label: "Flash (latest)", hint: "Auto-route bản Flash mới nhất" },
-  { id: "gemini-flash-lite-latest", label: "Flash Lite (latest)", hint: "Auto-route bản Lite mới nhất" },
-  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", hint: "Phiên bản cũ — có thể đã hết quota" },
-  { id: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", hint: "Phiên bản cũ" },
+type Provider = "gemini" | "deepseek" | "openrouter";
+
+type ModelDef = {
+  id: string;          // model id gửi cho API
+  provider: Provider;
+  label: string;       // hiển thị
+  hint: string;
+};
+
+// Whitelist phải khớp với ALLOWED_MODELS_BY_PROVIDER trong convex/ai.ts
+const MODELS: ModelDef[] = [
+  // ====== Gemini (server key có sẵn, có thể override) ======
+  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash", hint: "Server key sẵn · cân bằng" },
+  { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite", hint: "Server key sẵn · quota cao nhất" },
+  { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro", hint: "Server key sẵn · thông minh nhất, quota thấp" },
+  { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Server key · auto-route" },
+  { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Server key · phiên bản cũ" },
+
+  // ====== DeepSeek (cần user key) ======
+  { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat (V3.1)", hint: "Cần API key DeepSeek" },
+  { id: "deepseek-reasoner", provider: "deepseek", label: "DeepSeek Reasoner", hint: "Reasoning, chậm hơn, cần key" },
+
+  // ====== OpenRouter (cần user key, có model :free) ======
+  { id: "deepseek/deepseek-chat-v3.1:free", provider: "openrouter", label: "DeepSeek V3.1 (free)", hint: "OpenRouter · free tier" },
+  { id: "deepseek/deepseek-r1:free", provider: "openrouter", label: "DeepSeek R1 (free)", hint: "OpenRouter · reasoning, free" },
+  { id: "meta-llama/llama-3.3-70b-instruct:free", provider: "openrouter", label: "Llama 3.3 70B (free)", hint: "OpenRouter · Meta" },
+  { id: "qwen/qwen3-coder:free", provider: "openrouter", label: "Qwen3 Coder (free)", hint: "OpenRouter · Alibaba" },
+  { id: "google/gemini-2.0-flash-exp:free", provider: "openrouter", label: "Gemini 2.0 Flash Exp (free)", hint: "OpenRouter route" },
+  { id: "mistralai/mistral-small-3.2-24b-instruct:free", provider: "openrouter", label: "Mistral Small 3.2 (free)", hint: "OpenRouter" },
 ];
 
 const MODEL_STORAGE_KEY = "ai_gen_model_v1";
+const KEY_STORAGE_PREFIX = "ai_gen_apikey_"; // suffix là provider name
+
+const PROVIDER_INFO: Record<Provider, { label: string; signupUrl: string; needsUserKey: boolean }> = {
+  gemini: {
+    label: "Google Gemini",
+    signupUrl: "https://aistudio.google.com/apikey",
+    needsUserKey: false, // có server key fallback
+  },
+  deepseek: {
+    label: "DeepSeek",
+    signupUrl: "https://platform.deepseek.com/api_keys",
+    needsUserKey: true,
+  },
+  openrouter: {
+    label: "OpenRouter",
+    signupUrl: "https://openrouter.ai/keys",
+    needsUserKey: true,
+  },
+};
+
+function loadSavedKey(provider: Provider): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(KEY_STORAGE_PREFIX + provider) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveKey(provider: Provider, key: string) {
+  try {
+    if (key.trim()) {
+      localStorage.setItem(KEY_STORAGE_PREFIX + provider, key.trim());
+    } else {
+      localStorage.removeItem(KEY_STORAGE_PREFIX + provider);
+    }
+  } catch {}
+}
 
 type Suggestion = {
   slidePage: number;
@@ -71,19 +129,38 @@ export function AiGenFromPdfModal({
   // Lecturer bật tay nếu muốn tính điểm cho hoạt động cụ thể.
   const [requiresStudentCode, setRequiresStudentCode] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (typeof window === "undefined") return GEMINI_MODELS[0].id;
+    if (typeof window === "undefined") return MODELS[0].id;
     try {
       const saved = localStorage.getItem(MODEL_STORAGE_KEY);
-      if (saved && GEMINI_MODELS.some((m) => m.id === saved)) return saved;
+      if (saved && MODELS.some((m) => m.id === saved)) return saved;
     } catch {}
-    return GEMINI_MODELS[0].id;
+    return MODELS[0].id;
   });
+
+  const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
+  const currentProvider = currentModelDef.provider;
+
+  // Per-provider API key (load từ localStorage)
+  const [apiKeyByProvider, setApiKeyByProvider] = useState<Record<Provider, string>>(() => ({
+    gemini: loadSavedKey("gemini"),
+    deepseek: loadSavedKey("deepseek"),
+    openrouter: loadSavedKey("openrouter"),
+  }));
+  const currentKey = apiKeyByProvider[currentProvider];
+  const needsUserKey = PROVIDER_INFO[currentProvider].needsUserKey;
+  const hasKey = !!currentKey || !needsUserKey;
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const handleSelectModel = (id: string) => {
     setSelectedModel(id);
     try {
       localStorage.setItem(MODEL_STORAGE_KEY, id);
     } catch {}
+  };
+
+  const updateProviderKey = (provider: Provider, key: string) => {
+    setApiKeyByProvider((prev) => ({ ...prev, [provider]: key }));
+    saveKey(provider, key);
   };
 
   const extractPdfText = async (): Promise<{ pageNumber: number; text: string }[]> => {
@@ -114,12 +191,14 @@ export function AiGenFromPdfModal({
       const pages = await extractPdfText();
 
       setStage("generating");
-      setProgress(`Đang gửi cho AI (${selectedModel})...`);
+      setProgress(`Đang gửi cho AI (${currentModelDef.label})...`);
       const result = await generate({
         pages,
         maxSuggestions,
         sessionTitle,
+        provider: currentProvider,
         model: selectedModel,
+        apiKey: currentKey || undefined,
       });
 
       const editable: EditableSuggestion[] = result.suggestions.map((s, idx) => ({
@@ -129,7 +208,12 @@ export function AiGenFromPdfModal({
       }));
       setSuggestions(editable);
 
-      const tokens = result.tokenUsage?.totalTokenCount;
+      // tokenUsage shape khác nhau giữa providers — Gemini có totalTokenCount,
+      // OpenAI-compat có total_tokens
+      const usage = result.tokenUsage as
+        | { totalTokenCount?: number; total_tokens?: number }
+        | null;
+      const tokens = usage?.totalTokenCount ?? usage?.total_tokens;
       const modelLabel = result.modelUsed ?? selectedModel;
       setTokenInfo(
         [tokens ? `${tokens} tokens` : null, `${result.pagesProcessed} trang`, modelLabel]
@@ -157,8 +241,12 @@ export function AiGenFromPdfModal({
       }
 
       if (isQuota) {
-        // Auto-suggest model khác (skip cái hiện tại)
-        const next = GEMINI_MODELS.find((m) => m.id !== selectedModel);
+        // Suggest model khác — ưu tiên cùng provider (đã có key), fallback model bất kỳ
+        const sameProvider = MODELS.find(
+          (m) => m.id !== selectedModel && m.provider === currentProvider
+        );
+        const anyOther = MODELS.find((m) => m.id !== selectedModel);
+        const next = sameProvider ?? anyOther;
         toast.error(msg, {
           duration: 10000,
           action: next
@@ -359,14 +447,68 @@ export function AiGenFromPdfModal({
                 onChange={(e) => handleSelectModel(e.target.value)}
                 className="w-full h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
               >
-                {GEMINI_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label} — {m.hint}
-                  </option>
+                {(["gemini", "deepseek", "openrouter"] as Provider[]).map((p) => (
+                  <optgroup key={p} label={PROVIDER_INFO[p].label}>
+                    {MODELS.filter((m) => m.provider === p).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} — {m.hint}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
+
+              {/* User API key UI — chỉ hiện cho provider cần key + chưa có key, hoặc khi user mở */}
+              {(needsUserKey || showKeyInput) && (
+                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-medium text-zinc-700">
+                      API key {PROVIDER_INFO[currentProvider].label}
+                      {!needsUserKey && (
+                        <span className="ml-1 text-zinc-400 font-normal">(tùy chọn, override server)</span>
+                      )}
+                    </label>
+                    <a
+                      href={PROVIDER_INFO[currentProvider].signupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      Lấy key →
+                    </a>
+                  </div>
+                  <Input
+                    type="password"
+                    placeholder={
+                      currentProvider === "gemini"
+                        ? "AIza... (để trống = dùng server key)"
+                        : currentProvider === "deepseek"
+                          ? "sk-..."
+                          : "sk-or-v1-..."
+                    }
+                    value={currentKey}
+                    onChange={(e) => updateProviderKey(currentProvider, e.target.value)}
+                    className="font-mono text-xs"
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] text-zinc-500">
+                    Key lưu trên máy bạn (localStorage). Mỗi lần gen, key được gửi qua HTTPS tới Convex action — server KHÔNG lưu, chỉ dùng để gọi {PROVIDER_INFO[currentProvider].label}.
+                  </p>
+                </div>
+              )}
+
+              {!needsUserKey && !showKeyInput && (
+                <button
+                  type="button"
+                  onClick={() => setShowKeyInput(true)}
+                  className="text-xs text-zinc-500 hover:text-zinc-800 underline underline-offset-2"
+                >
+                  Dùng API key Gemini của riêng tôi (thay vì server key)
+                </button>
+              )}
+
               <p className="text-xs text-zinc-500">
-                Đổi model nếu gặp lỗi <span className="font-mono">quota exceeded</span>. Tất cả đều free tier.
+                Hết quota? Đổi model khác trong list — toast lỗi cũng có nút quick switch.
               </p>
             </div>
 
@@ -400,7 +542,9 @@ export function AiGenFromPdfModal({
               <Button variant="outline" onClick={onClose}>
                 Huỷ
               </Button>
-              <Button onClick={handleGenerate}>🤖 Bắt đầu sinh</Button>
+              <Button onClick={handleGenerate} disabled={!hasKey}>
+                {hasKey ? "🤖 Bắt đầu sinh" : `Cần API key ${PROVIDER_INFO[currentProvider].label}`}
+              </Button>
             </div>
           </div>
         )}
