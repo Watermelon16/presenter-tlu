@@ -39,8 +39,13 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ConvexClientProvider>
           <div className="flex-1">{children}</div>
-          <footer className="border-t border-zinc-200/50 dark:border-zinc-800/50 py-3 px-4 text-center text-[11px] text-zinc-500 select-none">
-            © {new Date().getFullYear()} <span className="font-medium text-zinc-600 dark:text-zinc-400">TS. Lê Hồng Phương</span> — Bộ môn Thủy công, Trường Đại học Thủy lợi
+          <footer className="border-t border-zinc-200/50 dark:border-zinc-800/50 py-2 px-3 text-center text-[9px] sm:text-[10px] md:text-[11px] text-zinc-500 select-none whitespace-nowrap overflow-hidden">
+            © {new Date().getFullYear()} <span className="font-medium text-zinc-600 dark:text-zinc-400">TS. Lê Hồng Phương</span>
+            <span> · </span>
+            <span className="hidden sm:inline">Bộ môn Thủy công · </span>
+            <span className="sm:hidden">BM Thủy công · </span>
+            <span className="hidden sm:inline">Trường Đại học Thủy lợi</span>
+            <span className="sm:hidden">ĐH Thủy lợi</span>
           </footer>
         </ConvexClientProvider>
         <Toaster position="top-center" richColors closeButton />

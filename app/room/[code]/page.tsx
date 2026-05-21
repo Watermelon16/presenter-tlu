@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect } from "react";
+import { VnInput, VnTextarea } from "@/components/VnInput";
 
 interface StudentIdentity {
   studentCode: string;
@@ -649,25 +650,25 @@ export default function ParticipantRoomPage() {
                   </button>
                 ) : (
                   <div className="space-y-3">
-                    <input
+                    <VnInput
                       type="text"
                       placeholder="Mã sinh viên (VD: 2351150001)"
                       value={studentCodeInput}
-                      onChange={(e) => setStudentCodeInput(e.target.value.toUpperCase())}
+                      onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white font-mono"
                     />
-                    <input
+                    <VnInput
                       type="text"
                       placeholder="Họ và tên (VD: Trần Văn An)"
                       value={fullNameInput}
-                      onChange={(e) => setFullNameInput(e.target.value)}
+                      onValueChange={setFullNameInput}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
                     />
-                    <input
+                    <VnInput
                       type="text"
                       placeholder="Lớp (VD: 65C)"
                       value={classNameInput}
-                      onChange={(e) => setClassNameInput(e.target.value)}
+                      onValueChange={setClassNameInput}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
                     />
                     <div className="flex gap-3 pt-1">
@@ -760,11 +761,11 @@ export default function ParticipantRoomPage() {
                   Nhập từ khóa hoặc ý kiến ngắn (tối đa 30 ký tự)
                 </div>
 
-                <input
+                <VnInput
                   type="text"
                   maxLength={30}
                   value={wordcloudInput}
-                  onChange={(e) => setWordcloudInput(e.target.value)}
+                  onValueChange={setWordcloudInput}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && wordcloudInput.trim()) {
                       handleSubmit();
@@ -801,9 +802,9 @@ export default function ParticipantRoomPage() {
                 <div className="mb-3 text-sm text-zinc-500">
                   Câu trả lời ngắn (tối đa 500 ký tự)
                 </div>
-                <textarea
+                <VnTextarea
                   value={wordcloudInput}
-                  onChange={(e) => setWordcloudInput(e.target.value)}
+                  onValueChange={setWordcloudInput}
                   maxLength={500}
                   rows={4}
                   placeholder="Nhập câu trả lời của bạn..."
@@ -882,9 +883,9 @@ export default function ParticipantRoomPage() {
                   <>
                     <div>
                       <div className="mb-2 text-sm text-zinc-500">Bạn có câu hỏi gì?</div>
-                      <textarea
+                      <VnTextarea
                         value={qaQuestionInput}
-                        onChange={(e) => setQaQuestionInput(e.target.value)}
+                        onValueChange={setQaQuestionInput}
                         placeholder="Nhập câu hỏi của bạn..."
                         rows={2}
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
@@ -1101,9 +1102,9 @@ export default function ParticipantRoomPage() {
                           ))}
                         </div>
 
-                        <textarea
+                        <VnTextarea
                           value={boardContentInput}
-                          onChange={(e) => setBoardContentInput(e.target.value)}
+                          onValueChange={setBoardContentInput}
                           placeholder="Viết ý tưởng, nhận xét, câu hỏi... (có thể đăng nhiều lần)"
                           rows={2}
                           className="w-full px-4 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"

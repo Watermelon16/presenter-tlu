@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { VnInput } from "@/components/VnInput";
 
 export default function JoinRoomPage() {
   return (
@@ -140,28 +141,31 @@ function JoinRoomForm() {
               <div className="space-y-3">
                 <div>
                   <label className="text-sm text-zinc-600 mb-1.5 block">Mã sinh viên</label>
-                  <Input
+                  <VnInput
                     placeholder="2351150001"
                     value={studentCode}
-                    onChange={(e) => setStudentCode(e.target.value)}
+                    onValueChange={setStudentCode}
+                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-zinc-600 mb-1.5 block">Họ và tên</label>
-                  <Input
+                  <VnInput
                     placeholder="Trần Văn An"
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    onValueChange={setFullName}
+                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-zinc-600 mb-1.5 block">Lớp</label>
-                  <Input
+                  <VnInput
                     placeholder="VD: 65C"
                     value={className}
-                    onChange={(e) => setClassName(e.target.value)}
+                    onValueChange={setClassName}
+                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
                 </div>
               </div>

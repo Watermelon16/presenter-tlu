@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { VnInput } from "@/components/VnInput";
 
 export default function CreateRoomPage() {
   const [title, setTitle] = useState("");
@@ -48,9 +49,12 @@ export default function CreateRoomPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-semibold tracking-tight">Presenter TLU</h1>
           <p className="text-zinc-600 mt-2">Công cụ tương tác giảng dạy — Đại học Thủy Lợi</p>
-          <p className="text-xs text-zinc-500 mt-3">
+          <p className="text-[11px] sm:text-xs text-zinc-500 mt-3 whitespace-nowrap overflow-hidden">
             Phát triển bởi <span className="font-medium text-zinc-700">TS. Lê Hồng Phương</span>
-            <br />Bộ môn Thủy công, Trường Đại học Thủy lợi
+            <span className="text-zinc-400"> · </span>
+            <span className="hidden sm:inline">Bộ môn Thủy công, </span>
+            <span className="sm:hidden">BM Thủy công · </span>
+            ĐH Thủy lợi
           </p>
         </div>
 
@@ -64,21 +68,23 @@ export default function CreateRoomPage() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-1.5 block">Tên buổi giảng</label>
-              <Input
+              <VnInput
                 placeholder="Ví dụ: Đập và Hồ chứa - Buổi 1"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onValueChange={setTitle}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
+                className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
               />
             </div>
 
             <div>
               <label className="text-sm font-medium mb-1.5 block">Tên giảng viên (tùy chọn)</label>
-              <Input
+              <VnInput
                 placeholder="TS. Lê Hồng Phương"
                 value={hostName}
-                onChange={(e) => setHostName(e.target.value)}
+                onValueChange={setHostName}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
+                className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
               />
             </div>
 

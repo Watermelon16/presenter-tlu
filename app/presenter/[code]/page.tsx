@@ -12,6 +12,7 @@ import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import * as XLSX from "xlsx";
 import { PdfSlideViewer } from "@/components/PdfSlideViewer";
+import { VnInput, VnTextarea } from "@/components/VnInput";
 
 import {
   DndContext,
@@ -551,6 +552,49 @@ function PresenterPage() {
           setOverlayReturnTo(null);
         } else {
           switchOverlay("slides");
+        }
+      }
+
+      // A = Kích hoạt activity: ưu tiên focus (active đã có thì bỏ qua) → tìm draft trong kịch bản
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        if (activeActivity) {
+          // Đã có active, không làm gì
+          toast.message("Đã có hoạt động đang chạy", { description: "Bấm X để đóng trước, hoặc Esc để hủy." });
+        } else {
+          // Tìm activity ở currentScriptPosition (nếu script mode), không thì lấy draft đầu tiên
+          let target: { _id: string; title: string } | null = null;
+          if (isScriptMode && currentScriptActivity && currentScriptActivity.status === "draft") {
+            target = currentScriptActivity;
+          } else {
+            const draft = sortedActivities.find((a) => a.status === "draft");
+            if (draft) target = draft;
+          }
+          if (target) {
+            handleStart(target._id);
+            toast.success(`Đã kích hoạt: ${target.title}`);
+          } else {
+            toast.message("Không còn hoạt động nháp để kích hoạt");
+          }
+        }
+      }
+
+      // X = Đóng activity đang chạy
+      if (e.key === "x" || e.key === "X") {
+        e.preventDefault();
+        if (activeActivity) {
+          handleClose(activeActivity._id);
+          toast.success(`Đã đóng: ${activeActivity.title}`);
+        } else {
+          toast.message("Không có hoạt động đang chạy");
+        }
+      }
+
+      // T = Toggle tab trong overlay Kết quả (Kết quả ↔ Bảng thành tích)
+      if (e.key === "t" || e.key === "T") {
+        if (fullscreenOverlay === "result") {
+          e.preventDefault();
+          setResultTab((prev) => (prev === "result" ? "leaderboard" : "result"));
         }
       }
     };
@@ -1768,12 +1812,20 @@ function PresenterPage() {
                   Phím tắt
                 </div>
                 <div className="text-xs text-zinc-700 space-y-1.5 leading-relaxed">
+                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1">CHIẾU OVERLAY</div>
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Q</kbd><span>QR + mã phòng to</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd><span>Chiếu kết quả to</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd><span>Kết quả + Bảng thành tích (2 tab)</span></div>
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">S</kbd><span>Chiếu slide PDF</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd><span>Thoát overlay (về slide nếu đang chiếu)</span></div>
-                  <div className="flex items-center gap-2 pt-1 mt-1 border-t border-zinc-200"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd><span>Bước kế trong kịch bản / next slide</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd><span>Chuyển slide PDF</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">T</kbd><span>Toggle tab trong overlay F</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd><span>Thoát overlay</span></div>
+
+                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">ĐIỀU KHIỂN HOẠT ĐỘNG</div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-emerald-100 border border-emerald-300 text-emerald-800 rounded shadow-sm">A</kbd><span>▶ Kích hoạt hoạt động nháp gần nhất</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-red-100 border border-red-300 text-red-800 rounded shadow-sm">X</kbd><span>⏹ Đóng hoạt động đang chạy</span></div>
+
+                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">DI CHUYỂN</div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd><span>Bước kế / next slide</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd><span>Chuyển slide</span></div>
                 </div>
               </div>
 
@@ -2473,10 +2525,10 @@ function PresenterPage() {
                   <label className="text-sm font-semibold text-zinc-700 block mb-1.5">
                     Tiêu đề <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <VnInput
                     type="text"
                     value={pollTitle}
-                    onChange={(e) => { setPollTitle(e.target.value); setTitleError(""); }}
+                    onValueChange={(v) => { setPollTitle(v); setTitleError(""); }}
                     placeholder="VD: Phân loại đập theo vật liệu"
                     className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"
                   />
@@ -2485,9 +2537,9 @@ function PresenterPage() {
 
                 <div>
                   <label className="text-sm font-semibold text-zinc-700 block mb-1.5">Mô tả (tùy chọn)</label>
-                  <textarea
+                  <VnTextarea
                     value={pollDescription}
-                    onChange={(e) => setPollDescription(e.target.value)}
+                    onValueChange={setPollDescription}
                     placeholder="Giải thích/gợi ý hiển thị dưới tiêu đề khi SV trả lời"
                     rows={2}
                     className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2 text-sm resize-y focus:outline-none focus:border-emerald-500"
@@ -2706,20 +2758,20 @@ function PresenterPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-sm text-zinc-700 block mb-1.5">Nhãn điểm thấp</label>
-                        <input
+                        <VnInput
                           type="text"
                           value={ratingMinLabel}
-                          onChange={(e) => setRatingMinLabel(e.target.value)}
+                          onValueChange={setRatingMinLabel}
                           placeholder="Rất không hiểu"
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
                         <label className="text-sm text-zinc-700 block mb-1.5">Nhãn điểm cao</label>
-                        <input
+                        <VnInput
                           type="text"
                           value={ratingMaxLabel}
-                          onChange={(e) => setRatingMaxLabel(e.target.value)}
+                          onValueChange={setRatingMaxLabel}
                           placeholder="Rất hiểu rõ"
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
@@ -3396,11 +3448,21 @@ function PresenterPage() {
               </div>
             )}
 
-            {/* Badge mã phòng nhỏ ở góc — để SV vẫn join được khi đang chiếu slide */}
+            {/* Card mã phòng + QR ở góc — SV vẫn join được khi đang chiếu slide */}
             {hasPdf && (
-              <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs flex items-center gap-2">
-                <span className="text-zinc-400">Mã phòng:</span>
-                <span className="font-mono font-bold tracking-widest">{upperCode}</span>
+              <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-xl p-3 text-white shadow-2xl flex items-center gap-3">
+                {qrDataUrl && (
+                  <img
+                    src={qrDataUrl}
+                    alt="QR mã phòng"
+                    className="w-20 h-20 rounded-md bg-white p-1"
+                  />
+                )}
+                <div>
+                  <div className="text-[10px] text-zinc-400 tracking-widest">MÃ PHÒNG</div>
+                  <div className="font-mono font-bold tracking-[4px] text-xl">{upperCode}</div>
+                  <div className="text-[9px] text-zinc-500 mt-0.5">Quét QR hoặc nhập mã</div>
+                </div>
               </div>
             )}
 
