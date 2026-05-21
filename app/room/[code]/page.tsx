@@ -515,7 +515,7 @@ export default function ParticipantRoomPage() {
               <span className="text-emerald-700">({identity.studentCode})</span>
               <span className="text-emerald-600"> · {identity.className}</span>
               <div className="text-[11px] text-emerald-700/80 mt-0.5">
-                🔒 Thiết bị đã khóa với SV này — không thể đổi để chống điểm danh hộ
+                ✓ Thiết bị đã đăng ký với SV này trong buổi
               </div>
             </div>
           </div>
@@ -1034,8 +1034,6 @@ export default function ParticipantRoomPage() {
                   </div>
                 )}
 
-                {/* Aggregate poll results KHÔNG hiển thị ở SV để chống nhìn lén:
-                    SV chỉ xem kết quả qua màn hình chiếu khi giảng viên revealed. */}
                 {activeActivity.type === "poll" && !isQuiz && (
                   <div className="mt-4 text-xs text-emerald-700">
                     Kết quả sẽ được giảng viên công bố trên màn hình chiếu.

@@ -664,13 +664,13 @@ function PresenterPage() {
         }
       }
 
-      // R = Reveal — hiện/ẩn chi tiết kết quả (chống SV copy khi đang trả lời)
+      // R = Reveal — công bố / ẩn chi tiết kết quả
       if (e.key === "r" || e.key === "R") {
         if (fullscreenOverlay === "result" && displayActivity && displayActivity.status === "active") {
           e.preventDefault();
           setResultsRevealed((prev) => {
             const next = !prev;
-            toast.message(next ? "✓ Đã hiện kết quả cho cả lớp" : "Đã ẩn kết quả");
+            toast.message(next ? "✓ Đã công bố kết quả" : "Đã ẩn kết quả");
             return next;
           });
         }
@@ -1982,7 +1982,7 @@ function PresenterPage() {
 
                   <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">ĐIỀU KHIỂN HOẠT ĐỘNG</div>
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-emerald-100 border border-emerald-300 text-emerald-800 rounded shadow-sm">A</kbd><span>▶ Kích hoạt + mở overlay (kết quả ẩn)</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-amber-100 border border-amber-300 text-amber-800 rounded shadow-sm">R</kbd><span>👁 Hiện kết quả cho cả lớp (chống copy)</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-amber-100 border border-amber-300 text-amber-800 rounded shadow-sm">R</kbd><span>👁 Công bố kết quả lên màn hình</span></div>
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-red-100 border border-red-300 text-red-800 rounded shadow-sm">X</kbd><span>⏹ Đóng activity (bấm X 2 lần = đóng overlay về slide)</span></div>
 
                   <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">DI CHUYỂN</div>
@@ -3350,12 +3350,12 @@ function PresenterPage() {
                 <button
                   onClick={() => {
                     setResultsRevealed(true);
-                    toast.success("Đã hiện kết quả cho cả lớp");
+                    toast.success("Đã công bố kết quả");
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold"
-                  title="Hiện chi tiết kết quả (phím R)"
+                  title="Công bố kết quả lên màn hình (phím R)"
                 >
-                  👁 Hiện kết quả (R)
+                  👁 Công bố kết quả (R)
                 </button>
               )}
               {/* Nút Đóng activity — chỉ hiện khi đang có active */}
@@ -3578,9 +3578,8 @@ function PresenterPage() {
                 {/* ===== Khi đang ACTIVE và chưa REVEAL → chỉ hiện đếm + đề + hint ===== */}
                 {!shouldShowResults && (
                   <div className="text-center w-full max-w-3xl">
-                    <div className="text-7xl mb-6">🔒</div>
-                    <div className="text-4xl md:text-5xl font-bold mb-3">Đang chờ tất cả SV trả lời</div>
-                    <div className="text-2xl text-zinc-400 mb-8">Kết quả chi tiết được ẩn để chống nhìn lén</div>
+                    <div className="text-7xl mb-6">⏳</div>
+                    <div className="text-4xl md:text-5xl font-bold mb-8">Đang chờ sinh viên trả lời</div>
 
                     {/* Count realtime */}
                     {(() => {
@@ -3604,7 +3603,7 @@ function PresenterPage() {
 
                     <div className="mt-10 inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
                       <kbd className="px-3 py-1 text-base font-mono bg-amber-500 text-black rounded font-bold shadow">R</kbd>
-                      <span className="text-amber-300 text-lg">Bấm để hiện kết quả cho cả lớp</span>
+                      <span className="text-amber-300 text-lg">Bấm để công bố kết quả</span>
                     </div>
                   </div>
                 )}

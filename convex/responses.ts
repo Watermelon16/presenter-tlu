@@ -69,7 +69,7 @@ export const submitResponse = mutation({
         // Cũng flag participant để giảng viên dễ thấy
         await ctx.db.patch(participant._id, {
           flagged: true,
-          flagReason: participant.flagReason || "Câu trả lời gửi từ thiết bị khác (nghi vấn làm bài hộ)",
+          flagReason: participant.flagReason || "Câu trả lời gửi từ thiết bị khác với thiết bị đã đăng ký",
         });
       }
     }

@@ -45,7 +45,7 @@ export const joinSession = mutation({
 
       if (sameDevice && sameDevice.studentCode !== studentCode) {
         throw new Error(
-          `Thiết bị này đã đăng ký với mã SV "${sameDevice.studentCode}" (${sameDevice.fullName}) trong buổi này. Mỗi thiết bị chỉ được dùng cho 1 SV.`
+          `Thiết bị này đã đăng ký SV "${sameDevice.studentCode}" (${sameDevice.fullName}) trong buổi. Mỗi thiết bị chỉ dùng cho 1 SV.`
         );
       }
     }
@@ -71,7 +71,7 @@ export const joinSession = mutation({
       if (deviceId && existing.deviceId && existing.deviceId !== deviceId) {
         patch.deviceId = deviceId;
         patch.flagged = true;
-        patch.flagReason = `Đăng nhập từ ${(existing.deviceChangeCount ?? 0) + 2} thiết bị khác nhau (nghi vấn điểm danh hộ)`;
+        patch.flagReason = `Đăng nhập từ ${(existing.deviceChangeCount ?? 0) + 2} thiết bị khác nhau trong buổi`;
         patch.deviceChangeCount = (existing.deviceChangeCount ?? 0) + 1;
       } else if (deviceId && !existing.deviceId) {
         patch.deviceId = deviceId;
