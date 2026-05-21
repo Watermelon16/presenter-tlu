@@ -157,6 +157,26 @@ export default function ParticipantRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upperCode]);
 
+  // Tự động re-register khi:
+  //  - Identity tồn tại (đã có trong localStorage)
+  //  - Session vừa load HOẶC currentRun đổi (giảng viên bấm "Phiên mới")
+  // → Backend joinSession sẽ tạo participant cho run hiện tại (idempotent)
+  // Tránh lỗi: SV reload, localStorage có identity nhưng KHÔNG có participant record
+  // cho phiên hiện tại → bảng thành tích bỏ qua SV này
+  useEffect(() => {
+    if (!session?._id || !upperCode || !identity?.studentCode) return;
+    joinSession({
+      code: upperCode,
+      studentCode: identity.studentCode,
+      fullName: identity.fullName,
+      className: identity.className,
+      deviceId: getOrCreateDeviceId(),
+    }).catch(() => {
+      // Im lặng — phòng đóng / lỗi mạng
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?._id, session?.currentRun, identity?.studentCode]);
+
   // Lịch sử hoạt động của SV
   const myHistory = useQuery(
     api.responses.getMyHistoryInSession,
