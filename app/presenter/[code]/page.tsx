@@ -737,6 +737,8 @@ function PresenterPage() {
   const [ratingMax, setRatingMax] = useState(5);
   const [ratingMinLabel, setRatingMinLabel] = useState("Rất không hiểu");
   const [ratingMaxLabel, setRatingMaxLabel] = useState("Rất hiểu rõ");
+  // Nhãn cho từng điểm (1-5). Key = số điểm, value = mô tả.
+  const [ratingPointLabels, setRatingPointLabels] = useState<Record<number, string>>({});
 
   // Cấu hình Q&A
   const [qaAllowAnonymous, setQaAllowAnonymous] = useState(true);
@@ -1248,6 +1250,15 @@ function PresenterPage() {
         config.max = ratingMax;
         config.minLabel = ratingMinLabel.trim();
         config.maxLabel = ratingMaxLabel.trim();
+        // Lưu nhãn cho từng điểm (filter ra các nhãn có nhập)
+        const pointLabels: Record<number, string> = {};
+        for (let i = ratingMin; i <= ratingMax; i++) {
+          const lbl = (ratingPointLabels[i] || "").trim();
+          if (lbl) pointLabels[i] = lbl;
+        }
+        if (Object.keys(pointLabels).length > 0) {
+          config.pointLabels = pointLabels;
+        }
       } else if (effectiveType === "qa") {
         config.allowAnonymous = qaAllowAnonymous;
         config.maxQuestionsPerStudent = qaMaxQuestionsPerStudent;
@@ -1481,6 +1492,7 @@ function PresenterPage() {
       setRatingMax(5);
       setRatingMinLabel("Rất không hiểu");
       setRatingMaxLabel("Rất hiểu rõ");
+      setRatingPointLabels({});
     } else if (type === "qa") {
       setQaAllowAnonymous(true);
       setQaMaxQuestionsPerStudent(null);
@@ -1531,6 +1543,7 @@ function PresenterPage() {
     setRatingMax(5);
     setRatingMinLabel("Rất không hiểu");
     setRatingMaxLabel("Rất hiểu rõ");
+    setRatingPointLabels({});
     setQaAllowAnonymous(true);
     setQaMaxQuestionsPerStudent(null);
     setBoardColumns([
@@ -1562,6 +1575,7 @@ function PresenterPage() {
       setRatingMax(activity.config?.max ?? 5);
       setRatingMinLabel(activity.config?.minLabel || "Rất không hiểu");
       setRatingMaxLabel(activity.config?.maxLabel || "Rất hiểu rõ");
+      setRatingPointLabels((activity.config?.pointLabels as Record<number, string>) || {});
     }
     else if (activity.type === "qa") {
       setQaAllowAnonymous(activity.config?.allowAnonymous ?? true);
@@ -2946,6 +2960,39 @@ function PresenterPage() {
                       </div>
                     </div>
 
+                    {/* Nhãn cho từng điểm (tùy chọn) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-zinc-700">Ý nghĩa từng điểm (tùy chọn, SV thấy rõ hơn)</label>
+                      </div>
+                      <div className="space-y-1.5">
+                        {Array.from({ length: ratingMax - ratingMin + 1 }, (_, i) => {
+                          const point = ratingMin + i;
+                          // Auto-fill min/max label nếu point trùng min/max và chưa có pointLabel riêng
+                          const defaultText = point === ratingMin ? ratingMinLabel
+                            : point === ratingMax ? ratingMaxLabel
+                            : "";
+                          return (
+                            <div key={point} className="flex items-center gap-2">
+                              <span className="w-8 text-center font-mono font-semibold text-amber-700 bg-amber-100 rounded">
+                                {point}
+                              </span>
+                              <VnInput
+                                type="text"
+                                value={ratingPointLabels[point] || ""}
+                                onValueChange={(v) => setRatingPointLabels({ ...ratingPointLabels, [point]: v })}
+                                placeholder={defaultText || `Ý nghĩa điểm ${point}`}
+                                className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 mt-2">
+                        Để trống nếu chỉ cần dùng nhãn min/max ở trên. Khi có nhãn từng điểm, SV thấy đầy đủ ý nghĩa lúc chọn.
+                      </div>
+                    </div>
+
                     <div className="text-xs text-amber-800 bg-amber-100/60 px-3 py-2 rounded-lg">
                       Thang điểm sẽ hiển thị từ <strong>{ratingMin}</strong> đến <strong>{ratingMax}</strong> ({ratingMax - ratingMin + 1} mức)
                     </div>
@@ -3507,6 +3554,7 @@ function PresenterPage() {
                     max?: number;
                     minLabel?: string;
                     maxLabel?: string;
+                    pointLabels?: Record<string, string>;
                     columns?: Array<{ id: string; title: string }>;
                     minSelections?: number;
                   };
@@ -3562,21 +3610,44 @@ function PresenterPage() {
                           <span>Nhập câu trả lời ngắn 1–2 câu</span>
                         </div>
                       )}
-                      {t === "rating" && (
-                        <div className="text-zinc-200">
-                          <div className="text-2xl md:text-3xl flex items-center justify-center gap-3">
-                            <span>⭐</span>
-                            <span>Chấm điểm <strong className="text-amber-300">{cfg.min ?? 1}–{cfg.max ?? 5}</strong></span>
-                          </div>
-                          {(cfg.minLabel || cfg.maxLabel) && (
-                            <div className="text-xl md:text-2xl text-zinc-400 mt-3 flex items-center justify-center gap-6">
-                              <span><strong className="text-zinc-200">{cfg.min ?? 1}:</strong> {cfg.minLabel || "—"}</span>
-                              <span className="text-zinc-600">↔</span>
-                              <span><strong className="text-zinc-200">{cfg.max ?? 5}:</strong> {cfg.maxLabel || "—"}</span>
+                      {t === "rating" && (() => {
+                        const min = cfg.min ?? 1;
+                        const max = cfg.max ?? 5;
+                        const labelOf = (point: number) => {
+                          if (cfg.pointLabels?.[String(point)]) return cfg.pointLabels[String(point)];
+                          if (point === min && cfg.minLabel) return cfg.minLabel;
+                          if (point === max && cfg.maxLabel) return cfg.maxLabel;
+                          return "";
+                        };
+                        const hasDetailed =
+                          (cfg.pointLabels && Object.keys(cfg.pointLabels).length > 0) ||
+                          (cfg.minLabel || cfg.maxLabel);
+
+                        return (
+                          <div className="text-zinc-200">
+                            <div className="text-2xl md:text-3xl flex items-center justify-center gap-3 mb-4">
+                              <span>⭐</span>
+                              <span>Chấm điểm <strong className="text-amber-300">{min}–{max}</strong></span>
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {hasDetailed && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-xl md:text-2xl text-left max-w-3xl mx-auto">
+                                {Array.from({ length: max - min + 1 }, (_, i) => {
+                                  const point = min + i;
+                                  const label = labelOf(point);
+                                  return (
+                                    <div key={point} className="flex items-center gap-3 px-3 py-1">
+                                      <span className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center shrink-0">
+                                        {point}
+                                      </span>
+                                      <span className="text-zinc-200">{label || `Mức ${point}`}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {t === "qa" && (
                         <div className="text-2xl md:text-3xl text-zinc-200 flex items-center justify-center gap-3 leading-snug">
                           <span>❓</span>

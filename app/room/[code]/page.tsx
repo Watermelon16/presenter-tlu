@@ -836,46 +836,99 @@ export default function ParticipantRoomPage() {
             )}
 
             {/* Form trả lời - Rating / Thang điểm */}
-            {activeActivity.type === "rating" && !hasSubmitted && (
-              <div className="bg-white border rounded-3xl p-6 shadow-sm">
-                <div className="mb-4 text-sm text-zinc-500">
-                  {activeActivity.config?.minLabel} — {activeActivity.config?.maxLabel}
+            {activeActivity.type === "rating" && !hasSubmitted && (() => {
+              const cfg = activeActivity.config || {};
+              const min = cfg.min ?? 1;
+              const max = cfg.max ?? 5;
+              const pointLabels: Record<string, string> = cfg.pointLabels || {};
+
+              const labelOf = (point: number) => {
+                if (pointLabels[String(point)]) return pointLabels[String(point)];
+                if (point === min && cfg.minLabel) return cfg.minLabel;
+                if (point === max && cfg.maxLabel) return cfg.maxLabel;
+                return "";
+              };
+
+              const hasAnyDetailedLabel =
+                Object.keys(pointLabels).length > 0 ||
+                Array.from({ length: max - min + 1 }, (_, i) => labelOf(min + i)).some((l) => l);
+
+              return (
+                <div className="bg-white border rounded-3xl p-6 shadow-sm">
+                  {/* Header tiêu đề thang điểm */}
+                  {(cfg.minLabel || cfg.maxLabel) && (
+                    <div className="mb-4 flex items-center justify-between text-xs text-zinc-500">
+                      <span>{min}: {cfg.minLabel || "—"}</span>
+                      <span>{max}: {cfg.maxLabel || "—"}</span>
+                    </div>
+                  )}
+
+                  {hasAnyDetailedLabel ? (
+                    // ===== VERTICAL: nhãn từng điểm rõ ràng =====
+                    <div className="space-y-2">
+                      {Array.from({ length: max - min + 1 }, (_, i) => {
+                        const value = min + i;
+                        const label = labelOf(value);
+                        const selected = selectedOptions[0] === value.toString();
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setSelectedOptions([value.toString()])}
+                            className={`w-full px-4 py-3 rounded-2xl border flex items-center gap-3 text-left transition-all ${
+                              selected
+                                ? "bg-emerald-50 border-emerald-500 text-emerald-900 shadow"
+                                : "bg-white border-zinc-200 hover:border-zinc-400 active:bg-zinc-50"
+                            }`}
+                          >
+                            <span className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0 ${
+                              selected ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-700"
+                            }`}>
+                              {value}
+                            </span>
+                            <span className="flex-1 text-base font-medium">
+                              {label || `Mức ${value}`}
+                            </span>
+                            {selected && <span className="text-emerald-600 text-xl shrink-0">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    // ===== HORIZONTAL: chỉ số (không có nhãn) — compact =====
+                    <div className="flex justify-between gap-2">
+                      {Array.from({ length: max - min + 1 }, (_, i) => {
+                        const value = min + i;
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setSelectedOptions([value.toString()])}
+                            className={`flex-1 py-4 rounded-2xl border text-lg font-semibold transition-all ${
+                              selectedOptions[0] === value.toString()
+                                ? "bg-emerald-600 border-emerald-500 text-white"
+                                : "bg-zinc-50 border-zinc-200 hover:border-zinc-400 active:bg-zinc-100"
+                            }`}
+                          >
+                            {value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {submitError && (
+                    <div className="mt-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl">{submitError}</div>
+                  )}
+
+                  <button
+                    onClick={handleSubmit}
+                    disabled={selectedOptions.length === 0 || isSubmitting || timeLeft === 0}
+                    className="mt-6 w-full py-4 rounded-2xl bg-zinc-900 text-white text-lg font-medium disabled:opacity-50 active:bg-black transition-colors"
+                  >
+                    {isSubmitting ? "Đang gửi..." : "Gửi đánh giá"}
+                  </button>
                 </div>
-
-                <div className="flex justify-between gap-2">
-                  {Array.from({ length: (activeActivity.config?.max || 5) - (activeActivity.config?.min || 1) + 1 }, (_, i) => {
-                    const value = (activeActivity.config?.min || 1) + i;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setSelectedOptions([value.toString()])}
-                        className={`flex-1 py-4 rounded-2xl border text-lg font-semibold transition-all ${
-                          selectedOptions[0] === value.toString()
-                            ? "bg-emerald-600 border-emerald-500 text-white"
-                            : "bg-zinc-50 border-zinc-200 hover:border-zinc-400 active:bg-zinc-100"
-                        }`}
-                      >
-                        {value}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {submitError && (
-                  <div className="mt-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl">
-                    {submitError}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSubmit}
-                  disabled={selectedOptions.length === 0 || isSubmitting || timeLeft === 0}
-                  className="mt-6 w-full py-4 rounded-2xl bg-zinc-900 text-white text-lg font-medium disabled:opacity-50 active:bg-black transition-colors"
-                >
-                  {isSubmitting ? "Đang gửi..." : "Gửi đánh giá"}
-                </button>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Q&A - Gửi câu hỏi + Danh sách câu hỏi */}
             {activeActivity.type === "qa" && (
@@ -1047,10 +1100,20 @@ export default function ParticipantRoomPage() {
                 {activeActivity.type === "qa" && (
                   <p className="mt-4 text-sm text-emerald-600">Câu hỏi của bạn đã được gửi. Giảng viên sẽ xem và trả lời sớm nhất có thể.</p>
                 )}
+              </div>
+            )}
 
-                {/* === BOARD EXPERIENCE (Sinh viên) === */}
-                {(activeActivity as any).type === "board" && (
-                  <>
+            {/* === BOARD EXPERIENCE (Sinh viên) — Render OUTSIDE feedback block === */}
+            {activeActivity.type === "board" && (
+              <>
+                {/* Yêu cầu danh tính nếu chưa có */}
+                {!identity && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-sm text-amber-800">
+                    Vui lòng nhập thông tin sinh viên ở phía trên để tham gia.
+                  </div>
+                )}
+
+                {identity && (<>
                     {/* Form đăng bài - chỉ hiện khi còn active */}
                     {activeActivity.status === "active" && (
                       <div className="bg-white border rounded-3xl p-6 shadow-sm space-y-4 mb-6">
@@ -1232,13 +1295,12 @@ export default function ParticipantRoomPage() {
                           : "Chưa có bài đăng nào."}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
+                </>)}
+              </>
             )}
 
-            {/* Hoạt động đã đóng */}
-            {activeActivity.status !== "active" && (
+            {/* Hoạt động đã đóng (chỉ hiển thị cho non-board) */}
+            {activeActivity.status !== "active" && activeActivity.type !== "board" && (
               <div className="bg-zinc-100 rounded-3xl p-8 text-center text-zinc-600">
                 Hoạt động này đã kết thúc.
               </div>
