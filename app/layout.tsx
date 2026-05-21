@@ -22,7 +22,10 @@ export const metadata: Metadata = {
   title: "Presenter TLU",
   description: "Công cụ tương tác giảng dạy thời gian thực - Đại học Thủy Lợi",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
   },
 };
 

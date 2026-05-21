@@ -15,6 +15,7 @@ import { PdfSlideViewer } from "@/components/PdfSlideViewer";
 import { VnInput, VnTextarea } from "@/components/VnInput";
 import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
+import { Logo } from "@/components/Logo";
 
 import {
   DndContext,
@@ -1905,7 +1906,8 @@ function PresenterPage() {
       {/* Top Bar */}
       <div className="border-b border-zinc-200 bg-zinc-50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
-          <div className="flex items-center gap-3 sm:gap-6">
+          <div className="flex items-center gap-3 sm:gap-5">
+            <Logo size="sm" showText={false} href="/" />
             <button
               onClick={() => setFullscreenOverlay("qr")}
               className="text-left group"

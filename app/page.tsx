@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { VnInput } from "@/components/VnInput";
+import { Logo } from "@/components/Logo";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const MY_SESSIONS_KEY = "my_sessions_v1";
@@ -119,7 +120,12 @@ export default function CreateRoomPage() {
     <div className="min-h-screen bg-zinc-50 flex items-start justify-center p-6">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight">Presenter TLU</h1>
+          <div className="flex justify-center mb-3">
+            <Logo size="xl" showText={false} href={null} />
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Presenter <span className="text-emerald-600">TLU</span>
+          </h1>
           <p className="text-zinc-600 mt-2">Công cụ tương tác giảng dạy — Đại học Thủy Lợi</p>
           <p className="text-[11px] sm:text-xs text-zinc-500 mt-3 whitespace-nowrap overflow-hidden">
             Phát triển bởi <span className="font-medium text-zinc-700">TS. Lê Hồng Phương</span>

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { VnInput } from "@/components/VnInput";
+import { Logo } from "@/components/Logo";
 
 export default function JoinRoomPage() {
   return (
@@ -108,6 +109,9 @@ function JoinRoomForm() {
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <Logo size="md" />
+          </div>
           <h1 className="text-3xl font-semibold tracking-tight">Tham gia buổi giảng</h1>
           <p className="text-zinc-600 mt-2">Nhập mã phòng và thông tin của bạn</p>
         </div>

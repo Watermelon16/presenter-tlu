@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Logo } from "@/components/Logo";
 
 const GLOBAL_IDENTITY_KEY = "student_identity_global";
 
@@ -86,17 +87,12 @@ function StudentHistoryView() {
     <div className="min-h-screen bg-zinc-50">
       <div className="max-w-4xl mx-auto p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
+          <Logo size="sm" />
           <Link
             href="/join"
             className="text-sm text-zinc-600 hover:text-zinc-900"
           >
             ← Vào phòng
-          </Link>
-          <Link
-            href="/"
-            className="text-sm text-zinc-600 hover:text-zinc-900"
-          >
-            Trang chủ
           </Link>
         </div>
 

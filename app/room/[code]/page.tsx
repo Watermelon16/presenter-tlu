@@ -14,6 +14,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "@/lib/pushClient";
+import { Logo } from "@/components/Logo";
 
 interface StudentIdentity {
   studentCode: string;
@@ -634,17 +635,20 @@ export default function ParticipantRoomPage() {
     <div className="min-h-screen bg-zinc-50 pb-12">
       {/* Header đơn giản */}
       <div className="border-b bg-white">
-        <div className="max-w-2xl mx-auto px-5 py-4 flex items-center justify-between">
-          <div>
-            <div className="text-xs text-zinc-500">PHÒNG</div>
-            <div className="font-mono text-2xl tracking-[4px] font-semibold text-zinc-900">
-              {session.code}
+        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Logo size="sm" showText={false} href="/" />
+            <div className="min-w-0">
+              <div className="text-[10px] text-zinc-500 tracking-wider">PHÒNG</div>
+              <div className="font-mono text-xl tracking-[3px] font-semibold text-zinc-900 leading-none">
+                {session.code}
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm font-medium text-zinc-700">{session.title}</div>
+          <div className="text-right min-w-0">
+            <div className="text-sm font-medium text-zinc-700 truncate">{session.title}</div>
             {session.hostName && (
-              <div className="text-xs text-zinc-500">{session.hostName}</div>
+              <div className="text-xs text-zinc-500 truncate">{session.hostName}</div>
             )}
           </div>
         </div>
