@@ -294,7 +294,14 @@ export const getRatingResults = query({
     let sum = 0;
 
     for (const res of responses) {
-      const val = Number(res.value);
+      // Hỗ trợ cả format mới { rating: number } lẫn legacy number
+      let val: number;
+      const v = res.value;
+      if (v && typeof v === "object" && typeof (v as { rating?: unknown }).rating === "number") {
+        val = (v as { rating: number }).rating;
+      } else {
+        val = Number(v);
+      }
       if (isNaN(val)) continue;
       distribution[val] = (distribution[val] || 0) + 1;
       sum += val;
@@ -462,16 +469,22 @@ export const getPollVoteCounts = query({
       counts[opt.id] = 0;
     });
 
-    // Đếm vote
+    // Đếm vote — hỗ trợ cả format mới {choiceIds:[...]} lẫn legacy (string hoặc array)
     responses.forEach((res) => {
-      const value = res.value as { choiceIds?: string[] } | undefined;
-      if (value?.choiceIds) {
-        value.choiceIds.forEach((choiceId) => {
-          if (counts[choiceId] !== undefined) {
-            counts[choiceId]++;
-          }
-        });
+      let choiceIds: string[] = [];
+      const v = res.value;
+      if (v && typeof v === "object" && !Array.isArray(v) && Array.isArray((v as { choiceIds?: unknown }).choiceIds)) {
+        choiceIds = (v as { choiceIds: string[] }).choiceIds;
+      } else if (Array.isArray(v)) {
+        choiceIds = v as string[];
+      } else if (typeof v === "string") {
+        choiceIds = [v];
       }
+      choiceIds.forEach((choiceId) => {
+        if (counts[choiceId] !== undefined) {
+          counts[choiceId]++;
+        }
+      });
     });
 
     return {

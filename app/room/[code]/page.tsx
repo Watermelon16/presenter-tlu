@@ -397,14 +397,13 @@ export default function ParticipantRoomPage() {
       if (activeActivity.type === "wordcloud" || activeActivity.type === "opentext") {
         value = wordcloudInput.trim();
       } else if (activeActivity.type === "rating") {
-        value = parseInt(selectedOptions[0]);
+        // Backend mong { rating: number }
+        value = { rating: parseInt(selectedOptions[0]) };
       } else if (activeActivity.type === "qa") {
-        value = qaQuestionInput.trim();
+        value = { text: qaQuestionInput.trim(), upvotes: 0, status: "visible" };
       } else {
-        value =
-          activeActivity.config?.pollType === "multiple_choice"
-            ? selectedOptions
-            : selectedOptions[0];
+        // Poll: Backend mong { choiceIds: string[] }
+        value = { choiceIds: selectedOptions };
       }
 
       await submitResponse({
@@ -571,8 +570,11 @@ export default function ParticipantRoomPage() {
                           <div className={`font-medium truncate ${isMe ? "text-emerald-900" : "text-zinc-800"}`}>
                             {entry.fullName} {isMe && <span className="text-xs text-emerald-700">(bạn)</span>}
                           </div>
+                          {entry.avgResponseMs !== null && entry.avgResponseMs !== undefined && (
+                            <div className="text-[10px] text-zinc-500 font-mono">⚡ {formatTimeMs(entry.avgResponseMs)} TB</div>
+                          )}
                         </div>
-                        <div className="text-sm font-mono font-semibold text-emerald-700 tabular-nums">{entry.score} đ</div>
+                        <div className="text-sm font-mono font-semibold text-emerald-700 tabular-nums shrink-0">{entry.score} đ</div>
                       </div>
                     );
                   })}

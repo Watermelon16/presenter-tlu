@@ -144,10 +144,10 @@ function PresenterPage() {
       : "skip"
   );
 
-  // Lấy kết quả Word Cloud realtime
+  // Lấy kết quả Word Cloud realtime (chỉ wordcloud, opentext có query riêng)
   const wordCloudResults = useQuery(
     api.responses.getWordCloudResults,
-    displayActivity && (displayActivity.type === "wordcloud" || displayActivity.type === "opentext")
+    displayActivity && displayActivity.type === "wordcloud"
       ? { activityId: displayActivity._id }
       : "skip"
   );
@@ -172,6 +172,14 @@ function PresenterPage() {
   const boardPosts = useQuery(
     api.board.listBoardPosts,
     displayActivity && displayActivity.type === "board"
+      ? { activityId: displayActivity._id }
+      : "skip"
+  );
+
+  // Lấy danh sách câu trả lời Open Text (không gom tần suất, hiển thị list)
+  const opentextResponses = useQuery(
+    api.responses.getActivityResponses,
+    displayActivity && displayActivity.type === "opentext"
       ? { activityId: displayActivity._id }
       : "skip"
   );
@@ -566,23 +574,41 @@ function PresenterPage() {
         }
       }
 
-      // A = Kích hoạt activity: ưu tiên focus (active đã có thì bỏ qua) → tìm draft trong kịch bản
+      // A = Kích hoạt activity + tự mở overlay để theo dõi
       if (e.key === "a" || e.key === "A") {
         e.preventDefault();
         if (activeActivity) {
-          // Đã có active, không làm gì
-          toast.message("Đã có hoạt động đang chạy", { description: "Bấm X để đóng trước, hoặc Esc để hủy." });
+          // Có active rồi → chỉ cần mở overlay xem realtime
+          setRevealActivityId(activeActivity._id);
+          setFullscreenOverlay((cur) => {
+            if (cur === "slides") setOverlayReturnTo("slides");
+            return "result";
+          });
+          setResultTab("result");
         } else {
-          // Tìm activity ở currentScriptPosition (nếu script mode), không thì lấy draft đầu tiên
-          let target: { _id: string; title: string } | null = null;
-          if (isScriptMode && currentScriptActivity && currentScriptActivity.status === "draft") {
+          // Tìm activity để kích hoạt: ưu tiên match slide hiện tại, rồi script position, rồi first draft
+          let target: { _id: string; title: string; slideCue?: string } | null = null;
+          // 1. Match slide PDF hiện tại
+          if (hasPdf) {
+            const slideMatch = sortedActivities.find((a) =>
+              a.status === "draft" &&
+              a.slideCue &&
+              /^\d+$/.test(a.slideCue.trim()) &&
+              parseInt(a.slideCue.trim()) === pdfCurrentPage
+            );
+            if (slideMatch) target = slideMatch;
+          }
+          // 2. Script position
+          if (!target && isScriptMode && currentScriptActivity && currentScriptActivity.status === "draft") {
             target = currentScriptActivity;
-          } else {
+          }
+          // 3. First draft
+          if (!target) {
             const draft = sortedActivities.find((a) => a.status === "draft");
             if (draft) target = draft;
           }
           if (target) {
-            handleStart(target._id);
+            handleStartAndReveal(target._id);
             toast.success(`Đã kích hoạt: ${target.title}`);
           } else {
             toast.message("Không còn hoạt động nháp để kích hoạt");
@@ -738,11 +764,26 @@ function PresenterPage() {
   // Đóng activity + TỰ ĐỘNG hiện overlay Kết quả/Bảng thành tích (dùng cho X hotkey + nút Đóng khi trình chiếu)
   const handleCloseAndReveal = useCallback(async (activityId: string) => {
     setRevealActivityId(activityId);  // giữ activity để overlay hiển thị kết quả sau khi đóng
-    await closeActivity({ activityId: activityId as any });
+    // Nếu đang chiếu slide → khi Esc quay lại slide, không về dashboard
+    setFullscreenOverlay((cur) => {
+      if (cur === "slides") setOverlayReturnTo("slides");
+      return "result";
+    });
     setResultTab("result");
-    setFullscreenOverlay("result");
+    await closeActivity({ activityId: activityId as any });
     toast.success("Đã đóng. Đang hiện kết quả + bảng thành tích.");
   }, [closeActivity]);
+
+  // Kích hoạt activity + TỰ ĐỘNG mở overlay để giảng viên thấy đề + theo dõi realtime
+  const handleStartAndReveal = useCallback(async (activityId: string) => {
+    setRevealActivityId(activityId);
+    setFullscreenOverlay((cur) => {
+      if (cur === "slides") setOverlayReturnTo("slides");
+      return "result";
+    });
+    setResultTab("result");
+    await startActivity({ activityId: activityId as any });
+  }, [startActivity]);
 
   const handleMoveUp = useCallback((activityId: string) => {
     moveActivityUp({ activityId: activityId as any });
@@ -3367,6 +3408,26 @@ function PresenterPage() {
                   </div>
                 )}
 
+                {/* OPEN TEXT fullscreen — list câu trả lời, không gom */}
+                {displayActivity.type === "opentext" && opentextResponses && opentextResponses.length > 0 && (
+                  <div className="w-full max-w-4xl space-y-3 max-h-[75vh] overflow-auto pr-2">
+                    {opentextResponses
+                      .filter((r) => r.status === "answered")
+                      .sort((a, b) => b.submittedAt - a.submittedAt)
+                      .map((r) => (
+                        <div key={r._id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                          <div className="text-xl leading-snug whitespace-pre-wrap">{String(r.value || "")}</div>
+                          {r.studentCode && (
+                            <div className="text-xs text-zinc-500 font-mono mt-2">{r.studentCode}</div>
+                          )}
+                        </div>
+                      ))}
+                    <div className="text-center text-zinc-400 text-lg pt-3">
+                      {opentextResponses.filter((r) => r.status === "answered").length} câu trả lời
+                    </div>
+                  </div>
+                )}
+
                 {/* RATING fullscreen */}
                 {displayActivity.type === "rating" && ratingResults && (
                   <div className="w-full max-w-4xl">
@@ -3456,12 +3517,18 @@ function PresenterPage() {
                 {/* Empty state cho fullscreen */}
                 {((displayActivity.type === "poll" && (!pollResults || pollResults.totalAnswered === 0)) ||
                   (displayActivity.type === "wordcloud" && (!wordCloudResults || wordCloudResults.totalResponses === 0)) ||
+                  (displayActivity.type === "opentext" && (!opentextResponses || opentextResponses.filter((r) => r.status === "answered").length === 0)) ||
                   (displayActivity.type === "rating" && (!ratingResults || ratingResults.total === 0)) ||
                   (displayActivity.type === "qa" && (!qaResponses || qaResponses.length === 0)) ||
                   (displayActivity.type === "board" && (!boardPosts || boardPosts.length === 0))) && (
                   <div className="text-center text-zinc-400">
                     <div className="text-6xl mb-4">⏳</div>
                     <div className="text-3xl">Đang chờ sinh viên trả lời...</div>
+                    {displayActivity.config?.description && (
+                      <div className="mt-4 text-xl text-zinc-300 max-w-3xl mx-auto whitespace-pre-wrap">
+                        {String(displayActivity.config.description)}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3519,12 +3586,33 @@ function PresenterPage() {
               </div>
             )}
 
-            {/* Bảng điều khiển hoạt động nổi trên slide */}
+            {/* Bảng điều khiển hoạt động nổi trên slide — CHỈ HIỆN KHI:
+                 - Có activity đang active (giảng viên đang điều khiển), HOẶC
+                 - Có activity nháp/đã đóng có Mốc slide khớp đúng trang PDF hiện tại,
+                   HOẶC khớp revealActivityId (vừa đóng) */}
             {(() => {
-              // Activity ưu tiên hiển thị: active > script position > nextDraft
-              const focusActivity = activeActivity
-                || (isScriptMode && currentScriptActivity ? currentScriptActivity : null)
-                || sortedActivities.find((a) => a.status === "draft");
+              // 1. Active activity luôn hiển thị (đang giảng dở)
+              if (activeActivity) {
+                // (sử dụng activeActivity làm focus)
+              }
+
+              // 2. Activity vừa đóng vẫn còn revealActivityId — vẫn hiện để xem kết quả
+              const revealed = revealActivityId
+                ? sortedActivities.find((a) => a._id === revealActivityId)
+                : null;
+
+              // 3. Match theo slide cue — chỉ hiện khi đúng trang PDF
+              const slideMatch = !activeActivity && hasPdf
+                ? sortedActivities.find((a) =>
+                    a.slideCue &&
+                    /^\d+$/.test(a.slideCue.trim()) &&
+                    parseInt(a.slideCue.trim()) === pdfCurrentPage &&
+                    a.status !== "closed" &&
+                    a.status !== "expired"
+                  )
+                : null;
+
+              const focusActivity = activeActivity || revealed || slideMatch;
 
               if (!focusActivity) return null;
 
@@ -3534,6 +3622,7 @@ function PresenterPage() {
               const responseCount =
                 focusActivity.type === "poll" ? pollResults?.totalAnswered ?? 0 :
                 focusActivity.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
+                focusActivity.type === "opentext" ? (opentextResponses?.filter((r) => r.status === "answered").length ?? 0) :
                 focusActivity.type === "rating" ? ratingResults?.total ?? 0 :
                 focusActivity.type === "qa" ? qaResponses?.length ?? 0 :
                 focusActivity.type === "board" ? boardPosts?.length ?? 0 :
@@ -3562,7 +3651,7 @@ function PresenterPage() {
                   <div className="space-y-1.5">
                     {isDraft && (
                       <button
-                        onClick={() => handleStart(focusActivity._id)}
+                        onClick={() => handleStartAndReveal(focusActivity._id)}
                         className="w-full px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
                       >
                         ▶ Kích hoạt hoạt động
