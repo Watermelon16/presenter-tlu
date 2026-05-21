@@ -119,6 +119,19 @@ export default function CreateRoomPage() {
   return (
     <div className="min-h-screen bg-zinc-50 flex items-start justify-center p-6">
       <div className="w-full max-w-2xl">
+        <div className="flex justify-end mb-4">
+          <a
+            href="https://lephuong-tlu.lovable.app/dashboard/courses"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40 text-zinc-700 hover:text-emerald-700 transition-colors"
+            title="Mở LMS quản lý môn học"
+          >
+            <span>📚</span>
+            <span className="font-medium">LMS quản lý môn học</span>
+            <span className="text-zinc-400">↗</span>
+          </a>
+        </div>
         <div className="text-center mb-8">
           <div className="flex justify-center mb-3">
             <Logo size="xl" showText={false} href={null} />

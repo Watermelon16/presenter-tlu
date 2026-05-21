@@ -2002,6 +2002,17 @@ function PresenterPage() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
           <div className="flex items-center gap-3 sm:gap-5">
             <Logo size="sm" showText={false} href="/" />
+            <a
+              href="https://lephuong-tlu.lovable.app/dashboard/courses"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40 text-zinc-700 hover:text-emerald-700 transition-colors"
+              title="Mở LMS quản lý môn học (tab mới)"
+            >
+              <span>📚</span>
+              <span className="font-medium">LMS</span>
+              <span className="text-zinc-400">↗</span>
+            </a>
             <button
               onClick={() => setFullscreenOverlay("qr")}
               className="text-left group"
@@ -2406,19 +2417,6 @@ function PresenterPage() {
                         <div>
                           <div className="font-semibold">Bảng điều khiển nổi</div>
                           <div className="text-[11px] text-zinc-500 mt-0.5">Nổi trên PPT, không cần Alt+Tab (Chrome 116+)</div>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => {
-                          window.open(`/presenter/${upperCode}/companion?pip=true`, 'pip-companion', 'width=380,height=240,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
-                          setShowScriptMenu(false);
-                        }}
-                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-100 flex items-start gap-2"
-                      >
-                        <span className="text-xl shrink-0">🖼️</span>
-                        <div>
-                          <div className="font-semibold">Companion popup (cũ)</div>
-                          <div className="text-[11px] text-zinc-500 mt-0.5">Cửa sổ thường, cần đặt always-on-top thủ công</div>
                         </div>
                       </button>
                     </div>
