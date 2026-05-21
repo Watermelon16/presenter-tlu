@@ -285,6 +285,139 @@ export const getSessionPdfUrl = query({
   },
 });
 
+/**
+ * Liệt kê chi tiết các session theo danh sách ID — dùng cho trang Quản lý buổi cũ.
+ * Trả về stats: số activities, responses, participants, boardPosts cho mỗi session.
+ */
+export const listSessionsByIds = query({
+  args: { sessionIds: v.array(v.id("sessions")) },
+  handler: async (ctx, args) => {
+    const results = [];
+    for (const sid of args.sessionIds) {
+      const session = await ctx.db.get(sid);
+      if (!session) continue;
+
+      const activities = await ctx.db
+        .query("activities")
+        .withIndex("by_session", (q) => q.eq("sessionId", sid))
+        .collect();
+
+      const participants = await ctx.db
+        .query("participants")
+        .withIndex("by_session", (q) => q.eq("sessionId", sid))
+        .collect();
+
+      const responses = await ctx.db
+        .query("responses")
+        .withIndex("by_session_and_student", (q) => q.eq("sessionId", sid))
+        .collect();
+
+      const boardPosts = await ctx.db
+        .query("boardPosts")
+        .filter((q) => q.eq(q.field("sessionId"), sid))
+        .collect();
+
+      results.push({
+        _id: session._id,
+        code: session.code,
+        title: session.title,
+        hostName: session.hostName,
+        status: session.status,
+        createdAt: session.createdAt,
+        endedAt: session.endedAt,
+        currentRun: session.currentRun ?? 1,
+        hasPdf: !!session.pdfStorageId,
+        pdfFileName: session.pdfFileName,
+        stats: {
+          activityCount: activities.length,
+          participantCount: participants.length,
+          responseCount: responses.length,
+          boardPostCount: boardPosts.length,
+        },
+      });
+    }
+    // Sort: ended cuối, mới nhất trước
+    return results.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+/**
+ * Xóa session + tất cả data liên quan (activities, responses, participants, board posts, PDF).
+ * Cẩn thận: hành động không hồi phục được.
+ */
+export const deleteSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new Error("Không tìm thấy buổi giảng");
+
+    let counts = {
+      activities: 0,
+      responses: 0,
+      participants: 0,
+      boardPosts: 0,
+      images: 0,
+    };
+
+    // 1. Board posts (có ảnh storage)
+    const boardPosts = await ctx.db
+      .query("boardPosts")
+      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .collect();
+    for (const p of boardPosts) {
+      // Note: imageUrl là URL public — không có storageId riêng để xóa
+      // Convex storage URLs sẽ orphan nếu không track riêng. Skip for now.
+      await ctx.db.delete(p._id);
+      counts.boardPosts++;
+    }
+
+    // 2. Responses
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const r of responses) {
+      await ctx.db.delete(r._id);
+      counts.responses++;
+    }
+
+    // 3. Participants
+    const participants = await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const p of participants) {
+      await ctx.db.delete(p._id);
+      counts.participants++;
+    }
+
+    // 4. Activities
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const a of activities) {
+      await ctx.db.delete(a._id);
+      counts.activities++;
+    }
+
+    // 5. PDF storage
+    if (session.pdfStorageId) {
+      try {
+        await ctx.storage.delete(session.pdfStorageId);
+        counts.images++;
+      } catch {
+        // Ignore — có thể đã bị xóa
+      }
+    }
+
+    // 6. Session itself
+    await ctx.db.delete(args.sessionId);
+
+    return { success: true, counts };
+  },
+});
+
 // Hàm tạo mã ngắn ngẫu nhiên
 function generateShortCode(length = 6): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Bỏ I, O, 0, 1 để dễ đọc
