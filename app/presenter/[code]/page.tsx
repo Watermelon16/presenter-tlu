@@ -130,6 +130,20 @@ function PresenterPage() {
   // displayActivity = activity đang được "focus" để hiện kết quả: active hoặc activity vừa đóng
   const displayActivity = activeActivity || revealedActivity || undefined;
 
+  // Ẩn/Hiện kết quả — declared trước shouldShowResults
+  const [resultsRevealed, setResultsRevealed] = useState(false);
+
+  // Chỉ hiển thị chi tiết kết quả khi: activity đã đóng/hết giờ, HOẶC giảng viên đã reveal
+  const shouldShowResults =
+    !displayActivity ? false
+    : displayActivity.status !== "active" ? true
+    : resultsRevealed;
+
+  // Reset reveal khi đổi activity
+  useEffect(() => {
+    setResultsRevealed(false);
+  }, [displayActivity?._id]);
+
   // Lấy số lượng sinh viên
   const participants = useQuery(
     api.responses.listSessionParticipants,
@@ -644,6 +658,18 @@ function PresenterPage() {
         if (fullscreenOverlay === "result") {
           e.preventDefault();
           setResultTab((prev) => (prev === "result" ? "leaderboard" : "result"));
+        }
+      }
+
+      // R = Reveal — hiện/ẩn chi tiết kết quả (chống SV copy khi đang trả lời)
+      if (e.key === "r" || e.key === "R") {
+        if (fullscreenOverlay === "result" && displayActivity && displayActivity.status === "active") {
+          e.preventDefault();
+          setResultsRevealed((prev) => {
+            const next = !prev;
+            toast.message(next ? "✓ Đã hiện kết quả cho cả lớp" : "Đã ẩn kết quả");
+            return next;
+          });
         }
       }
     };
@@ -1952,7 +1978,8 @@ function PresenterPage() {
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd><span>Thoát overlay</span></div>
 
                   <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">ĐIỀU KHIỂN HOẠT ĐỘNG</div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-emerald-100 border border-emerald-300 text-emerald-800 rounded shadow-sm">A</kbd><span>▶ Kích hoạt hoạt động nháp gần nhất</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-emerald-100 border border-emerald-300 text-emerald-800 rounded shadow-sm">A</kbd><span>▶ Kích hoạt + mở overlay (kết quả ẩn)</span></div>
+                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-amber-100 border border-amber-300 text-amber-800 rounded shadow-sm">R</kbd><span>👁 Hiện kết quả cho cả lớp (chống copy)</span></div>
                   <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-red-100 border border-red-300 text-red-800 rounded shadow-sm">X</kbd><span>⏹ Đóng + tự hiện kết quả/bảng thành tích</span></div>
 
                   <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">DI CHUYỂN</div>
@@ -3315,6 +3342,19 @@ function PresenterPage() {
               </button>
             </div>
             <div className="flex items-center gap-2">
+              {/* Nút Reveal — chỉ hiện khi đang active + chưa reveal */}
+              {activeActivity && !resultsRevealed && (
+                <button
+                  onClick={() => {
+                    setResultsRevealed(true);
+                    toast.success("Đã hiện kết quả cho cả lớp");
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold"
+                  title="Hiện chi tiết kết quả (phím R)"
+                >
+                  👁 Hiện kết quả (R)
+                </button>
+              )}
               {/* Nút Đóng activity — chỉ hiện khi đang có active */}
               {activeActivity && (
                 <button
@@ -3322,7 +3362,7 @@ function PresenterPage() {
                   className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
                   title="Đóng hoạt động đang chạy (phím X) — SV không gửi thêm được"
                 >
-                  ⏹ Đóng hoạt động (X)
+                  ⏹ Đóng (X)
                 </button>
               )}
               <button
@@ -3434,8 +3474,42 @@ function PresenterPage() {
               </div>
 
               <div className="flex-1 flex items-center justify-center">
+                {/* ===== Khi đang ACTIVE và chưa REVEAL → chỉ hiện đếm + đề + hint ===== */}
+                {!shouldShowResults && (
+                  <div className="text-center w-full max-w-3xl">
+                    <div className="text-7xl mb-6">🔒</div>
+                    <div className="text-4xl md:text-5xl font-bold mb-3">Đang chờ tất cả SV trả lời</div>
+                    <div className="text-2xl text-zinc-400 mb-8">Kết quả chi tiết được ẩn để chống nhìn lén</div>
+
+                    {/* Count realtime */}
+                    {(() => {
+                      const count =
+                        displayActivity.type === "poll" ? pollResults?.totalAnswered ?? 0 :
+                        displayActivity.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
+                        displayActivity.type === "opentext" ? (opentextResponses?.filter((r) => r.status === "answered").length ?? 0) :
+                        displayActivity.type === "rating" ? ratingResults?.total ?? 0 :
+                        displayActivity.type === "qa" ? qaResponses?.length ?? 0 :
+                        displayActivity.type === "board" ? boardPosts?.length ?? 0 :
+                        0;
+                      return (
+                        <div className="inline-block bg-zinc-900 border border-zinc-700 rounded-3xl px-12 py-8">
+                          <div className="text-7xl md:text-8xl font-bold text-emerald-400 tabular-nums">
+                            {count}
+                          </div>
+                          <div className="text-xl text-zinc-400 mt-2">SV đã trả lời</div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="mt-10 inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                      <kbd className="px-3 py-1 text-base font-mono bg-amber-500 text-black rounded font-bold shadow">R</kbd>
+                      <span className="text-amber-300 text-lg">Bấm để hiện kết quả cho cả lớp</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* POLL fullscreen */}
-                {displayActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (
+                {shouldShowResults && displayActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (
                   <div className="w-full max-w-5xl space-y-5">
                     {[...pollResults.options].sort((a, b) => b.count - a.count).map((opt: any) => {
                       const percentage = pollResults.totalAnswered > 0 ? Math.round((opt.count / pollResults.totalAnswered) * 100) : 0;
@@ -3456,7 +3530,7 @@ function PresenterPage() {
                 )}
 
                 {/* WORD CLOUD fullscreen */}
-                {displayActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
+                {shouldShowResults && displayActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
                   <div className="w-full max-w-6xl text-center">
                     <div className="flex flex-wrap gap-x-8 gap-y-4 items-center justify-center py-10">
                       {wordCloudResults.words.slice(0, 60).map((item: any, idx: number) => {
@@ -3475,7 +3549,7 @@ function PresenterPage() {
                 )}
 
                 {/* OPEN TEXT fullscreen — list câu trả lời, không gom */}
-                {displayActivity.type === "opentext" && opentextResponses && opentextResponses.length > 0 && (
+                {shouldShowResults && displayActivity.type === "opentext" && opentextResponses && opentextResponses.length > 0 && (
                   <div className="w-full max-w-4xl space-y-3 max-h-[75vh] overflow-auto pr-2">
                     {opentextResponses
                       .filter((r) => r.status === "answered")
@@ -3495,7 +3569,7 @@ function PresenterPage() {
                 )}
 
                 {/* RATING fullscreen */}
-                {displayActivity.type === "rating" && ratingResults && (
+                {shouldShowResults && displayActivity.type === "rating" && ratingResults && (
                   <div className="w-full max-w-4xl">
                     <div className="text-center mb-10">
                       <div className="text-[200px] leading-none font-bold tabular-nums text-emerald-400">
@@ -3528,7 +3602,7 @@ function PresenterPage() {
                 )}
 
                 {/* Q&A fullscreen — chỉ hiện top câu hỏi */}
-                {displayActivity.type === "qa" && qaResponses && qaResponses.length > 0 && (
+                {shouldShowResults && displayActivity.type === "qa" && qaResponses && qaResponses.length > 0 && (
                   <div className="w-full max-w-5xl space-y-4 max-h-[70vh] overflow-auto">
                     {qaResponses
                       .filter((q: any) => q.status !== "hidden")
@@ -3555,7 +3629,7 @@ function PresenterPage() {
                 )}
 
                 {/* BOARD fullscreen — hiện top bài đăng theo cột */}
-                {displayActivity.type === "board" && boardPosts && boardPosts.length > 0 && (
+                {shouldShowResults && displayActivity.type === "board" && boardPosts && boardPosts.length > 0 && (
                   <div className="w-full max-w-6xl">
                     <div className="grid grid-cols-3 gap-6">
                       {(displayActivity.config?.columns || []).map((col: any) => {
@@ -3580,8 +3654,8 @@ function PresenterPage() {
                   </div>
                 )}
 
-                {/* Empty state cho fullscreen */}
-                {((displayActivity.type === "poll" && (!pollResults || pollResults.totalAnswered === 0)) ||
+                {/* Empty state cho fullscreen (chỉ hiện khi shouldShowResults) */}
+                {shouldShowResults && ((displayActivity.type === "poll" && (!pollResults || pollResults.totalAnswered === 0)) ||
                   (displayActivity.type === "wordcloud" && (!wordCloudResults || wordCloudResults.totalResponses === 0)) ||
                   (displayActivity.type === "opentext" && (!opentextResponses || opentextResponses.filter((r) => r.status === "answered").length === 0)) ||
                   (displayActivity.type === "rating" && (!ratingResults || ratingResults.total === 0)) ||

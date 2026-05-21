@@ -1034,28 +1034,11 @@ export default function ParticipantRoomPage() {
                   </div>
                 )}
 
-                {activeActivity.type === "poll" && !isQuiz && pollResults && pollResults.totalAnswered > 0 && (
-                  <div className="mt-6 pt-6 border-t border-emerald-200 text-left">
-                    <div className="text-sm font-medium text-emerald-800 mb-3">Kết quả hiện tại</div>
-                    {pollResults.options?.map((opt: any) => {
-                      const pct = pollResults.totalAnswered
-                        ? Math.round((opt.count / pollResults.totalAnswered) * 100)
-                        : 0;
-                      return (
-                        <div key={opt.id} className="mb-2.5">
-                          <div className="flex justify-between text-sm mb-1">
-                            <span>{opt.text}</span>
-                            <span className="font-mono text-emerald-700">{pct}%</span>
-                          </div>
-                          <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-2 bg-emerald-500 rounded-full transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                {/* Aggregate poll results KHÔNG hiển thị ở SV để chống nhìn lén:
+                    SV chỉ xem kết quả qua màn hình chiếu khi giảng viên revealed. */}
+                {activeActivity.type === "poll" && !isQuiz && (
+                  <div className="mt-4 text-xs text-emerald-700">
+                    Kết quả sẽ được giảng viên công bố trên màn hình chiếu.
                   </div>
                 )}
 
