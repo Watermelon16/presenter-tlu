@@ -46,13 +46,30 @@ function readSavedIdentity(): StoredIdentity | null {
   }
 }
 
+// Đọc mã phòng SV vào gần nhất — dùng fallback khi URL không có ?code=
+// (vd QR scanner app cắt query, user dùng bookmark cũ, etc.)
+function readLastJoinedCode(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (localStorage.getItem("last_joined_code") || "").trim().toUpperCase();
+  } catch {
+    return "";
+  }
+}
+
 function JoinRoomForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const joinSession = useMutation(api.participants.joinSession);
 
-  // qrCode được tính mỗi render — searchParams ổn định sau hydration
-  const qrCode = (searchParams.get("code") || "").toUpperCase().trim();
+  // qrFromUrl: ?code= từ URL (QR scan)
+  // lastCode: mã phòng vào gần nhất (fallback khi QR scanner cắt query)
+  const qrFromUrl = (searchParams.get("code") || "").toUpperCase().trim();
+  const [lastCode] = useState<string>(() => readLastJoinedCode());
+  // qrCode: code "primary" để auto-join (CHỈ từ URL — fallback không auto vì có thể là phòng khác)
+  const qrCode = qrFromUrl;
+  // codePrefill: code để pre-fill input (cả URL + fallback)
+  const codePrefill = qrFromUrl || lastCode;
   const [savedIdentity] = useState<StoredIdentity | null>(() => readSavedIdentity());
 
   // Auto-join state: dùng "pending" để show splash ngay nếu có cả qrCode + identity
@@ -61,19 +78,19 @@ function JoinRoomForm() {
     qrCode && savedIdentity ? "joining" : "pending"
   );
 
-  const [code, setCode] = useState(qrCode);
+  const [code, setCode] = useState(codePrefill);
   const [studentCode, setStudentCode] = useState(savedIdentity?.studentCode ?? "");
   const [fullName, setFullName] = useState(savedIdentity?.fullName ?? "");
   const [className, setClassName] = useState(savedIdentity?.className ?? "");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync code state khi qrCode đổi (hydration timing) — chỉ trên transition từ rỗng → có
+  // Sync code state khi codePrefill đổi (hydration timing) — chỉ trên transition từ rỗng → có
   useEffect(() => {
-    if (qrCode && !code) {
-      setCode(qrCode);
+    if (codePrefill && !code) {
+      setCode(codePrefill);
     }
-  }, [qrCode, code]);
+  }, [codePrefill, code]);
 
   // Auto-join effect — re-fire khi qrCode trở nên có giá trị (hydration timing)
   const autoJoinFired = useRef(false);
@@ -96,6 +113,7 @@ function JoinRoomForm() {
         });
         localStorage.setItem(`student_${qrCode}`, JSON.stringify(savedIdentity));
         localStorage.setItem("student_identity_global", JSON.stringify(savedIdentity));
+        localStorage.setItem("last_joined_code", qrCode);
         router.replace(`/room/${qrCode}`);
       } catch (err: unknown) {
         setAutoJoinPhase("failed");
@@ -130,6 +148,7 @@ function JoinRoomForm() {
 
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(identity));
       localStorage.setItem("student_identity_global", JSON.stringify(identity));
+      localStorage.setItem("last_joined_code", upperCode);
 
       router.push(`/room/${upperCode}`);
     } catch (err: unknown) {
@@ -163,7 +182,9 @@ function JoinRoomForm() {
   }
 
   const hasRememberedIdentity = !!savedIdentity;
-  const codeFromQr = qrCode.length > 0;
+  const codeFromQr = qrFromUrl.length > 0;
+  const codeFromLastJoin = !codeFromQr && lastCode.length > 0 && code === lastCode;
+  const hasPrefilledCode = codeFromQr || codeFromLastJoin;
 
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -174,7 +195,11 @@ function JoinRoomForm() {
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">Tham gia buổi giảng</h1>
           <p className="text-zinc-600 mt-2">
-            {codeFromQr ? "Đã có mã phòng từ QR" : "Nhập mã phòng và thông tin của bạn"}
+            {codeFromQr
+              ? "Đã có mã phòng từ QR"
+              : codeFromLastJoin
+                ? "Mã phòng vào gần đây"
+                : "Nhập mã phòng và thông tin của bạn"}
           </p>
         </div>
 
@@ -186,16 +211,18 @@ function JoinRoomForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Mã phòng — chỉ hiện input nếu KHÔNG có QR; có QR thì hiện badge */}
-            {codeFromQr ? (
+            {/* Mã phòng badge nếu có prefill (từ QR hoặc fallback last join), else input */}
+            {hasPrefilledCode ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-emerald-700 font-medium tracking-wider">MÃ PHÒNG (từ QR)</div>
+                  <div className="text-[11px] text-emerald-700 font-medium tracking-wider">
+                    {codeFromQr ? "MÃ PHÒNG (từ QR)" : "MÃ PHÒNG (lần trước)"}
+                  </div>
                   <div className="font-mono text-2xl tracking-[4px] font-semibold text-emerald-900">{code}</div>
                 </div>
                 <button
                   onClick={() => {
-                    // Cho phép nhập tay nếu QR sai
+                    // Cho phép nhập tay nếu QR sai / muốn phòng khác
                     router.replace("/join");
                     setCode("");
                   }}

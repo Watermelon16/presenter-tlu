@@ -164,6 +164,7 @@ export default function ParticipantRoomPage() {
           })
             .then(() => {
               localStorage.setItem(`student_${upperCode}`, JSON.stringify(parsed));
+              localStorage.setItem("last_joined_code", upperCode);
               setIdentity(parsed);
             })
             .catch(() => {
@@ -434,6 +435,8 @@ export default function ParticipantRoomPage() {
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(newIdentity));
       // Lưu global để nhớ qua các phòng khác
       localStorage.setItem("student_identity_global", JSON.stringify(newIdentity));
+      // Lưu mã phòng vào gần nhất — dùng để fallback nếu QR cắt query
+      localStorage.setItem("last_joined_code", upperCode);
       setIdentity(newIdentity);
       setShowIdentityForm(false);
       setStudentCodeInput("");
