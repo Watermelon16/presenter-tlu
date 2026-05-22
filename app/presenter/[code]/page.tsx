@@ -3794,26 +3794,43 @@ function PresenterPage() {
                   </div>
                 )}
 
-                {/* POLL fullscreen */}
-                {shouldShowResults && displayActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (
-                  <div className="w-full max-w-5xl space-y-5">
-                    {[...pollResults.options].sort((a, b) => b.count - a.count).map((opt: any) => {
-                      const percentage = pollResults.totalAnswered > 0 ? Math.round((opt.count / pollResults.totalAnswered) * 100) : 0;
-                      return (
-                        <div key={opt.id} className="flex items-center gap-6">
-                          <div className="w-1/3 text-3xl truncate" title={opt.text}>{opt.text}</div>
-                          <div className="flex-1 bg-zinc-800 rounded-full h-12 overflow-hidden">
-                            <div className="bg-emerald-500 h-12 transition-all rounded-full" style={{ width: `${percentage}%` }} />
-                          </div>
-                          <div className="w-40 text-right text-3xl font-mono text-emerald-400">
-                            {opt.count} <span className="text-emerald-500/70 text-xl">({percentage}%)</span>
-                          </div>
+                {/* POLL fullscreen — highlight đáp án đúng khi shouldShowResults (R reveal hoặc closed) */}
+                {shouldShowResults && displayActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (() => {
+                  const cfg = displayActivity.config as { isQuiz?: boolean; correctOptionIds?: string[] } | undefined;
+                  const isQuiz = !!cfg?.isQuiz && Array.isArray(cfg?.correctOptionIds) && cfg.correctOptionIds.length > 0;
+                  const correctIds = new Set(cfg?.correctOptionIds ?? []);
+                  return (
+                    <div className="w-full max-w-5xl space-y-5">
+                      {isQuiz && (
+                        <div className="flex items-center justify-center gap-3 mb-2 text-amber-300 text-xl">
+                          <span>🎯</span>
+                          <span>Đáp án đúng được tô <span className="text-emerald-400 font-semibold">XANH</span> · sai tô <span className="text-zinc-500">XÁM</span></span>
                         </div>
-                      );
-                    })}
-                    <div className="text-center text-zinc-400 text-xl mt-6">{pollResults.totalAnswered} sinh viên đã trả lời</div>
-                  </div>
-                )}
+                      )}
+                      {[...pollResults.options].sort((a, b) => b.count - a.count).map((opt: { id: string; text: string; count: number }) => {
+                        const percentage = pollResults.totalAnswered > 0 ? Math.round((opt.count / pollResults.totalAnswered) * 100) : 0;
+                        const isCorrect = isQuiz && correctIds.has(opt.id);
+                        const barColor = isQuiz ? (isCorrect ? "bg-emerald-500" : "bg-zinc-600") : "bg-emerald-500";
+                        const textColor = isQuiz && isCorrect ? "text-emerald-300 font-semibold" : "text-zinc-200";
+                        return (
+                          <div key={opt.id} className="flex items-center gap-6">
+                            <div className={`w-1/3 text-3xl truncate flex items-center gap-2 ${textColor}`} title={opt.text}>
+                              {isQuiz && isCorrect && <span className="text-emerald-400 text-2xl shrink-0">✓</span>}
+                              <span>{opt.text}</span>
+                            </div>
+                            <div className="flex-1 bg-zinc-800 rounded-full h-12 overflow-hidden">
+                              <div className={`h-12 transition-all rounded-full ${barColor}`} style={{ width: `${percentage}%` }} />
+                            </div>
+                            <div className={`w-40 text-right text-3xl font-mono ${isQuiz && isCorrect ? "text-emerald-400" : "text-zinc-400"}`}>
+                              {opt.count} <span className={`text-xl ${isQuiz && isCorrect ? "text-emerald-500/70" : "text-zinc-500/70"}`}>({percentage}%)</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="text-center text-zinc-400 text-xl mt-6">{pollResults.totalAnswered} sinh viên đã trả lời</div>
+                    </div>
+                  );
+                })()}
 
                 {/* WORD CLOUD fullscreen */}
                 {shouldShowResults && displayActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
@@ -3960,7 +3977,7 @@ function PresenterPage() {
               </div>
 
               <div className="text-center text-zinc-600 text-sm mt-6">
-                Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">F</kbd> hoặc <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Esc</kbd> để thoát chế độ chiếu
+                Bấm <kbd className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">Esc</kbd> để thoát
               </div>
             </div>
           ))}
@@ -4141,7 +4158,7 @@ function PresenterPage() {
             </div>
 
             <div className="text-[11px] text-zinc-500">
-              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">F</kbd> kết quả ·{" "}
+              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">R</kbd> kết quả ·{" "}
               <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> QR
             </div>
           </div>
