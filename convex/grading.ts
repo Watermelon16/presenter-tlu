@@ -57,7 +57,7 @@ async function callGeminiGrade(args: {
       },
     },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -99,7 +99,7 @@ async function callOpenAICompatGrade(args: {
     temperature: 0.2,
     response_format: { type: "json_object" },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -130,12 +130,42 @@ function parseGrades(rawText: string, provider: Provider, model: string): RawGra
   return Array.isArray(parsed.grades) ? (parsed.grades as RawGrade[]) : [];
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { maxRetries?: number } = {}
+): Promise<Response> {
+  const maxRetries = opts.maxRetries ?? 2;
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok) return res;
+    const isTransient = res.status === 502 || res.status === 503 || res.status === 504;
+    if (isTransient && attempt < maxRetries) {
+      await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt)));
+      lastResponse = res;
+      continue;
+    }
+    return res;
+  }
+  return lastResponse!;
+}
+
 function throwProviderError(
   provider: Provider,
   model: string,
   status: number,
   errText: string
 ): never {
+  if (status === 502 || status === 503 || status === 504) {
+    throw new ConvexError({
+      code: "overloaded",
+      provider,
+      model,
+      status,
+      message: `Model "${model}" (${provider}) đang quá tải (HTTP ${status}). Đợi 30s rồi thử lại hoặc đổi model.`,
+    });
+  }
   if (status === 429) {
     throw new ConvexError({
       code: "quota_exceeded",

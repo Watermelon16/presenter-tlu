@@ -134,7 +134,7 @@ async function callGemini(args: {
       },
     },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -198,7 +198,7 @@ async function callOpenAICompat(args: {
     temperature: 0.7,
     response_format: { type: "json_object" },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -237,6 +237,31 @@ async function callOpenAICompat(args: {
   return { rawText: cleaned, tokenUsage: data.usage ?? null };
 }
 
+// Retry fetch với exponential backoff cho transient 5xx errors.
+// 503 ("UNAVAILABLE", model overload) là lỗi phổ biến nhất với Gemini Flash khi high demand.
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { maxRetries?: number } = {}
+): Promise<Response> {
+  const maxRetries = opts.maxRetries ?? 2;
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok) return res;
+    // Retry transient errors: 502 bad gateway, 503 unavailable, 504 timeout
+    const isTransient = res.status === 502 || res.status === 503 || res.status === 504;
+    if (isTransient && attempt < maxRetries) {
+      const delay = 800 * Math.pow(2, attempt); // 800ms, 1.6s, 3.2s
+      await new Promise((r) => setTimeout(r, delay));
+      lastResponse = res;
+      continue;
+    }
+    return res;
+  }
+  return lastResponse!;
+}
+
 function throwProviderError(
   provider: Provider,
   model: string,
@@ -249,6 +274,16 @@ function throwProviderError(
       provider,
       model,
       message: `Model "${model}" (${provider}) đã hết quota. Đổi sang model khác và thử lại.`,
+    });
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    // Server provider quá tải / không phản hồi. Sau khi đã retry vẫn fail.
+    throw new ConvexError({
+      code: "overloaded",
+      provider,
+      model,
+      status,
+      message: `Model "${model}" (${provider}) đang quá tải (HTTP ${status}). Đợi 30 giây rồi thử lại, hoặc đổi sang model khác.`,
     });
   }
   if (status === 402) {
@@ -539,7 +574,7 @@ async function callGeminiSurvey(args: {
       },
     },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

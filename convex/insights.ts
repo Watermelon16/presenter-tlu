@@ -194,7 +194,7 @@ async function callGeminiForInsights(args: {
       },
     },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -257,7 +257,7 @@ async function callOpenAICompatForInsights(args: {
     temperature: 0.6,
     response_format: { type: "json_object" },
   };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -292,6 +292,27 @@ async function callOpenAICompatForInsights(args: {
   return { rawText: cleaned, tokenUsage: data.usage ?? null };
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { maxRetries?: number } = {}
+): Promise<Response> {
+  const maxRetries = opts.maxRetries ?? 2;
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok) return res;
+    const isTransient = res.status === 502 || res.status === 503 || res.status === 504;
+    if (isTransient && attempt < maxRetries) {
+      await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt)));
+      lastResponse = res;
+      continue;
+    }
+    return res;
+  }
+  return lastResponse!;
+}
+
 function throwProviderError(
   provider: Provider,
   model: string,
@@ -304,6 +325,15 @@ function throwProviderError(
       provider,
       model,
       message: `Model "${model}" (${provider}) đã hết quota.`,
+    });
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    throw new ConvexError({
+      code: "overloaded",
+      provider,
+      model,
+      status,
+      message: `Model "${model}" (${provider}) đang quá tải (HTTP ${status}). Đợi 30 giây rồi thử lại hoặc đổi model.`,
     });
   }
   if (status === 402) {

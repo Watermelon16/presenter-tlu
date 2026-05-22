@@ -211,22 +211,28 @@ export function AiGenFromPdfModal({
         if (/quota|429|exceeded/i.test(msg)) code = "quota_exceeded";
         else if (/balance|402/i.test(msg)) code = "no_balance";
         else if (/no endpoints|404/i.test(msg)) code = "model_not_found";
+        else if (/overload|unavailable|50[234]/i.test(msg)) code = "overloaded";
       }
 
       // Các code này đều cần đổi model/provider
       const switchable =
         code === "quota_exceeded" ||
         code === "no_balance" ||
-        code === "model_not_found";
+        code === "model_not_found" ||
+        code === "overloaded";
 
       if (switchable) {
-        // Nếu lỗi balance (DeepSeek) → suggest OpenRouter free thay vì cùng provider
-        // Nếu lỗi quota/404 → ưu tiên cùng provider (key đã có), fallback khác
-        const preferDifferentProvider = code === "no_balance";
+        // Strategy:
+        // - balance (DeepSeek): switch sang provider khác (OpenRouter free)
+        // - overloaded (Gemini đang nóng): switch sang DIFFERENT provider để tránh chung điểm nóng,
+        //   fallback cùng provider model khác
+        // - quota/404: cùng provider model khác (key đã có)
+        const preferDifferentProvider = code === "no_balance" || code === "overloaded";
         const next = preferDifferentProvider
-          ? MODELS.find((m) => m.provider !== currentProvider && m.id !== selectedModel)
-          : MODELS.find((m) => m.provider === currentProvider && m.id !== selectedModel) ??
-            MODELS.find((m) => m.id !== selectedModel);
+          ? (MODELS.find((m) => m.provider !== currentProvider && m.id !== selectedModel)
+              ?? MODELS.find((m) => m.id !== selectedModel))
+          : (MODELS.find((m) => m.provider === currentProvider && m.id !== selectedModel)
+              ?? MODELS.find((m) => m.id !== selectedModel));
         toast.error(msg, {
           duration: 12000,
           action: next
