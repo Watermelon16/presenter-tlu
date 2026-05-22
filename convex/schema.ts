@@ -22,9 +22,13 @@ export default defineSchema({
     createdAt: v.number(),
     approvedAt: v.optional(v.number()),
     approvedBy: v.optional(v.id("users")),
+    // Email phụ — dùng để LMS lookup khi GV có email khác với Google login
+    // VD: Google login = phuonglh43@gmail.com, mail LMS = phuongle@tlu.edu.vn
+    lmsEmail: v.optional(v.string()),
   })
     .index("by_user", ["userId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_lms_email", ["lmsEmail"]),
 
   // Một buổi giảng (phòng)
   sessions: defineTable({

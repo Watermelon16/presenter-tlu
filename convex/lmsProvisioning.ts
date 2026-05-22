@@ -34,14 +34,23 @@ export const createSessionFromLms = internalMutation({
     }
 
     // 2. Tìm Convex user theo email (đã từng login Google Presenter)
+    //    Ưu tiên match lmsEmail (email LMS dùng), fallback sang email chính.
+    //    Lý do: GV có thể login Presenter bằng phuonglh43@gmail.com nhưng
+    //    LMS dùng phuongle@tlu.edu.vn → cần map qua field lmsEmail.
     const emailLower = args.hostEmail.trim().toLowerCase();
-    const profile = await ctx.db
+    let profile = await ctx.db
       .query("userProfiles")
-      .withIndex("by_email", (q) => q.eq("email", emailLower))
+      .withIndex("by_lms_email", (q) => q.eq("lmsEmail", emailLower))
       .first();
     if (!profile) {
+      profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_email", (q) => q.eq("email", emailLower))
+        .first();
+    }
+    if (!profile) {
       throw new Error(
-        `Không tìm thấy GV với email "${args.hostEmail}" trên Presenter. GV cần đăng nhập Presenter (Google) ít nhất 1 lần trước khi LMS tạo phòng.`
+        `Không tìm thấy GV với email "${args.hostEmail}" trên Presenter. GV cần đăng nhập Presenter (Google) ít nhất 1 lần, hoặc admin cần set lmsEmail = "${args.hostEmail}" cho user tương ứng.`
       );
     }
     if (profile.status === "banned") {

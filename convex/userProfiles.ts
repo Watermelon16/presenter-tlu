@@ -155,7 +155,9 @@ export const debugListAllUsers = query({
   handler: async (ctx) => {
     const profiles = await ctx.db.query("userProfiles").collect();
     return profiles.map((p) => ({
+      profileId: p._id,
       email: p.email,
+      lmsEmail: p.lmsEmail ?? null,
       displayName: p.displayName ?? null,
       role: p.role,
       status: p.status,
@@ -204,6 +206,7 @@ export const listUsers = query({
         _id: p._id,
         userId: p.userId,
         email: p.email,
+        lmsEmail: p.lmsEmail ?? null,
         displayName: p.displayName ?? null,
         status: p.status,
         role: p.role,
@@ -268,6 +271,80 @@ export const setUserRole = mutation({
       throw new Error("Không thể tự hạ vai trò của chính mình");
     }
     await ctx.db.patch(args.profileId, { role: args.role });
+  },
+});
+
+/**
+ * Set lmsEmail cho user — dùng khi GV có email Presenter (Google) khác với
+ * email trên LMS. Ví dụ: login Presenter = phuonglh43@gmail.com nhưng tài
+ * khoản LMS = phuongle@tlu.edu.vn → admin set lmsEmail của user Presenter
+ * = phuongle@tlu.edu.vn để LMS provision endpoint match được.
+ *
+ * Quyền: admin set cho bất kỳ user nào, lecturer chỉ set cho chính mình.
+ */
+export const setLmsEmail = mutation({
+  args: {
+    profileId: v.id("userProfiles"),
+    lmsEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Chưa đăng nhập");
+    const me = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!me) throw new Error("Profile chưa khởi tạo");
+
+    const target = await ctx.db.get(args.profileId);
+    if (!target) throw new Error("Không tìm thấy user");
+
+    // Lecturer chỉ set cho chính mình; admin set cho ai cũng được
+    if (me.role !== "admin" && target.userId !== userId) {
+      throw new Error("Bạn chỉ có thể chỉnh lmsEmail của chính mình");
+    }
+
+    const normalized = args.lmsEmail.trim().toLowerCase();
+    if (!normalized) {
+      await ctx.db.patch(args.profileId, { lmsEmail: undefined });
+      return { cleared: true };
+    }
+
+    // Check unique — không cho 2 user dùng cùng 1 lmsEmail
+    const collision = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_lms_email", (q) => q.eq("lmsEmail", normalized))
+      .first();
+    if (collision && collision._id !== args.profileId) {
+      throw new Error(
+        `Email LMS "${normalized}" đã được gán cho user khác (${collision.email})`
+      );
+    }
+
+    await ctx.db.patch(args.profileId, { lmsEmail: normalized });
+    return { ok: true, lmsEmail: normalized };
+  },
+});
+
+/**
+ * Bootstrap-only: set lmsEmail từ Convex CLI (không auth).
+ * Dùng 1 lần khi setup tích hợp LMS lần đầu. Sau đó dùng `setLmsEmail` qua UI admin.
+ */
+export const _bootstrapSetLmsEmail = mutation({
+  args: {
+    email: v.string(),      // Email Presenter (Google login)
+    lmsEmail: v.string(),   // Email LMS
+  },
+  handler: async (ctx, args) => {
+    const emailLower = args.email.trim().toLowerCase();
+    const lmsEmailLower = args.lmsEmail.trim().toLowerCase();
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_email", (q) => q.eq("email", emailLower))
+      .first();
+    if (!profile) throw new Error(`Không có user ${emailLower}`);
+    await ctx.db.patch(profile._id, { lmsEmail: lmsEmailLower });
+    return { ok: true, email: emailLower, lmsEmail: lmsEmailLower };
   },
 });
 
