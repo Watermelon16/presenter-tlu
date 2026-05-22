@@ -20,7 +20,8 @@ import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
-import { PollBarChart, RatingBarChart, WordcloudBars } from "@/components/ResultCharts";
+// Note: PollBarChart / RatingBarChart / WordcloudBars vẫn export trong components/ResultCharts.tsx
+// dùng cho fullscreen overlay nếu cần — không import ở đây vì block "Kết quả realtime" trên màn chính đã bỏ.
 
 import {
   DndContext,
@@ -311,8 +312,9 @@ function PresenterPage() {
   );
 
   // Ref để auto-scroll đến vùng kết quả khi hoạt động bắt đầu
+  // resultsRef + highlightResults: dùng cho khối "Kết quả realtime" trên màn chính (đã bỏ).
+  // Giữ lại để các effect không break, nhưng không gắn ref nữa.
   const resultsRef = useRef<HTMLDivElement>(null);
-  const [highlightResults, setHighlightResults] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null); // Dùng cho DragOverlay trong Dnd list
 
   // Ref cho danh sách hoạt động (dùng để cuộn xuống sau khi Làm lại)
@@ -871,18 +873,7 @@ function PresenterPage() {
     ]);
   }, [createType, editingActivity]);
 
-  // Auto scroll + highlight khi có hoạt động mới bắt đầu
-  useEffect(() => {
-    if (activeActivity && resultsRef.current) {
-      // Scroll mượt đến vùng kết quả
-      resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-
-      // Highlight nhẹ trong 1.8s
-      setHighlightResults(true);
-      const timer = setTimeout(() => setHighlightResults(false), 1800);
-      return () => clearTimeout(timer);
-    }
-  }, [activeActivity?._id]);
+  // (đã bỏ) Auto scroll + highlight khi có hoạt động mới bắt đầu — khối "Kết quả realtime" trên màn chính đã xóa.
 
   // Ref for auto-focus new option input
   const optionInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -2072,9 +2063,20 @@ function PresenterPage() {
       {/* Top Bar — 1 dòng, dropdown groups */}
       <div className="border-b border-zinc-200 bg-zinc-50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sm:gap-3">
-          {/* LEFT: Logo + Mã phòng + Title */}
+          {/* LEFT: Logo + LMS + Mã phòng + Title */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" showText={false} href="/" />
+            <a
+              href="https://lephuong-tlu.lovable.app/dashboard/courses"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40 text-zinc-700 hover:text-emerald-700 transition-colors shrink-0"
+              title="Mở LMS quản lý môn học (tab mới)"
+            >
+              <span>📚</span>
+              <span className="font-medium">LMS</span>
+              <span className="text-zinc-400">↗</span>
+            </a>
             <button
               onClick={() => setFullscreenOverlay("qr")}
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-100 group shrink-0"
@@ -2098,16 +2100,22 @@ function PresenterPage() {
             <div className="min-w-0 hidden md:block">
               <div className="text-[10px] text-zinc-500 flex items-center gap-1.5">
                 <span>BUỔI GIẢNG</span>
-                {(session.currentRun ?? 1) > 1 && (
-                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
-                    PHIÊN #{session.currentRun}
-                  </span>
-                )}
+                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
+                  PHIÊN #{session.currentRun ?? 1}
+                </span>
               </div>
-              <div className="text-sm font-medium truncate max-w-[280px] lg:max-w-md" title={session.title}>
+              <div className="text-sm font-medium truncate max-w-[260px] lg:max-w-md" title={session.title}>
                 {session.title}
               </div>
             </div>
+            <button
+              onClick={handleNewRun}
+              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium shrink-0 transition-colors"
+              title="Đóng phiên hiện tại + bắt đầu phiên mới cho lớp khác (giữ activities)"
+            >
+              <span>🔄</span>
+              <span>Phiên mới</span>
+            </button>
           </div>
 
           {/* RIGHT: SV count + Dropdowns */}
@@ -2267,17 +2275,6 @@ function PresenterPage() {
                       }}
                     />
                   )}
-                  <DropdownDivider />
-                  <DropdownLabel>Phiên dạy</DropdownLabel>
-                  <DropdownItem
-                    icon="🔄"
-                    label="Bắt đầu phiên mới"
-                    hint="Reset activities về NHÁP, lưu lịch sử phiên hiện tại"
-                    onClick={() => {
-                      handleNewRun();
-                      close();
-                    }}
-                  />
                 </>
               )}
             </Dropdown>
@@ -2302,21 +2299,6 @@ function PresenterPage() {
                     highlight={bigTextMode}
                     onClick={() => {
                       toggleBigTextMode();
-                      close();
-                    }}
-                  />
-                  <DropdownDivider />
-                  <DropdownLabel>Liên kết</DropdownLabel>
-                  <DropdownItem
-                    icon="📚"
-                    label="LMS quản lý môn học ↗"
-                    hint="Mở dashboard LMS (tab mới)"
-                    onClick={() => {
-                      window.open(
-                        "https://lephuong-tlu.lovable.app/dashboard/courses",
-                        "_blank",
-                        "noopener,noreferrer"
-                      );
                       close();
                     }}
                   />
@@ -2722,318 +2704,6 @@ function PresenterPage() {
             </DndContext>
           </div>
         )}
-
-        {/* ==================== KẾT QUẢ REALTIME (Results section) ==================== */}
-        <div className="mt-8">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold">Kết quả realtime</h2>
-            <p className="text-sm text-zinc-600 mt-0.5">
-              Hiển thị câu trả lời của SV cho hoạt động đang chạy — cập nhật ngay khi SV gửi
-            </p>
-          </div>
-
-          {activeActivity ? (
-            <div 
-              ref={resultsRef}
-              className={`bg-white border rounded-2xl p-6 transition-all duration-300 ${
-                highlightResults ? "border-emerald-500 ring-1 ring-emerald-500/30" : "border-zinc-200"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-semibold">Kết quả đang diễn ra</h3>
-                  <button
-                    onClick={() => {
-                      setHighlightResults(true);
-                      setTimeout(() => setHighlightResults(false), 800);
-                    }}
-                    className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors"
-                  >
-                    Làm mới
-                  </button>
-                </div>
-                <div className="text-sm text-emerald-600 font-medium">
-                  {activeActivity.type === "poll" && pollResults && `${pollResults.totalAnswered} đã trả lời`}
-                  {activeActivity.type === "wordcloud" && wordCloudResults && `${wordCloudResults.totalResponses} phản hồi`}
-                  {activeActivity.type === "rating" && ratingResults && `${ratingResults.total} lượt`}
-                  {activeActivity.type === "qa" && qaResponses && `${qaResponses.length} câu hỏi`}
-                  {activeActivity.type === "board" && boardPosts && `${boardPosts.length} bài đăng`}
-                </div>
-              </div>
-
-              {/* Empty states nhất quán */}
-              {activeActivity.type === "poll" && (!pollResults || pollResults.totalAnswered === 0) && (
-                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có sinh viên nào trả lời</div>
-              )}
-              {activeActivity.type === "wordcloud" && (!wordCloudResults || wordCloudResults.totalResponses === 0) && (
-                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có từ khóa nào</div>
-              )}
-              {activeActivity.type === "rating" && (!ratingResults || ratingResults.total === 0) && (
-                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có đánh giá nào</div>
-              )}
-              {activeActivity.type === "qa" && (!qaResponses || qaResponses.length === 0) && (
-                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có câu hỏi nào</div>
-              )}
-              {activeActivity.type === "board" && (!boardPosts || boardPosts.length === 0) && (
-                <div className="text-center py-10 text-zinc-600 text-sm">Chưa có bài đăng nào</div>
-              )}
-
-              {/* === POLL — bar chart chuyên nghiệp === */}
-              {activeActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (
-                <PollBarChart
-                  options={pollResults.options.map((o: { id: string; text: string; count: number }) => ({
-                    id: o.id,
-                    text: o.text,
-                    voteCount: o.count,
-                  }))}
-                  totalVotes={pollResults.totalAnswered}
-                  correctIds={
-                    activeActivity.config?.isQuiz
-                      ? (activeActivity.config?.correctOptionIds as string[] | undefined)
-                      : undefined
-                  }
-                  showCorrect={shouldShowResults}
-                  theme="light"
-                  height={Math.max(180, pollResults.options.length * 50)}
-                />
-              )}
-
-              {/* === WORD CLOUD — text cloud + bar chart top từ === */}
-              {activeActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm text-zinc-600 mb-2">
-                      <span>Đám mây từ</span>
-                      <span>{wordCloudResults.words.length} từ khác nhau</span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center py-6 min-h-[160px] bg-zinc-50 rounded-2xl border border-zinc-200">
-                      {wordCloudResults.words.slice(0, 50).map((item: { word: string; count: number }, idx: number) => {
-                        const max = wordCloudResults.words[0]?.count || 1;
-                        const size = Math.max(14, Math.min(44, Math.round(14 + (item.count / max) * 30)));
-                        const opacity = Math.max(0.5, Math.min(1, 0.55 + (item.count / max) * 0.45));
-                        return (
-                          <span key={idx} className="font-medium px-1.5" style={{ fontSize: `${size}px`, color: `rgba(52, 211, 153, ${opacity})` }} title={`${item.word} — ${item.count} lần`}>
-                            {item.word}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-zinc-500 mb-1 px-1">Top 10 từ phổ biến nhất</div>
-                    <WordcloudBars
-                      words={wordCloudResults.words.map((w: { word: string; count: number }) => ({
-                        text: w.word,
-                        count: w.count,
-                      }))}
-                      maxItems={10}
-                      theme="light"
-                      height={Math.max(180, Math.min(280, wordCloudResults.words.slice(0, 10).length * 32))}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* === RATING — bar chart phân bố + trung bình === */}
-              {activeActivity.type === "rating" && ratingResults && (
-                <div>
-                  {(activeActivity.config?.minLabel || activeActivity.config?.maxLabel) && (
-                    <div className="flex justify-between text-[11px] text-zinc-500 mb-1 px-1">
-                      <span>← {activeActivity.config?.minLabel || "Thấp nhất"}</span>
-                      <span>{activeActivity.config?.maxLabel || "Cao nhất"} →</span>
-                    </div>
-                  )}
-                  <RatingBarChart
-                    responses={(() => {
-                      const min = activeActivity.config?.min ?? 1;
-                      const max = activeActivity.config?.max ?? 5;
-                      const arr: number[] = [];
-                      for (let p = min; p <= max; p++) {
-                        const c = ratingResults.distribution?.[p] || 0;
-                        for (let i = 0; i < c; i++) arr.push(p);
-                      }
-                      return arr;
-                    })()}
-                    min={activeActivity.config?.min ?? 1}
-                    max={activeActivity.config?.max ?? 5}
-                    labels={activeActivity.config?.pointLabels as Record<number, string> | undefined}
-                    theme="light"
-                    height={220}
-                  />
-                </div>
-              )}
-
-              {/* === Q&A (đã cải thiện sâu - Moderation cho presenter) === */}
-              {activeActivity.type === "qa" && qaResponses && qaResponses.length > 0 && (
-                <div className="space-y-3 max-h-[420px] overflow-auto pr-1">
-                  {qaResponses.map((q: any) => {
-                    const v = typeof q.value === "object" && q.value ? q.value : {};
-                    const isHidden = q.status === "hidden";
-                    const isAnswering = answeringId === q._id;
-
-                    return (
-                      <div 
-                        key={q._id} 
-                        className={`bg-zinc-50 border rounded-xl p-4 transition-all ${isHidden ? "border-zinc-300 opacity-60" : "border-zinc-200"}`}
-                      >
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-[15px] leading-snug">{v.text || q.value}</div>
-                            
-                            {/* Student info if available */}
-                            {(q.studentCode || q.fullName) && (
-                              <div className="text-xs text-zinc-500 mt-1 flex items-center gap-1.5">
-                                <span className="font-mono">{q.studentCode}</span>
-                                {q.fullName && <span>· {q.fullName}</span>}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Status */}
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wide ${isHidden ? "bg-zinc-200 text-zinc-600" : "bg-emerald-500/10 text-emerald-600"}`}>
-                              {isHidden ? "ĐÃ ẨN" : "HIỂN THỊ"}
-                            </span>
-
-                            {/* Upvotes */}
-                            <div className="text-xs text-zinc-600 flex items-center gap-1 bg-white px-2 py-0.5 rounded">
-                              ↑ {v.upvotes || 0}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Answer (if exists) */}
-                        {v.answer && (
-                          <div className="mt-3 ml-1 pl-3 border-l-2 border-emerald-600 text-sm text-emerald-700 bg-emerald-50/30 py-2 px-3 rounded-r">
-                            {v.answer}
-                          </div>
-                        )}
-
-                        {/* Inline Answer Form */}
-                        {isAnswering && (
-                          <div className="mt-3 space-y-2">
-                            <textarea
-                              value={answerText}
-                              onChange={(e) => setAnswerText(e.target.value)}
-                              placeholder="Nhập câu trả lời của bạn..."
-                              className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm resize-y min-h-[70px]"
-                              rows={3}
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setAnsweringId(null);
-                                  setAnswerText("");
-                                }}
-                                className="px-4 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100"
-                              >
-                                Hủy
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!answerText.trim()) return;
-                                  try {
-                                    await answerQaQuestion({ responseId: q._id, answer: answerText.trim() });
-                                    toast.success("Đã trả lời câu hỏi");
-                                    setAnsweringId(null);
-                                    setAnswerText("");
-                                  } catch (e) {
-                                    toast.error("Không thể trả lời");
-                                  }
-                                }}
-                                disabled={!answerText.trim()}
-                                className="px-4 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 font-medium"
-                              >
-                                Gửi trả lời
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Presenter Actions */}
-                        {!isAnswering && (
-                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-200">
-                            <button
-                              onClick={() => {
-                                setAnsweringId(q._id);
-                                setAnswerText(v.answer || "");
-                              }}
-                              className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-emerald-600"
-                            >
-                              {v.answer ? "Sửa trả lời" : "Trả lời"}
-                            </button>
-
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const newStatus = isHidden ? "visible" : "hidden";
-                                  await setQaQuestionStatus({ responseId: q._id, status: newStatus });
-                                  toast.success(isHidden ? "Đã hiện câu hỏi" : "Đã ẩn câu hỏi");
-                                } catch (e) {
-                                  toast.error("Thao tác thất bại");
-                                }
-                              }}
-                              className="text-xs px-3 py-1 rounded-lg border border-zinc-300 hover:bg-zinc-100"
-                            >
-                              {isHidden ? "Hiện lại" : "Ẩn"}
-                            </button>
-
-                            <button
-                              onClick={async () => {
-                                if (!confirm("Bạn có chắc muốn xóa câu hỏi này?")) return;
-                                try {
-                                  await deleteQaQuestion({ responseId: q._id });
-                                  toast.success("Đã xóa câu hỏi");
-                                } catch (e) {
-                                  toast.error("Không thể xóa");
-                                }
-                              }}
-                              className="text-xs px-3 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-auto"
-                            >
-                              Xóa
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* === BOARD (cơ bản) === */}
-              {activeActivity.type === "board" && boardPosts && boardPosts.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(activeActivity.config?.columns || []).map((col: any) => {
-                    const posts = boardPosts.filter((p: any) => p.columnId === col.id);
-                    return (
-                      <div key={col.id} className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
-                        <div className="font-medium mb-2 text-sm">{col.title}</div>
-                        <div className="space-y-2">
-                          {posts.length > 0 ? posts.map((post: any) => (
-                            <div key={post._id} className="bg-white p-2.5 rounded-lg text-sm">
-                              {post.content}
-                              {post.imageUrl && <img src={post.imageUrl} className="mt-2 rounded max-h-28" alt="" />}
-                              <div className="text-xs text-emerald-600 mt-1">❤️ {post.likes}</div>
-                            </div>
-                          )) : <div className="text-xs text-zinc-500 py-2">Chưa có bài đăng</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center">
-              <div className="text-4xl mb-3">⏸️</div>
-              <div className="text-base font-medium text-zinc-700 mb-1">Chưa có hoạt động nào đang chạy</div>
-              <div className="text-sm text-zinc-500 max-w-md mx-auto">
-                Tạo hoạt động ở khung phía trên, sau đó bấm nút <strong className="text-emerald-700">▶ Bắt đầu</strong> trên hoạt động đó để sinh viên thấy và trả lời.
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* ==================== CREATE / EDIT ACTIVITY MODAL (UNIFIED, FULL CONFIG) ==================== */}
         {(showCreateModal || editingActivity) && (
