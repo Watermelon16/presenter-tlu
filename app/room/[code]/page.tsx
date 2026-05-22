@@ -645,10 +645,12 @@ export default function ParticipantRoomPage() {
               </div>
             </div>
           </div>
-          <div className="text-right min-w-0">
-            <div className="text-sm font-medium text-zinc-700 truncate">{session.title}</div>
+          <div className="text-right min-w-0 flex-1">
+            <div className="text-sm font-medium text-zinc-700 truncate" title={session.title}>{session.title}</div>
             {session.hostName && (
-              <div className="text-xs text-zinc-500 truncate">{session.hostName}</div>
+              <div className="text-xs text-emerald-700 truncate" title={session.hostName}>
+                👨‍🏫 {session.hostName}
+              </div>
             )}
           </div>
         </div>

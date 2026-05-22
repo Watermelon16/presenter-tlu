@@ -2137,6 +2137,11 @@ function PresenterPage() {
               <div className="text-sm font-medium truncate max-w-[260px] lg:max-w-md" title={session.title}>
                 {session.title}
               </div>
+              {session.hostName && (
+                <div className="text-[11px] text-zinc-500 truncate max-w-[260px] lg:max-w-md" title={session.hostName}>
+                  👨‍🏫 {session.hostName}
+                </div>
+              )}
             </div>
             <button
               onClick={handleNewRun}
@@ -3416,15 +3421,26 @@ function PresenterPage() {
           onClick={closeOverlay}
           className="fixed inset-0 z-[100] bg-zinc-950 flex items-center justify-center cursor-pointer"
         >
-          <div className="text-center">
-            <div className="text-zinc-400 text-2xl tracking-[6px] mb-4">QUÉT QR ĐỂ THAM GIA</div>
+          <div className="text-center w-full max-w-3xl px-6">
+            {/* Tên buổi + GV ở trên QR — chỉ hiện trên fullscreen, ko ảnh hưởng layout nhỏ */}
+            <div className="mb-3">
+              <div className="text-white text-2xl sm:text-3xl font-semibold leading-tight line-clamp-2">
+                {session.title}
+              </div>
+              {session.hostName && (
+                <div className="text-emerald-300 text-base sm:text-lg mt-1">
+                  👨‍🏫 {session.hostName}
+                </div>
+              )}
+            </div>
+            <div className="text-zinc-400 text-xl sm:text-2xl tracking-[6px] mb-3">QUÉT QR ĐỂ THAM GIA</div>
             {qrDataUrl ? (
-              <img src={qrDataUrl} alt="QR mã phòng" className="w-[420px] h-[420px] mx-auto rounded-2xl bg-white p-3" />
+              <img src={qrDataUrl} alt="QR mã phòng" className="w-[min(70vw,420px)] h-[min(70vw,420px)] mx-auto rounded-2xl bg-white p-3" />
             ) : (
-              <div className="w-[420px] h-[420px] bg-zinc-900 rounded-2xl flex items-center justify-center text-zinc-500">Đang tạo QR...</div>
+              <div className="w-[min(70vw,420px)] h-[min(70vw,420px)] bg-zinc-900 rounded-2xl flex items-center justify-center text-zinc-500 mx-auto">Đang tạo QR...</div>
             )}
-            <div className="mt-8 text-zinc-300 text-lg">Hoặc nhập mã phòng:</div>
-            <div className="text-white text-[160px] leading-none font-mono font-bold tracking-[12px] mt-2">
+            <div className="mt-6 text-zinc-300 text-base sm:text-lg">Hoặc nhập mã phòng:</div>
+            <div className="text-white font-mono font-bold tracking-[8px] sm:tracking-[12px] mt-2 leading-none" style={{ fontSize: "clamp(72px, 18vw, 160px)" }}>
               {upperCode}
             </div>
             <div className="mt-6">
@@ -4033,6 +4049,19 @@ function PresenterPage() {
             {/* Sidebar dành riêng cho QR + Activity control — slide KHÔNG bao giờ bị che */}
             {hasPdf && (
               <aside className="w-72 shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col gap-3 p-4 overflow-y-auto">
+                {/* Session info card — tên buổi + GV */}
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-white">
+                  <div className="text-[10px] text-zinc-400 tracking-[3px] font-semibold mb-1">BUỔI GIẢNG</div>
+                  <div className="text-sm font-medium leading-snug line-clamp-2" title={session.title}>
+                    {session.title}
+                  </div>
+                  {session.hostName && (
+                    <div className="text-xs text-emerald-300 mt-1.5 truncate" title={session.hostName}>
+                      👨‍🏫 {session.hostName}
+                    </div>
+                  )}
+                </div>
+
                 {/* QR card */}
                 <div className="bg-black/70 rounded-2xl p-3 text-white text-center">
                   <div className="text-[10px] text-zinc-400 tracking-[4px] font-semibold">MÃ PHÒNG</div>
