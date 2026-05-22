@@ -104,6 +104,16 @@ export default function CreateRoomPage() {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
           <Logo size="sm" href={null} />
           <div className="flex items-center gap-2">
+            {me?.profile?.role === "admin" && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-medium transition-colors"
+                title="Quản lý người dùng"
+              >
+                <span>👮</span>
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
+            )}
             <a
               href="https://lephuong-tlu.lovable.app/dashboard/courses"
               target="_blank"

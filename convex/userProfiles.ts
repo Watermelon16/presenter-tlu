@@ -47,7 +47,13 @@ export const me = query({
 
 /**
  * Tạo profile nếu chưa có — gọi mỗi lần user load home.
- * Auto-promote first user thành admin + approved.
+ * Auto-promote thành admin nếu:
+ *   - Email khớp env ADMIN_EMAIL (whitelist tuyệt đối)
+ *   - HOẶC đây là user đầu tiên đăng ký (fallback)
+ *
+ * Đồng thời nếu user EXISTING có email khớp ADMIN_EMAIL nhưng chưa admin
+ * → tự động upgrade lên admin + approved. Cho phép bootstrap kể cả khi
+ * tài khoản đã đăng nhập trước đó như "lecturer".
  */
 export const ensureProfile = mutation({
   args: {},
@@ -57,27 +63,104 @@ export const ensureProfile = mutation({
     const user = await ctx.db.get(userId);
     if (!user) return null;
 
+    const adminEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
+    const userEmail = (user.email ?? "").trim().toLowerCase();
+    const isAdminByEmail = adminEmail.length > 0 && userEmail === adminEmail;
+
     const existing = await ctx.db
       .query("userProfiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
-    if (existing) return existing._id;
 
-    // Check xem đây có phải user đầu tiên không → admin + approved
+    if (existing) {
+      // Upgrade existing user nếu email khớp ADMIN_EMAIL và chưa admin/approved
+      if (isAdminByEmail && (existing.role !== "admin" || existing.status !== "approved")) {
+        await ctx.db.patch(existing._id, {
+          role: "admin",
+          status: "approved",
+          approvedAt: existing.approvedAt ?? Date.now(),
+          approvedBy: existing.approvedBy ?? userId,
+        });
+      }
+      return existing._id;
+    }
+
+    // First user fallback (khi chưa cấu hình ADMIN_EMAIL)
     const allProfiles = await ctx.db.query("userProfiles").take(1);
     const isFirstUser = allProfiles.length === 0;
+    const shouldBeAdmin = isAdminByEmail || isFirstUser;
 
     const id = await ctx.db.insert("userProfiles", {
       userId,
       email: user.email ?? "",
       displayName: user.name ?? undefined,
-      status: isFirstUser ? "approved" : "pending",
-      role: isFirstUser ? "admin" : "lecturer",
+      status: shouldBeAdmin ? "approved" : "pending",
+      role: shouldBeAdmin ? "admin" : "lecturer",
       createdAt: Date.now(),
-      approvedAt: isFirstUser ? Date.now() : undefined,
-      approvedBy: isFirstUser ? userId : undefined,
+      approvedAt: shouldBeAdmin ? Date.now() : undefined,
+      approvedBy: shouldBeAdmin ? userId : undefined,
     });
     return id;
+  },
+});
+
+/**
+ * Internal mutation để bootstrap admin từ CLI: `npx convex run --prod userProfiles:bootstrapAdminByEmail '{"email":"x@y.com"}'`
+ * KHÔNG yêu cầu auth — chỉ dùng được qua CLI có quyền admin Convex deployment.
+ */
+export const bootstrapAdminByEmail = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const target = (args.email ?? "").trim().toLowerCase();
+    if (!target) throw new Error("Cần email");
+
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_email", (q) => q.eq("email", args.email.trim()))
+      .first();
+
+    if (!profile) {
+      // Có thể email được lưu với case khác — thử tìm bằng manual scan
+      const all = await ctx.db.query("userProfiles").collect();
+      const found = all.find((p) => (p.email ?? "").trim().toLowerCase() === target);
+      if (!found) {
+        return {
+          ok: false,
+          message: `Không tìm thấy user với email ${args.email}. User cần đăng nhập Google ít nhất 1 lần để tạo profile trước.`,
+          existingEmails: all.map((p) => p.email),
+        };
+      }
+      await ctx.db.patch(found._id, {
+        role: "admin",
+        status: "approved",
+        approvedAt: Date.now(),
+      });
+      return { ok: true, message: `Đã promote ${found.email} lên admin`, profileId: found._id };
+    }
+
+    await ctx.db.patch(profile._id, {
+      role: "admin",
+      status: "approved",
+      approvedAt: Date.now(),
+    });
+    return { ok: true, message: `Đã promote ${profile.email} lên admin`, profileId: profile._id };
+  },
+});
+
+/**
+ * Internal query liệt kê users không cần auth — dùng cho debug CLI.
+ */
+export const debugListAllUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    const profiles = await ctx.db.query("userProfiles").collect();
+    return profiles.map((p) => ({
+      email: p.email,
+      displayName: p.displayName ?? null,
+      role: p.role,
+      status: p.status,
+      createdAt: p.createdAt,
+    }));
   },
 });
 
