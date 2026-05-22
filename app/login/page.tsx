@@ -38,7 +38,7 @@ export default function LoginPage() {
           <CardHeader>
             <CardTitle>Đăng nhập</CardTitle>
             <CardDescription>
-              Dùng tài khoản Google để vào hệ thống soạn buổi giảng. Sinh viên không cần đăng nhập.
+              Dùng tài khoản Google (cá nhân hoặc <strong>@tlu.edu.vn</strong>) để vào hệ thống soạn buổi giảng. Sinh viên không cần đăng nhập.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -70,7 +70,7 @@ export default function LoginPage() {
 
             <div className="text-xs text-zinc-500 leading-relaxed bg-zinc-50 border border-zinc-200 rounded-lg p-3">
               <strong>Lần đầu đăng ký?</strong> Tài khoản mới ở trạng thái <em>chờ duyệt</em>. Admin sẽ phê duyệt
-              trong vòng 24 giờ. User đầu tiên đăng nhập tự động trở thành admin.
+              trong vòng 24 giờ.
             </div>
           </CardContent>
         </Card>
