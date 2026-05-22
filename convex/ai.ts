@@ -457,3 +457,270 @@ export const generateActivitiesFromPdf = action({
     };
   },
 });
+
+// ============================================================
+// KHẢO SÁT (SURVEY) — gen hoạt động từ chủ đề, không cần PDF
+// ============================================================
+
+const SURVEY_TYPES = ["poll", "wordcloud", "opentext", "rating"] as const;
+type SurveyType = (typeof SURVEY_TYPES)[number];
+
+function buildSurveyPrompt(args: {
+  topic: string;
+  context?: string;
+  count: number;
+  enabledTypes: SurveyType[];
+}): string {
+  const ctx = args.context?.trim() ? `\nCONTEXT THÊM: ${args.context.trim()}` : "";
+  return `Bạn là chuyên gia thiết kế khảo sát giáo dục đại học Việt Nam. Hãy tạo ${args.count} câu hỏi khảo sát về chủ đề dưới đây.
+
+CHỦ ĐỀ KHẢO SÁT: ${args.topic}${ctx}
+
+YÊU CẦU:
+- Loại câu hỏi được phép: ${args.enabledTypes.join(", ")}.
+- Đa dạng loại — pha trộn để khảo sát toàn diện (đo lường định lượng + thu thập ý kiến mở).
+- Tiếng Việt rõ ràng, không leading question (tránh dẫn dắt).
+- rating: dùng thang Likert 1-5. ratingMinLabel = "Rất không đồng ý" / "Rất kém". ratingMaxLabel = "Rất đồng ý" / "Rất tốt". Phù hợp cho đánh giá mức độ.
+- poll: 3-5 options, KHÔNG quá nhiều. Có thể là quiz nếu muốn kiểm tra hiểu biết, hoặc plain survey nếu chỉ thu opinion.
+- wordcloud: dùng khi muốn thu từ khóa ngắn 1-3 từ về chủ đề.
+- opentext: cho câu trả lời mở dài 1-2 câu, lý do, đề xuất cải tiến.
+- suggestedTimeLimit (phút): 1-2 cho rating/poll, 2-3 cho opentext/wordcloud.
+- reasoning: 1 câu giải thích mục tiêu của câu hỏi.
+
+Trả về JSON theo schema:
+{
+  "suggestions": [
+    {
+      "type": "rating" | "poll" | "wordcloud" | "opentext",
+      "title": "<câu hỏi>",
+      "options": ["<a>", "<b>"],
+      "isQuiz": false,
+      "correctOptionIndexes": [],
+      "ratingMin": 1,
+      "ratingMax": 5,
+      "ratingMinLabel": "...",
+      "ratingMaxLabel": "...",
+      "suggestedTimeLimit": <số phút>,
+      "reasoning": "..."
+    }
+  ]
+}`;
+}
+
+async function callGeminiSurvey(args: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+}): Promise<{ rawText: string; tokenUsage: unknown }> {
+  const url = `${PROVIDERS.gemini.baseUrl}/models/${args.model}:generateContent?key=${args.apiKey}`;
+  const body = {
+    contents: [{ parts: [{ text: args.prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          suggestions: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                type: { type: "STRING", enum: ["poll", "wordcloud", "opentext", "rating"] },
+                title: { type: "STRING" },
+                options: { type: "ARRAY", items: { type: "STRING" } },
+                isQuiz: { type: "BOOLEAN" },
+                correctOptionIndexes: { type: "ARRAY", items: { type: "INTEGER" } },
+                ratingMin: { type: "INTEGER" },
+                ratingMax: { type: "INTEGER" },
+                ratingMinLabel: { type: "STRING" },
+                ratingMaxLabel: { type: "STRING" },
+                suggestedTimeLimit: { type: "NUMBER" },
+                reasoning: { type: "STRING" },
+              },
+              required: ["type", "title"],
+            },
+          },
+        },
+        required: ["suggestions"],
+      },
+    },
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throwProviderError("gemini", args.model, res.status, text);
+  }
+  const data = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: unknown;
+    promptFeedback?: { blockReason?: string };
+  };
+  if (data.promptFeedback?.blockReason) {
+    throw new ConvexError({
+      code: "blocked",
+      provider: "gemini",
+      model: args.model,
+      message: `Gemini từ chối xử lý: ${data.promptFeedback.blockReason}`,
+    });
+  }
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    throw new ConvexError({
+      code: "empty_response",
+      provider: "gemini",
+      model: args.model,
+      message: "Gemini trả về rỗng.",
+    });
+  }
+  return { rawText: text, tokenUsage: data.usageMetadata ?? null };
+}
+
+export const generateSurveyActivities = action({
+  args: {
+    topic: v.string(),
+    context: v.optional(v.string()),
+    count: v.optional(v.number()),
+    enabledTypes: v.optional(v.array(v.string())),
+    provider: v.optional(v.string()),
+    model: v.optional(v.string()),
+    apiKey: v.optional(v.string()),
+  },
+  handler: async (_ctx, args): Promise<{
+    suggestions: Array<{
+      type: SurveyType;
+      title: string;
+      options: string[];
+      isQuiz: boolean;
+      correctOptionIndexes: number[];
+      ratingMin?: number;
+      ratingMax?: number;
+      ratingMinLabel?: string;
+      ratingMaxLabel?: string;
+      suggestedTimeLimit: number;
+      reasoning?: string;
+    }>;
+    tokenUsage: unknown;
+    modelUsed: string;
+    providerUsed: Provider;
+  }> => {
+    const topic = args.topic.trim();
+    if (!topic) {
+      throw new ConvexError({
+        code: "no_topic",
+        message: "Vui lòng nhập chủ đề khảo sát.",
+      });
+    }
+
+    const count = Math.max(1, Math.min(args.count ?? 6, 15));
+    const enabledTypes: SurveyType[] =
+      Array.isArray(args.enabledTypes) && args.enabledTypes.length > 0
+        ? (args.enabledTypes.filter((t) =>
+            (SURVEY_TYPES as readonly string[]).includes(t)
+          ) as SurveyType[])
+        : ["rating", "opentext", "poll"];
+
+    // Provider + model + key
+    const provider: Provider = ((): Provider => {
+      const p = (args.provider as Provider) ?? "gemini";
+      return p in PROVIDERS ? p : "gemini";
+    })();
+    const allowed = ALLOWED_MODELS_BY_PROVIDER[provider];
+    const requestedModel = args.model || allowed[0];
+    const model = allowed.includes(requestedModel) ? requestedModel : allowed[0];
+
+    const envKeyName = PROVIDERS[provider].keyEnv;
+    const apiKey = args.apiKey?.trim() || (envKeyName ? process.env[envKeyName] : undefined);
+    if (!apiKey) {
+      throw new ConvexError({
+        code: "no_key",
+        provider,
+        model,
+        message:
+          provider === "gemini"
+            ? "Chưa có API key Gemini."
+            : `Cần API key ${provider}. Nhập trong modal AI gen.`,
+      });
+    }
+
+    const prompt = buildSurveyPrompt({ topic, context: args.context, count, enabledTypes });
+
+    // Call AI (cùng helper với main gen — chỉ Gemini có schema riêng, OpenAI-compat dùng prompt-only)
+    const { rawText, tokenUsage } =
+      provider === "gemini"
+        ? await callGeminiSurvey({ apiKey, model, prompt })
+        : await callOpenAICompat({ provider, apiKey, model, prompt });
+
+    let parsed: { suggestions?: unknown };
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      throw new ConvexError({
+        code: "invalid_json",
+        provider,
+        model,
+        message: `${provider} (${model}) trả về JSON không hợp lệ. Thử model khác.`,
+      });
+    }
+
+    type Raw = {
+      type?: string;
+      title?: string;
+      options?: string[];
+      isQuiz?: boolean;
+      correctOptionIndexes?: number[];
+      ratingMin?: number;
+      ratingMax?: number;
+      ratingMinLabel?: string;
+      ratingMaxLabel?: string;
+      suggestedTimeLimit?: number;
+      reasoning?: string;
+    };
+    const rawList = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+    const cleaned = (rawList as unknown[])
+      .map((s) => s as Raw)
+      .filter(
+        (s) =>
+          typeof s.title === "string" &&
+          s.title.trim().length > 0 &&
+          typeof s.type === "string" &&
+          enabledTypes.includes(s.type as SurveyType)
+      )
+      .map((s) => {
+        const t = s.type as SurveyType;
+        return {
+          type: t,
+          title: s.title!.trim(),
+          options:
+            t === "poll" && Array.isArray(s.options)
+              ? s.options.map((o) => String(o).trim()).filter(Boolean)
+              : [],
+          isQuiz: t === "poll" ? !!s.isQuiz : false,
+          correctOptionIndexes:
+            t === "poll" && Array.isArray(s.correctOptionIndexes)
+              ? s.correctOptionIndexes.filter((i) => typeof i === "number" && i >= 0)
+              : [],
+          ratingMin: t === "rating" ? s.ratingMin ?? 1 : undefined,
+          ratingMax: t === "rating" ? s.ratingMax ?? 5 : undefined,
+          ratingMinLabel: t === "rating" ? (s.ratingMinLabel ?? "").trim() : undefined,
+          ratingMaxLabel: t === "rating" ? (s.ratingMaxLabel ?? "").trim() : undefined,
+          suggestedTimeLimit:
+            typeof s.suggestedTimeLimit === "number" && s.suggestedTimeLimit > 0
+              ? Math.min(10, s.suggestedTimeLimit)
+              : 2,
+          reasoning: typeof s.reasoning === "string" ? s.reasoning.trim() : undefined,
+        };
+      });
+
+    return {
+      suggestions: cleaned,
+      tokenUsage,
+      modelUsed: model,
+      providerUsed: provider,
+    };
+  },
+});

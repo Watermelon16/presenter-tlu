@@ -18,6 +18,9 @@ import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
+import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
+import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
+import { PollBarChart, RatingBarChart, WordcloudBars } from "@/components/ResultCharts";
 
 import {
   DndContext,
@@ -461,6 +464,7 @@ function PresenterPage() {
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const [showAiGenModal, setShowAiGenModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [gradingActivityId, setGradingActivityId] = useState<Id<"activities"> | null>(null);
 
   const handleUploadPdf = async (file: File) => {
@@ -678,14 +682,7 @@ function PresenterPage() {
         }
       }
 
-      if (e.key === "f" || e.key === "F") {
-        e.preventDefault();
-        if (fullscreenOverlay === "result") {
-          closeOverlay();
-        } else {
-          switchOverlay("result");
-        }
-      }
+      // Phím F (overlay kết quả realtime) đã bỏ — không cần thiết.
       if (e.key === "q" || e.key === "Q") {
         e.preventDefault();
         if (fullscreenOverlay === "qr") {
@@ -704,21 +701,14 @@ function PresenterPage() {
         }
       }
 
-      // A = Kích hoạt activity + tự mở overlay để theo dõi
+      // A = Kích hoạt activity. (Trước đây mở overlay kết quả — đã bỏ.)
       if (e.key === "a" || e.key === "A") {
         e.preventDefault();
         if (activeActivity) {
-          // Có active rồi → chỉ cần mở overlay xem realtime
-          setRevealActivityId(activeActivity._id);
-          setFullscreenOverlay((cur) => {
-            if (cur === "slides") setOverlayReturnTo("slides");
-            return "result";
-          });
-          setResultTab("result");
+          toast.message(`Đang chạy: ${activeActivity.title}`);
         } else {
-          // Tìm activity để kích hoạt: ưu tiên match slide hiện tại, rồi script position, rồi first draft
+          // Tìm activity nháp để kích hoạt: ưu tiên match slide hiện tại, rồi script position, rồi first draft
           let target: { _id: string; title: string; slideCue?: string } | null = null;
-          // 1. Match slide PDF hiện tại
           if (hasPdf) {
             const slideMatch = sortedActivities.find((a) =>
               a.status === "draft" &&
@@ -728,17 +718,15 @@ function PresenterPage() {
             );
             if (slideMatch) target = slideMatch;
           }
-          // 2. Script position
           if (!target && isScriptMode && currentScriptActivity && currentScriptActivity.status === "draft") {
             target = currentScriptActivity;
           }
-          // 3. First draft
           if (!target) {
             const draft = sortedActivities.find((a) => a.status === "draft");
             if (draft) target = draft;
           }
           if (target) {
-            handleStartAndReveal(target._id);
+            handleStart(target._id);
             toast.success(`Đã kích hoạt: ${target.title}`);
           } else {
             toast.message("Không còn hoạt động nháp để kích hoạt");
@@ -2020,251 +2008,339 @@ function PresenterPage() {
     );
   }
 
+  // === Topbar handlers — gom logic ra ngoài JSX ===
+  const handleNewRun = async () => {
+    if (!session?._id) return;
+    const currentRunNum = session.currentRun ?? 1;
+    const nextRun = currentRunNum + 1;
+    const wantExport = confirm(
+      `Xuất Excel phiên #${currentRunNum} trước khi sang phiên mới?\n\n` +
+        "OK = Có, xuất rồi tiếp tục\nCancel = Bỏ qua, chuyển luôn"
+    );
+    if (wantExport) await handleExportExcel();
+    if (
+      !confirm(
+        `BẮT ĐẦU PHIÊN #${nextRun}?\n\n` +
+          `• Lịch sử phiên #${currentRunNum} đã ${wantExport ? "xuất Excel + " : ""}lưu trong DB\n` +
+          "• Hoạt động reset về NHÁP\n" +
+          "• SV cũ tự đăng ký lại khi reload\n" +
+          "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm"
+      )
+    )
+      return;
+    try {
+      const result = await resetSessionForNewRun({ sessionId: session._id });
+      toast.success(`Đã bắt đầu Phiên #${result.newRun}. Reset ${result.activitiesReset} hoạt động.`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Không thể reset phiên");
+    }
+  };
+
+  const handleEndSession = async () => {
+    if (!session?._id) return;
+    const totalRuns = session.currentRun ?? 1;
+    const wantExport = confirm(
+      `Xuất Excel TOÀN BỘ ${totalRuns} phiên trước khi kết thúc?\n\nOK = Có, Cancel = Bỏ qua`
+    );
+    if (wantExport) {
+      if (totalRuns > 1) await handleExportAllRuns();
+      else await handleExportExcel();
+    }
+    if (!confirm("Kết thúc buổi giảng? SV sẽ không gửi thêm được. Kết quả vẫn lưu.")) return;
+    try {
+      await endSession({ sessionId: session._id });
+      toast.success("Đã kết thúc buổi giảng.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Không thể kết thúc buổi");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      {/* Top Bar */}
+      {/* Hidden file input cho upload PDF — luôn render */}
+      <input
+        ref={pdfFileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleUploadPdf(f);
+        }}
+        className="hidden"
+      />
+
+      {/* Top Bar — 1 dòng, dropdown groups */}
       <div className="border-b border-zinc-200 bg-zinc-50 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
-          <div className="flex items-center gap-3 sm:gap-5">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sm:gap-3">
+          {/* LEFT: Logo + Mã phòng + Title */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" showText={false} href="/" />
-            <a
-              href="https://lephuong-tlu.lovable.app/dashboard/courses"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40 text-zinc-700 hover:text-emerald-700 transition-colors"
-              title="Mở LMS quản lý môn học (tab mới)"
-            >
-              <span>📚</span>
-              <span className="font-medium">LMS</span>
-              <span className="text-zinc-400">↗</span>
-            </a>
             <button
               onClick={() => setFullscreenOverlay("qr")}
-              className="text-left group"
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-100 group shrink-0"
               title="Chiếu QR + mã phòng (phím Q)"
             >
-              <div className="text-xs text-zinc-500 group-hover:text-zinc-600">MÃ PHÒNG · Chiếu (Q)</div>
-              <div className="flex items-center gap-3">
-                <div className="text-3xl font-mono tracking-[4px] font-semibold text-zinc-900 group-hover:text-emerald-600 transition-colors">
+              {qrDataUrl && (
+                <img
+                  src={qrDataUrl}
+                  alt="QR"
+                  className="w-9 h-9 rounded bg-white p-0.5 ring-1 ring-zinc-300 group-hover:ring-emerald-500 transition-all"
+                />
+              )}
+              <div className="text-left">
+                <div className="text-[9px] text-zinc-400 tracking-wider leading-none">MÃ PHÒNG</div>
+                <div className="text-lg font-mono tracking-[3px] font-semibold text-zinc-900 group-hover:text-emerald-600 leading-tight">
                   {session.code}
                 </div>
-                {qrDataUrl && (
-                  <img
-                    src={qrDataUrl}
-                    alt="QR mã phòng"
-                    className="w-12 h-12 rounded-md bg-white p-0.5 ring-1 ring-zinc-700 group-hover:ring-emerald-500 transition-all"
-                  />
-                )}
               </div>
             </button>
-
-            <div className="h-8 w-px bg-zinc-100" />
-
-            <div>
-              <div className="text-sm text-zinc-600 flex items-center gap-1.5">
-                Buổi giảng
+            <div className="h-8 w-px bg-zinc-200 hidden sm:block" />
+            <div className="min-w-0 hidden md:block">
+              <div className="text-[10px] text-zinc-500 flex items-center gap-1.5">
+                <span>BUỔI GIẢNG</span>
                 {(session.currentRun ?? 1) > 1 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
                     PHIÊN #{session.currentRun}
                   </span>
                 )}
               </div>
-              <div className="text-lg font-medium">{session.title}</div>
+              <div className="text-sm font-medium truncate max-w-[280px] lg:max-w-md" title={session.title}>
+                {session.title}
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {/* Số SV tham gia — click để xem danh sách */}
+          {/* RIGHT: SV count + Dropdowns */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setShowParticipantsModal(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
               title="Xem danh sách sinh viên đã tham gia"
             >
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm font-medium">{totalParticipants} sinh viên</span>
-              <span className="text-xs text-zinc-400">▸</span>
+              <span className="text-sm font-medium tabular-nums">{totalParticipants}</span>
+              <span className="text-xs text-zinc-500 hidden sm:inline">SV</span>
             </button>
 
-            <div className="flex items-center gap-1.5">
-              <input
-                ref={pdfFileInputRef}
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUploadPdf(f);
-                }}
-                className="hidden"
-              />
-              {hasPdf ? (
-                <>
-                  <button
-                    onClick={() => switchOverlay("slides")}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors"
-                    title={`Chiếu slide PDF (${session.pdfFileName}, ${pdfTotalPages} trang) — phím S`}
-                  >
-                    📑 Slide <span className="text-[10px] opacity-70">(S)</span>
-                  </button>
-                  <button
-                    onClick={() => setShowAiGenModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors"
-                    title="Dùng AI sinh hoạt động từ nội dung PDF"
-                  >
-                    🤖 AI gen
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => pdfFileInputRef.current?.click()}
-                  disabled={isUploadingPdf}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 disabled:opacity-60 transition-colors"
-                  title="Upload PDF slide"
-                >
-                  {isUploadingPdf ? "Đang tải..." : "📑 Upload PDF"}
-                </button>
-              )}
-
-              <button
-                onClick={() => switchOverlay("result")}
-                disabled={!activeActivity}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                title="Chiếu kết quả hoạt động đang diễn ra (phím F)"
-              >
-                📺 Kết quả <span className="text-[10px] opacity-70">(F)</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  window.open(`/presenter/${upperCode}/leaderboard`, 'leaderboard', 'width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-colors"
-                title="Mở Bảng thành tích để chiếu (Top 10, cập nhật realtime)"
-              >
-                🏆 Bảng thành tích
-              </button>
-
-              <button
-                onClick={() => setShowInsightsModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors"
-                title="AI phân tích kết quả buổi giảng — top mistakes, themes, summary cho GV và SV"
-              >
-                🧠 Phân tích AI
-              </button>
-
-              <button
-                onClick={toggleBigTextMode}
-                className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                  bigTextMode
-                    ? "bg-amber-100 border-amber-400 text-amber-900 font-semibold"
-                    : "bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-700"
-                }`}
-                title="Bật/tắt text lớn trên màn chiếu cho SV ngồi cuối lớp"
-                aria-pressed={bigTextMode}
-              >
-                <span className="font-mono">{bigTextMode ? "A+" : "A"}</span>
-                <span className="text-[10px] opacity-70 hidden sm:inline">
-                  {bigTextMode ? "TEXT LỚN" : "TEXT THƯỜNG"}
+            {/* 🎬 Chiếu */}
+            <Dropdown
+              align="right"
+              width="w-72"
+              trigger={
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold transition-colors cursor-pointer">
+                  🎬 <span className="hidden sm:inline">Chiếu</span> <span className="text-[10px] opacity-60">▾</span>
                 </span>
-              </button>
-
-              <button
-                onClick={handleExportExcel}
-                disabled={!exportData || isExporting}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 disabled:opacity-60 transition-colors text-white font-medium"
-                title={`Xuất file .xlsx cho Phiên #${session.currentRun ?? 1} hiện tại`}
-              >
-                {isExporting ? "Đang xuất..." : "💾 Excel phiên này"}
-              </button>
-
-              {(session.currentRun ?? 1) > 1 && (
-                <button
-                  onClick={handleExportAllRuns}
-                  disabled={isExporting}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-700 hover:bg-blue-600 border border-blue-600 disabled:opacity-60 transition-colors text-white font-medium"
-                  title={`Xuất file .xlsx cho tất cả ${session.currentRun} phiên (multi-sheet)`}
-                >
-                  {isExporting ? "Đang xuất..." : `💾 Tất cả ${session.currentRun} phiên`}
-                </button>
-              )}
-            </div>
-
-            {/* Bắt đầu phiên mới — hỏi export trước, giữ activities */}
-            <button
-              className="px-3 py-2 text-sm rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-              onClick={async () => {
-                if (!session?._id) return;
-                const currentRunNum = session.currentRun ?? 1;
-                const nextRun = currentRunNum + 1;
-
-                // Bước 1: Hỏi có xuất Excel phiên hiện tại trước không
-                const wantExport = confirm(
-                  `Xuất Excel phiên #${currentRunNum} (lưu điểm danh + câu trả lời) trước khi sang phiên mới?\n\n` +
-                  "OK = Có, xuất Excel rồi tiếp tục\n" +
-                  "Cancel = Bỏ qua, chuyển luôn"
-                );
-                if (wantExport) {
-                  await handleExportExcel();
-                }
-
-                // Bước 2: Xác nhận reset
-                if (!confirm(
-                  `BẮT ĐẦU PHIÊN #${nextRun}?\n\n` +
-                  `• Lịch sử phiên #${currentRunNum} đã ${wantExport ? "xuất Excel + " : ""}lưu trong DB\n` +
-                  "• Hoạt động reset về NHÁP\n" +
-                  "• SV cũ tự đăng ký lại khi reload (cùng mã phòng)\n" +
-                  "• Giữ nguyên: tiêu đề activity, đáp án, Mốc slide, PDF, cấu hình điểm"
-                )) return;
-                try {
-                  const result = await resetSessionForNewRun({ sessionId: session._id });
-                  toast.success(`Đã bắt đầu Phiên #${result.newRun}. Reset ${result.activitiesReset} hoạt động.`);
-                } catch (e: unknown) {
-                  toast.error(e instanceof Error ? e.message : "Không thể reset phiên");
-                }
-              }}
-              title="Hỏi xuất Excel, tăng số phiên, reset activities. Giữ lịch sử các phiên cũ trong DB."
+              }
             >
-              🔄 Phiên mới
-            </button>
+              {(close) => (
+                <>
+                  <DropdownLabel>Lên màn chiếu</DropdownLabel>
+                  {hasPdf ? (
+                    <DropdownItem
+                      icon="📑"
+                      label="Slide PDF"
+                      hint={`${session.pdfFileName ?? "?"} · ${pdfTotalPages} trang`}
+                      shortcut="S"
+                      onClick={() => {
+                        switchOverlay("slides");
+                        close();
+                      }}
+                    />
+                  ) : (
+                    <DropdownItem
+                      icon="📑"
+                      label={isUploadingPdf ? "Đang upload..." : "Upload PDF slide"}
+                      hint="Chọn file PDF (≤ 20MB) để chiếu thay PowerPoint"
+                      disabled={isUploadingPdf}
+                      onClick={() => {
+                        pdfFileInputRef.current?.click();
+                        close();
+                      }}
+                    />
+                  )}
+                  <DropdownItem
+                    icon="🏆"
+                    label="Bảng thành tích"
+                    hint="Cửa sổ riêng — Top 10 realtime, dán lên slide PPT"
+                    onClick={() => {
+                      window.open(
+                        `/presenter/${upperCode}/leaderboard`,
+                        "leaderboard",
+                        "width=900,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes"
+                      );
+                      close();
+                    }}
+                  />
+                  <DropdownItem
+                    icon="🔳"
+                    label="QR + mã phòng"
+                    hint="Cho SV scan / nhập mã"
+                    shortcut="Q"
+                    onClick={() => {
+                      setFullscreenOverlay("qr");
+                      close();
+                    }}
+                  />
+                </>
+              )}
+            </Dropdown>
 
-            {session.status === "ended" ? (
-              <div className="px-4 py-2 text-sm rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-600">
-                Đã kết thúc
-              </div>
-            ) : (
-              <button
-                className="px-4 py-2 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                onClick={async () => {
-                  if (!session?._id) return;
-                  const totalRuns = session.currentRun ?? 1;
+            {/* 🤖 AI */}
+            <Dropdown
+              align="right"
+              width="w-72"
+              trigger={
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors cursor-pointer">
+                  🤖 <span className="hidden sm:inline">AI</span> <span className="text-[10px] opacity-60">▾</span>
+                </span>
+              }
+            >
+              {(close) => (
+                <>
+                  <DropdownLabel>Sinh hoạt động</DropdownLabel>
+                  <DropdownItem
+                    icon="📄"
+                    label="Từ slide PDF"
+                    hint={hasPdf ? "Extract text PDF → gen 5-10 hoạt động" : "Cần upload PDF trước"}
+                    disabled={!hasPdf}
+                    onClick={() => {
+                      setShowAiGenModal(true);
+                      close();
+                    }}
+                  />
+                  <DropdownItem
+                    icon="🗳"
+                    label="Khảo sát từ chủ đề"
+                    hint="Nhập topic (vd phương pháp giảng dạy) → gen survey questions"
+                    onClick={() => {
+                      setShowSurveyModal(true);
+                      close();
+                    }}
+                  />
+                  <DropdownDivider />
+                  <DropdownLabel>Phân tích cuối buổi</DropdownLabel>
+                  <DropdownItem
+                    icon="🧠"
+                    label="Smart insights"
+                    hint="Top mistakes, themes, summary cho GV và SV"
+                    onClick={() => {
+                      setShowInsightsModal(true);
+                      close();
+                    }}
+                  />
+                </>
+              )}
+            </Dropdown>
 
-                  // Bước 1: Hỏi xuất Excel TOÀN BỘ phiên trước khi kết thúc
-                  const wantExport = confirm(
-                    `Xuất Excel TOÀN BỘ ${totalRuns} phiên của buổi giảng trước khi kết thúc?\n\n` +
-                    "(File gồm: tổng quan + chi tiết từng phiên + chấm điểm)\n\n" +
-                    "OK = Có, xuất rồi tiếp tục\n" +
-                    "Cancel = Bỏ qua"
-                  );
-                  if (wantExport) {
-                    if (totalRuns > 1) {
-                      await handleExportAllRuns();
-                    } else {
-                      await handleExportExcel();
-                    }
-                  }
+            {/* 💾 Xuất + Phiên */}
+            <Dropdown
+              align="right"
+              width="w-72"
+              trigger={
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors cursor-pointer">
+                  💾 <span className="hidden sm:inline">Xuất</span> <span className="text-[10px] opacity-60">▾</span>
+                </span>
+              }
+            >
+              {(close) => (
+                <>
+                  <DropdownLabel>Excel</DropdownLabel>
+                  <DropdownItem
+                    icon="📊"
+                    label={`Excel phiên #${session.currentRun ?? 1}`}
+                    hint="Điểm danh + câu trả lời + chấm điểm phiên hiện tại"
+                    disabled={!exportData || isExporting}
+                    onClick={() => {
+                      handleExportExcel();
+                      close();
+                    }}
+                  />
+                  {(session.currentRun ?? 1) > 1 && (
+                    <DropdownItem
+                      icon="📚"
+                      label={`Tất cả ${session.currentRun} phiên`}
+                      hint="Multi-sheet: tổng quan + chi tiết từng phiên"
+                      disabled={isExporting}
+                      onClick={() => {
+                        handleExportAllRuns();
+                        close();
+                      }}
+                    />
+                  )}
+                  <DropdownDivider />
+                  <DropdownLabel>Phiên dạy</DropdownLabel>
+                  <DropdownItem
+                    icon="🔄"
+                    label="Bắt đầu phiên mới"
+                    hint="Reset activities về NHÁP, lưu lịch sử phiên hiện tại"
+                    onClick={() => {
+                      handleNewRun();
+                      close();
+                    }}
+                  />
+                </>
+              )}
+            </Dropdown>
 
-                  // Bước 2: Xác nhận kết thúc
-                  if (!confirm("Kết thúc buổi giảng? SV sẽ không gửi câu trả lời mới được. Kết quả vẫn lưu trong DB.")) return;
-                  try {
-                    await endSession({ sessionId: session._id });
-                    toast.success("Đã kết thúc buổi giảng.");
-                  } catch (e: unknown) {
-                    toast.error(e instanceof Error ? e.message : "Không thể kết thúc buổi");
-                  }
-                }}
-              >
-                Kết thúc buổi
-              </button>
-            )}
+            {/* ⚙️ Cài đặt */}
+            <Dropdown
+              align="right"
+              width="w-64"
+              trigger={
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg bg-white hover:bg-zinc-100 border border-zinc-300 text-zinc-700 transition-colors cursor-pointer">
+                  ⚙️ <span className="text-[10px] opacity-60">▾</span>
+                </span>
+              }
+            >
+              {(close) => (
+                <>
+                  <DropdownLabel>Hiển thị</DropdownLabel>
+                  <DropdownItem
+                    icon={bigTextMode ? "🔍" : "🔎"}
+                    label={bigTextMode ? "Tắt text lớn" : "Bật text lớn"}
+                    hint="Cho SV ngồi cuối lớp đọc rõ — phóng tiêu đề + countdown trên màn chiếu"
+                    highlight={bigTextMode}
+                    onClick={() => {
+                      toggleBigTextMode();
+                      close();
+                    }}
+                  />
+                  <DropdownDivider />
+                  <DropdownLabel>Liên kết</DropdownLabel>
+                  <DropdownItem
+                    icon="📚"
+                    label="LMS quản lý môn học ↗"
+                    hint="Mở dashboard LMS (tab mới)"
+                    onClick={() => {
+                      window.open(
+                        "https://lephuong-tlu.lovable.app/dashboard/courses",
+                        "_blank",
+                        "noopener,noreferrer"
+                      );
+                      close();
+                    }}
+                  />
+                  {session.status !== "ended" && (
+                    <>
+                      <DropdownDivider />
+                      <DropdownItem
+                        icon="⏹"
+                        label="Kết thúc buổi giảng"
+                        hint="SV không gửi thêm được. Kết quả vẫn lưu."
+                        danger
+                        onClick={() => {
+                          handleEndSession();
+                          close();
+                        }}
+                      />
+                    </>
+                  )}
+                  {session.status === "ended" && (
+                    <div className="px-3 py-2 text-xs text-zinc-500 italic">Buổi đã kết thúc</div>
+                  )}
+                </>
+              )}
+            </Dropdown>
           </div>
         </div>
       </div>
@@ -2702,109 +2778,88 @@ function PresenterPage() {
                 <div className="text-center py-10 text-zinc-600 text-sm">Chưa có bài đăng nào</div>
               )}
 
-              {/* === POLL === */}
+              {/* === POLL — bar chart chuyên nghiệp === */}
               {activeActivity.type === "poll" && pollResults && pollResults.options?.length > 0 && (
-                <div className="space-y-3">
-                  {[...pollResults.options].sort((a, b) => b.count - a.count).map((opt: any) => {
-                    const percentage = pollResults.totalAnswered > 0 ? Math.round((opt.count / pollResults.totalAnswered) * 100) : 0;
-                    return (
-                      <div key={opt.id} className="flex items-center gap-4">
-                        <div className="w-48 text-sm truncate" title={opt.text}>{opt.text}</div>
-                        <div className="flex-1 bg-zinc-100 rounded-full h-3 overflow-hidden">
-                          <div className="bg-emerald-500 h-3 transition-all rounded-full" style={{ width: `${percentage}%` }} />
-                        </div>
-                        <div className="w-24 text-right text-sm font-mono text-emerald-600">
-                          {opt.count} <span className="text-emerald-500">({percentage}%)</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <PollBarChart
+                  options={pollResults.options.map((o: { id: string; text: string; count: number }) => ({
+                    id: o.id,
+                    text: o.text,
+                    voteCount: o.count,
+                  }))}
+                  totalVotes={pollResults.totalAnswered}
+                  correctIds={
+                    activeActivity.config?.isQuiz
+                      ? (activeActivity.config?.correctOptionIds as string[] | undefined)
+                      : undefined
+                  }
+                  showCorrect={shouldShowResults}
+                  theme="light"
+                  height={Math.max(180, pollResults.options.length * 50)}
+                />
               )}
 
-              {/* === WORD CLOUD === */}
+              {/* === WORD CLOUD — text cloud + bar chart top từ === */}
               {activeActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
-                <div>
-                  <div className="flex justify-between text-sm text-zinc-600 mb-2">
-                    <span>Đám mây từ (top 50)</span>
-                    <span>{wordCloudResults.words.length} từ khác nhau</span>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm text-zinc-600 mb-2">
+                      <span>Đám mây từ</span>
+                      <span>{wordCloudResults.words.length} từ khác nhau</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center py-6 min-h-[160px] bg-zinc-50 rounded-2xl border border-zinc-200">
+                      {wordCloudResults.words.slice(0, 50).map((item: { word: string; count: number }, idx: number) => {
+                        const max = wordCloudResults.words[0]?.count || 1;
+                        const size = Math.max(14, Math.min(44, Math.round(14 + (item.count / max) * 30)));
+                        const opacity = Math.max(0.5, Math.min(1, 0.55 + (item.count / max) * 0.45));
+                        return (
+                          <span key={idx} className="font-medium px-1.5" style={{ fontSize: `${size}px`, color: `rgba(52, 211, 153, ${opacity})` }} title={`${item.word} — ${item.count} lần`}>
+                            {item.word}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center py-6 min-h-[160px] bg-zinc-50 rounded-2xl border border-zinc-200">
-                    {wordCloudResults.words.slice(0, 50).map((item: any, idx: number) => {
-                      const max = wordCloudResults.words[0]?.count || 1;
-                      const size = Math.max(14, Math.min(44, Math.round(14 + (item.count / max) * 30)));
-                      const opacity = Math.max(0.5, Math.min(1, 0.55 + (item.count / max) * 0.45));
-                      return (
-                        <span key={idx} className="font-medium px-1.5" style={{ fontSize: `${size}px`, color: `rgba(52, 211, 153, ${opacity})` }} title={`${item.word} — ${item.count} lần`}>
-                          {item.word}
-                        </span>
-                      );
-                    })}
+                  <div>
+                    <div className="text-xs text-zinc-500 mb-1 px-1">Top 10 từ phổ biến nhất</div>
+                    <WordcloudBars
+                      words={wordCloudResults.words.map((w: { word: string; count: number }) => ({
+                        text: w.word,
+                        count: w.count,
+                      }))}
+                      maxItems={10}
+                      theme="light"
+                      height={Math.max(180, Math.min(280, wordCloudResults.words.slice(0, 10).length * 32))}
+                    />
                   </div>
                 </div>
               )}
 
-              {/* === RATING (đã cải thiện - Phân bố rõ ràng + nhãn tùy chỉnh) === */}
+              {/* === RATING — bar chart phân bố + trung bình === */}
               {activeActivity.type === "rating" && ratingResults && (
                 <div>
-                  {/* Header */}
-                  <div className="flex items-end justify-between mb-5">
-                    <div>
-                      <div className="text-5xl font-semibold tabular-nums text-emerald-600">
-                        {ratingResults.average || "—"}
-                      </div>
-                      <div className="text-sm text-zinc-600 mt-0.5">
-                        Điểm trung bình • {ratingResults.total} lượt đánh giá
-                      </div>
-                    </div>
-
-                    <div className="text-right text-xs text-zinc-500">
-                      Thang {activeActivity.config?.min || 1}–{activeActivity.config?.max || 5}
-                    </div>
-                  </div>
-
-                  {/* Custom labels */}
                   {(activeActivity.config?.minLabel || activeActivity.config?.maxLabel) && (
-                    <div className="flex justify-between text-[11px] text-zinc-500 mb-3 px-1">
-                      <span>{activeActivity.config?.minLabel || "Thấp nhất"}</span>
-                      <span>{activeActivity.config?.maxLabel || "Cao nhất"}</span>
+                    <div className="flex justify-between text-[11px] text-zinc-500 mb-1 px-1">
+                      <span>← {activeActivity.config?.minLabel || "Thấp nhất"}</span>
+                      <span>{activeActivity.config?.maxLabel || "Cao nhất"} →</span>
                     </div>
                   )}
-
-                  {/* Distribution */}
-                  <div className="space-y-2.5">
-                    {Array.from({ length: (activeActivity.config?.max || 5) - (activeActivity.config?.min || 1) + 1 }, (_, i) => {
-                      const score = (activeActivity.config?.min || 1) + i;
-                      const count = ratingResults.distribution?.[score] || 0;
-                      const total = ratingResults.total || 1;
-                      const pct = Math.round((count / total) * 100);
-                      const isHigh = score >= ((activeActivity.config?.min || 1) + (activeActivity.config?.max || 5)) / 2;
-
-                      return (
-                        <div key={score} className="flex items-center gap-3 group">
-                          <div className="w-8 text-right font-semibold text-sm tabular-nums text-zinc-700">
-                            {score}
-                          </div>
-
-                          <div className="flex-1 bg-zinc-100 rounded-full h-3.5 overflow-hidden border border-zinc-300">
-                            <div 
-                              className={`h-3.5 transition-all duration-300 rounded-full ${isHigh ? "bg-emerald-500" : "bg-emerald-600/80"}`}
-                              style={{ width: `${pct}%` }} 
-                            />
-                          </div>
-
-                          <div className="w-24 text-right text-sm font-mono text-emerald-600 tabular-nums flex items-baseline justify-end gap-1.5">
-                            <span className="font-medium">{count}</span>
-                            <span className="text-[10px] text-emerald-500">({pct}%)</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-4 text-[11px] text-zinc-500 text-center">
-                    Phân bố điểm đánh giá (càng cao càng tích cực)
-                  </div>
+                  <RatingBarChart
+                    responses={(() => {
+                      const min = activeActivity.config?.min ?? 1;
+                      const max = activeActivity.config?.max ?? 5;
+                      const arr: number[] = [];
+                      for (let p = min; p <= max; p++) {
+                        const c = ratingResults.distribution?.[p] || 0;
+                        for (let i = 0; i < c; i++) arr.push(p);
+                      }
+                      return arr;
+                    })()}
+                    min={activeActivity.config?.min ?? 1}
+                    max={activeActivity.config?.max ?? 5}
+                    labels={activeActivity.config?.pointLabels as Record<number, string> | undefined}
+                    theme="light"
+                    height={220}
+                  />
                 </div>
               )}
 
@@ -4403,34 +4458,18 @@ function PresenterPage() {
                   <div className="space-y-1.5">
                     {isDraft && (
                       <button
-                        onClick={() => handleStartAndReveal(focusActivity._id)}
+                        onClick={() => handleStart(focusActivity._id)}
                         className="w-full px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
                       >
                         ▶ Kích hoạt hoạt động
                       </button>
                     )}
                     {isActive && (
-                      <>
-                        <button
-                          onClick={() => handleCloseAndReveal(focusActivity._id)}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
-                        >
-                          ⏹ Đóng hoạt động
-                        </button>
-                        <button
-                          onClick={() => switchOverlay("result")}
-                          className="w-full px-3 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold"
-                        >
-                          📊 Chiếu kết quả / Thành tích (F)
-                        </button>
-                      </>
-                    )}
-                    {isClosed && (
                       <button
-                        onClick={() => switchOverlay("result")}
-                        className="w-full px-3 py-2 text-sm rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold"
+                        onClick={() => handleCloseAndReveal(focusActivity._id)}
+                        className="w-full px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
                       >
-                        📊 Xem kết quả / Thành tích
+                        ⏹ Đóng hoạt động
                       </button>
                     )}
                   </div>
@@ -4539,6 +4578,17 @@ function PresenterPage() {
         <OpentextGradingModal
           activityId={gradingActivityId}
           onClose={() => setGradingActivityId(null)}
+        />
+      )}
+
+      {/* Survey AI gen modal */}
+      {showSurveyModal && session._id && (
+        <SurveyAiGenModal
+          sessionId={session._id}
+          sessionTitle={session.title}
+          existingActivityCount={activities?.length ?? 0}
+          collectStudentCode={session.collectStudentCode ?? false}
+          onClose={() => setShowSurveyModal(false)}
         />
       )}
     </div>
