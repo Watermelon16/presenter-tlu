@@ -797,15 +797,65 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
-        {/* Chưa có hoạt động nào đang diễn ra */}
-        {!activeActivity && (
+        {/* Chưa có hoạt động — nếu chưa đăng ký identity, cho SV đăng ký trước */}
+        {!activeActivity && !identity && (
+          <div className="bg-white border border-zinc-200 rounded-2xl p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="text-3xl">👋</div>
+              <div>
+                <div className="font-semibold text-zinc-900">Chào mừng đến với buổi giảng</div>
+                <p className="text-sm text-zinc-600 mt-0.5">
+                  Vui lòng đăng ký thông tin để tham gia hoạt động khi giảng viên bắt đầu.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <VnInput
+                type="text"
+                placeholder="Mã sinh viên (VD: 2351150001)"
+                value={studentCodeInput}
+                onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white font-mono"
+              />
+              <VnInput
+                type="text"
+                placeholder="Họ và tên (VD: Trần Văn An)"
+                value={fullNameInput}
+                onValueChange={setFullNameInput}
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
+              />
+              <VnInput
+                type="text"
+                placeholder="Lớp (VD: 65C)"
+                value={classNameInput}
+                onValueChange={setClassNameInput}
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
+              />
+              <button
+                onClick={saveIdentity}
+                disabled={
+                  !studentCodeInput.trim() ||
+                  !fullNameInput.trim() ||
+                  !classNameInput.trim()
+                }
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50"
+              >
+                Đăng ký tham gia
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chưa có hoạt động + đã có identity — chỉ hiện "đợi" */}
+        {!activeActivity && identity && (
           <div className="text-center py-16">
             <div className="mx-auto w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center mb-6">
               <span className="text-3xl">📭</span>
             </div>
-            <h1 className="text-2xl font-semibold text-zinc-800 mb-2">Chưa có hoạt động</h1>
+            <h1 className="text-2xl font-semibold text-zinc-800 mb-2">Đang chờ giảng viên</h1>
             <p className="text-zinc-600 max-w-sm mx-auto">
-              Giảng viên chưa bắt đầu hoạt động nào. Vui lòng chờ hoặc làm mới trang sau vài giây.
+              Bạn đã đăng ký. Khi giảng viên bắt đầu hoạt động, bạn sẽ thấy ngay.
             </p>
             <button
               onClick={() => window.location.reload()}

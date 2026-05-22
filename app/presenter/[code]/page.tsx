@@ -592,12 +592,14 @@ function PresenterPage() {
     });
   }, []);
 
-  // Sinh QR code khi có upperCode
+  // Sinh QR code khi có upperCode.
+  // QR trỏ thẳng /room/CODE — KHÔNG dùng ?query (1 số app QR scanner như Zalo,
+  // Messenger cắt query khi mở URL). /room handle identity form trực tiếp.
   useEffect(() => {
     if (!upperCode) return;
     const joinUrl = typeof window !== "undefined"
-      ? `${window.location.origin}/join?code=${upperCode}`
-      : `/join?code=${upperCode}`;
+      ? `${window.location.origin}/room/${upperCode}`
+      : `/room/${upperCode}`;
     QRCode.toDataURL(joinUrl, { margin: 1, width: 512, color: { dark: "#000000", light: "#FFFFFF" } })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
