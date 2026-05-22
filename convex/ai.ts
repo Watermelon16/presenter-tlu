@@ -6,32 +6,29 @@ import { ConvexError, v } from "convex/values";
 /**
  * Sinh hoạt động từ slide PDF — hỗ trợ 3 provider:
  *
+ * MỖI USER tự nhập API key của mình (lưu localStorage). Server KHÔNG có
+ * key fallback — không dùng key chung của nền tảng/admin.
+ *
  * 1. Gemini (Google AI Studio) — direct API, structured output qua responseSchema
- *    - Server key: env GEMINI_API_KEY (do admin set)
- *    - User key: client truyền qua args.apiKey
+ *    - User key: client truyền qua args.apiKey. Lấy tại https://aistudio.google.com/apikey
  *
  * 2. DeepSeek — OpenAI-compatible API
- *    - User key: bắt buộc (truyền args.apiKey)
- *    - Lấy tại https://platform.deepseek.com/api_keys
+ *    - User key: bắt buộc. Lấy tại https://platform.deepseek.com/api_keys
  *
  * 3. OpenRouter — OpenAI-compatible aggregator, nhiều model :free
- *    - User key: bắt buộc
- *    - Lấy tại https://openrouter.ai/keys
+ *    - User key: bắt buộc. Lấy tại https://openrouter.ai/keys
  */
 
-// Provider config — endpoint + cách parse response
+// Provider config — endpoint only (không còn keyEnv vì mỗi user tự dùng key)
 const PROVIDERS = {
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    keyEnv: "GEMINI_API_KEY",
   },
   deepseek: {
     baseUrl: "https://api.deepseek.com/v1",
-    keyEnv: null, // user-only
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
-    keyEnv: null, // user-only
   },
 } as const;
 
@@ -337,17 +334,13 @@ export const generateActivitiesFromPdf = action({
     const model = allowed.includes(requestedModel) ? requestedModel : defaultModel;
 
     // Resolve API key — ưu tiên args.apiKey (user-provided), fallback env (chỉ Gemini)
-    const envKeyName = PROVIDERS[provider].keyEnv;
-    const apiKey = args.apiKey?.trim() || (envKeyName ? process.env[envKeyName] : undefined);
+    const apiKey = args.apiKey?.trim();
     if (!apiKey) {
       throw new ConvexError({
         code: "no_key",
         provider,
         model,
-        message:
-          provider === "gemini"
-            ? "Chưa có API key Gemini. Nhập key ở dropdown hoặc liên hệ admin."
-            : `Chưa có API key ${provider}. Bấm "Cài đặt key" trong modal AI gen để nhập.`,
+        message: `Chưa có API key ${provider}. Mở ⚙️ Cài đặt → 🔑 API key để nhập key của bạn.`,
       });
     }
 
@@ -633,17 +626,13 @@ export const generateSurveyActivities = action({
     const requestedModel = args.model || allowed[0];
     const model = allowed.includes(requestedModel) ? requestedModel : allowed[0];
 
-    const envKeyName = PROVIDERS[provider].keyEnv;
-    const apiKey = args.apiKey?.trim() || (envKeyName ? process.env[envKeyName] : undefined);
+    const apiKey = args.apiKey?.trim();
     if (!apiKey) {
       throw new ConvexError({
         code: "no_key",
         provider,
         model,
-        message:
-          provider === "gemini"
-            ? "Chưa có API key Gemini."
-            : `Cần API key ${provider}. Nhập trong modal AI gen.`,
+        message: `Chưa có API key ${provider}. Mở ⚙️ Cài đặt → 🔑 API key để nhập.`,
       });
     }
 

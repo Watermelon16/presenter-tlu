@@ -14,7 +14,7 @@ const KEY_STORAGE_PREFIX = "ai_gen_apikey_";
 type Provider = "gemini" | "deepseek" | "openrouter";
 
 const MODELS: { id: string; provider: Provider; label: string }[] = [
-  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash (server key)" },
+  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash" },
   { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite" },
   { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat" },
   { id: "deepseek/deepseek-v4-flash:free", provider: "openrouter", label: "OpenRouter · DeepSeek V4 Flash (free)" },
@@ -65,7 +65,7 @@ export function OpentextGradingModal({ activityId, onClose }: Props) {
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
   const currentKey = loadSavedKey(currentProvider);
-  const needsKey = currentProvider !== "gemini" && !currentKey;
+  const needsKey = !currentKey;
 
   if (data === undefined) {
     return (

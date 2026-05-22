@@ -15,7 +15,7 @@ const KEY_STORAGE_PREFIX = "ai_gen_apikey_";
 type Provider = "gemini" | "deepseek" | "openrouter";
 
 const MODELS: { id: string; provider: Provider; label: string }[] = [
-  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash (server key)" },
+  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash" },
   { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite" },
   { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro" },
   { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)" },
@@ -68,7 +68,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
   const currentKey = loadSavedKey(currentProvider);
-  const needsKey = currentProvider !== "gemini" && !currentKey;
+  const needsKey = !currentKey;
 
   const handleAnalyze = async () => {
     setStage("generating");

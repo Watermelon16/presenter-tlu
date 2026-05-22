@@ -122,7 +122,7 @@ export function SurveyAiGenModal({
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
   const currentKey = loadSavedKey(currentProvider);
-  const needsKey = currentProvider !== "gemini" && !currentKey;
+  const needsKey = !currentKey;
 
   const toggleType = (t: SurveyType) => {
     setEnabledTypes((prev) => {

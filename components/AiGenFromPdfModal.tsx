@@ -22,12 +22,12 @@ type ModelDef = {
 
 // Whitelist phải khớp với ALLOWED_MODELS_BY_PROVIDER trong convex/ai.ts
 const MODELS: ModelDef[] = [
-  // ====== Gemini (server key có sẵn, có thể override) ======
-  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash", hint: "Server key sẵn · cân bằng" },
-  { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite", hint: "Server key sẵn · quota cao nhất" },
-  { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro", hint: "Server key sẵn · thông minh nhất, quota thấp" },
-  { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Server key · auto-route" },
-  { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Server key · phiên bản cũ" },
+  // ====== Gemini (cần user key) ======
+  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash", hint: "Cân bằng · cần key Gemini" },
+  { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite", hint: "Nhanh · quota cao nhất" },
+  { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro", hint: "Thông minh nhất · quota thấp" },
+  { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Auto-route bản mới nhất" },
+  { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Phiên bản cũ" },
 
   // ====== DeepSeek direct (cần user key + nạp balance — ko còn free) ======
   { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat", hint: "Cần nạp ≥ $2 (DeepSeek đã bỏ free credit)" },
@@ -49,10 +49,10 @@ const MODEL_STORAGE_KEY = "ai_gen_model_v1";
 const KEY_STORAGE_PREFIX = "ai_gen_apikey_"; // suffix là provider name
 
 // Provider có cần user key không? Gemini có server fallback; DeepSeek + OpenRouter cần user key.
-const PROVIDER_INFO: Record<Provider, { label: string; needsUserKey: boolean }> = {
-  gemini: { label: "Google Gemini", needsUserKey: false },
-  deepseek: { label: "DeepSeek", needsUserKey: true },
-  openrouter: { label: "OpenRouter", needsUserKey: true },
+const PROVIDER_INFO: Record<Provider, { label: string }> = {
+  gemini: { label: "Google Gemini" },
+  deepseek: { label: "DeepSeek" },
+  openrouter: { label: "OpenRouter" },
 };
 
 function loadSavedKey(provider: Provider): string {
@@ -125,8 +125,8 @@ export function AiGenFromPdfModal({
   // API key load từ localStorage (set trong ⚙️ Cài đặt → 🔑 API key AI).
   // Load lazy mỗi render để pick-up thay đổi sau khi user update key ở Settings.
   const currentKey = loadSavedKey(currentProvider);
-  const needsUserKey = PROVIDER_INFO[currentProvider].needsUserKey;
-  const hasKey = !!currentKey || !needsUserKey;
+  // Mọi provider đều cần user key (không còn server fallback)
+  const hasKey = !!currentKey;
 
   const handleSelectModel = (id: string) => {
     setSelectedModel(id);
@@ -438,11 +438,11 @@ export function AiGenFromPdfModal({
                 ))}
               </select>
 
-              {/* Warning khi provider cần key mà chưa có — point user tới Settings */}
-              {needsUserKey && !currentKey && (
+              {/* Warning khi chưa có key — point user tới Settings */}
+              {!currentKey && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900">
-                  ⚠ Model này cần API key <strong>{PROVIDER_INFO[currentProvider].label}</strong>.
-                  Mở <strong>⚙️ Cài đặt → 🔑 API key AI</strong> để paste key (lưu 1 lần dùng cho mọi feature AI).
+                  ⚠ Chưa có API key <strong>{PROVIDER_INFO[currentProvider].label}</strong>.
+                  Mở <strong>⚙️ Cài đặt → 🔑 API key</strong> để paste key (lưu 1 lần dùng cho mọi feature AI).
                 </div>
               )}
 

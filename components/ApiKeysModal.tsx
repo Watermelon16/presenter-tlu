@@ -11,14 +11,13 @@ type Provider = "gemini" | "deepseek" | "openrouter";
 
 const PROVIDER_INFO: Record<
   Provider,
-  { label: string; signupUrl: string; placeholder: string; hint: string; serverFallback?: boolean }
+  { label: string; signupUrl: string; placeholder: string; hint: string }
 > = {
   gemini: {
     label: "Google Gemini",
     signupUrl: "https://aistudio.google.com/apikey",
     placeholder: "AIza...",
-    hint: "Free 1500 req/ngày cho Gemini Flash. Server đã có key sẵn, key của bạn sẽ override.",
-    serverFallback: true,
+    hint: "Free 1500 req/ngày cho Gemini Flash. Cần nhập key của tài khoản Google bạn để dùng.",
   },
   deepseek: {
     label: "DeepSeek",
@@ -114,14 +113,13 @@ export function ApiKeysModal({ onClose }: Props) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-zinc-900">{info.label}</span>
-                    {isSet && (
+                    {isSet ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 font-medium">
                         ĐÃ CÓ KEY
                       </span>
-                    )}
-                    {!isSet && info.serverFallback && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-                        DÙNG SERVER KEY
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+                        CHƯA CÓ KEY
                       </span>
                     )}
                   </div>

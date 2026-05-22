@@ -15,9 +15,9 @@ import type { Doc } from "./_generated/dataModel";
  */
 
 const PROVIDERS = {
-  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", keyEnv: "GEMINI_API_KEY" },
-  deepseek: { baseUrl: "https://api.deepseek.com/v1", keyEnv: null as string | null },
-  openrouter: { baseUrl: "https://openrouter.ai/api/v1", keyEnv: null as string | null },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1" },
 } as const;
 
 type Provider = keyof typeof PROVIDERS;
@@ -206,14 +206,13 @@ export const gradeOpentextResponses = action({
       });
     }
 
-    const envKeyName = PROVIDERS[provider].keyEnv;
-    const apiKey = args.apiKey?.trim() || (envKeyName ? process.env[envKeyName] : undefined);
+    const apiKey = args.apiKey?.trim();
     if (!apiKey) {
       throw new ConvexError({
         code: "no_key",
         provider,
         model,
-        message: `Chưa có API key ${provider}. Nhập key trong modal AI gen trước.`,
+        message: `Chưa có API key ${provider}. Mở ⚙️ Cài đặt → 🔑 API key để nhập.`,
       });
     }
 
