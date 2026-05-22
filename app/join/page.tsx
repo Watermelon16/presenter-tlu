@@ -51,9 +51,16 @@ function JoinRoomForm() {
   const router = useRouter();
   const joinSession = useMutation(api.participants.joinSession);
 
-  // Lazy init: đọc ngay tại first render, không dùng useEffect (tránh flash trống)
+  // qrCode được tính mỗi render — searchParams ổn định sau hydration
   const qrCode = (searchParams.get("code") || "").toUpperCase().trim();
   const [savedIdentity] = useState<StoredIdentity | null>(() => readSavedIdentity());
+
+  // Auto-join state: dùng "pending" để show splash ngay nếu có cả qrCode + identity
+  // Vì qrCode có thể empty trên render đầu (Suspense + hydration timing), cần check trong useEffect.
+  const [autoJoinPhase, setAutoJoinPhase] = useState<"pending" | "joining" | "failed" | "manual">(
+    qrCode && savedIdentity ? "joining" : "pending"
+  );
+
   const [code, setCode] = useState(qrCode);
   const [studentCode, setStudentCode] = useState(savedIdentity?.studentCode ?? "");
   const [fullName, setFullName] = useState(savedIdentity?.fullName ?? "");
@@ -61,14 +68,24 @@ function JoinRoomForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Auto-join khi: có ?code= (QR scan) + có identity đã lưu
-  const autoJoinFired = useRef(false);
-  const [autoJoining, setAutoJoining] = useState(qrCode && !!savedIdentity);
+  // Sync code state khi qrCode đổi (hydration timing) — chỉ trên transition từ rỗng → có
+  useEffect(() => {
+    if (qrCode && !code) {
+      setCode(qrCode);
+    }
+  }, [qrCode, code]);
 
+  // Auto-join effect — re-fire khi qrCode trở nên có giá trị (hydration timing)
+  const autoJoinFired = useRef(false);
   useEffect(() => {
     if (autoJoinFired.current) return;
-    if (!qrCode || !savedIdentity) return;
+    if (!qrCode || !savedIdentity) {
+      // Nếu không thoả mãn → để user thấy form (chuyển từ pending → manual)
+      if (autoJoinPhase === "pending") setAutoJoinPhase("manual");
+      return;
+    }
     autoJoinFired.current = true;
+    setAutoJoinPhase("joining");
 
     (async () => {
       try {
@@ -81,14 +98,12 @@ function JoinRoomForm() {
         localStorage.setItem("student_identity_global", JSON.stringify(savedIdentity));
         router.replace(`/room/${qrCode}`);
       } catch (err: unknown) {
-        // Auto-join thất bại (phòng đóng, mã sai, v.v.) → hiện form để SV sửa
-        setAutoJoining(false);
+        setAutoJoinPhase("failed");
         const msg = err instanceof Error ? err.message : "Không thể tự động vào phòng. Vui lòng kiểm tra mã.";
         setError(msg);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [qrCode, savedIdentity, autoJoinPhase, joinSession, router]);
 
   const handleJoin = async () => {
     if (!code.trim() || !studentCode.trim() || !fullName.trim() || !className.trim()) {
@@ -125,8 +140,8 @@ function JoinRoomForm() {
     }
   };
 
-  // Đang auto-join (QR + saved identity) → splash screen
-  if (autoJoining) {
+  // Splash screen khi đang auto-join (pending: chưa biết, joining: đang gọi)
+  if (autoJoinPhase === "pending" || autoJoinPhase === "joining") {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
         <div className="text-center space-y-4">
@@ -134,10 +149,14 @@ function JoinRoomForm() {
             <Logo size="lg" />
           </div>
           <div className="text-4xl animate-pulse">📡</div>
-          <div className="text-zinc-700 font-medium">Đang vào phòng {qrCode}...</div>
-          <div className="text-xs text-zinc-500">
-            {savedIdentity?.fullName} · {savedIdentity?.studentCode}
+          <div className="text-zinc-700 font-medium">
+            {qrCode ? `Đang vào phòng ${qrCode}...` : "Đang kiểm tra..."}
           </div>
+          {savedIdentity && (
+            <div className="text-xs text-zinc-500">
+              {savedIdentity.fullName} · {savedIdentity.studentCode}
+            </div>
+          )}
         </div>
       </div>
     );
