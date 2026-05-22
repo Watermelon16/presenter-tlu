@@ -760,16 +760,24 @@ function PresenterPage() {
         }
       }
 
-      // R = Reveal — công bố / ẩn chi tiết kết quả (chỉ có hiệu lực khi activity còn active;
-      // khi closed thì shouldShowResults đã = true rồi nên toggle không ảnh hưởng)
+      // R hotkey:
+      //  - Ngoài overlay: mở result overlay (xem kết quả realtime)
+      //  - Trong result overlay: toggle Công bố đáp án (reveal)
       if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
         if (fullscreenOverlay === "result") {
-          e.preventDefault();
           setResultsRevealed((prev) => {
             const next = !prev;
-            toast.message(next ? "✓ Đã công bố kết quả" : "Đã ẩn kết quả");
+            toast.message(next ? "✓ Đã công bố đáp án" : "Đã ẩn đáp án");
             return next;
           });
+        } else {
+          // Mở result overlay (cần có activeActivity hoặc activity vừa đóng)
+          if (activeActivity || revealActivityId) {
+            switchOverlay("result");
+          } else {
+            toast.message("Chưa có hoạt động nào để xem kết quả");
+          }
         }
       }
     };
@@ -875,6 +883,25 @@ function PresenterPage() {
       { id: "question", title: "Câu hỏi thêm" },
     ]);
   }, [createType, editingActivity]);
+
+  // Auto-mở result overlay khi GV kích hoạt activity mới (transition draft → active).
+  // GV không phải bấm gì, kết quả realtime hiện ngay.
+  const lastActiveActivityIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentId = activeActivity?._id ?? null;
+    const previousId = lastActiveActivityIdRef.current;
+    lastActiveActivityIdRef.current = currentId;
+
+    // Chỉ open khi: trước đó không có active, giờ có
+    if (!previousId && currentId) {
+      // Nhớ slides để Esc về slide nếu đang chiếu
+      setFullscreenOverlay((cur) => {
+        if (cur === "slides") setOverlayReturnTo("slides");
+        return "result";
+      });
+      setResultTab("result");
+    }
+  }, [activeActivity?._id]);
 
   // (đã bỏ) Auto scroll + highlight khi có hoạt động mới bắt đầu — khối "Kết quả realtime" trên màn chính đã xóa.
 
@@ -2169,6 +2196,17 @@ function PresenterPage() {
                       }}
                     />
                   )}
+                  <DropdownItem
+                    icon="📺"
+                    label="Kết quả realtime"
+                    hint={activeActivity ? `${activeActivity.title}` : "Cần có hoạt động đang chạy hoặc vừa đóng"}
+                    shortcut="R"
+                    disabled={!activeActivity && !revealActivityId}
+                    onClick={() => {
+                      switchOverlay("result");
+                      close();
+                    }}
+                  />
                   <DropdownItem
                     icon="🏆"
                     label="Bảng thành tích"
