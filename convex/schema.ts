@@ -1,7 +1,31 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
+  // Convex Auth tables (users, accounts, sessions, etc.)
+  ...authTables,
+
+  // Profile thông tin GV — gắn 1-1 với users.
+  // status: pending khi mới đăng ký, admin approve → approved.
+  // role: admin (quản lý users), lecturer (chỉ session của mình).
+  userProfiles: defineTable({
+    userId: v.id("users"),
+    email: v.string(),
+    displayName: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("banned")
+    ),
+    role: v.union(v.literal("admin"), v.literal("lecturer")),
+    createdAt: v.number(),
+    approvedAt: v.optional(v.number()),
+    approvedBy: v.optional(v.id("users")),
+  })
+    .index("by_user", ["userId"])
+    .index("by_email", ["email"]),
+
   // Một buổi giảng (phòng)
   sessions: defineTable({
     code: v.string(),                    // Mã phòng ngắn (6-8 ký tự), unique
@@ -11,6 +35,9 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("ended")),
     createdAt: v.number(),
     endedAt: v.optional(v.number()),
+
+    // Owner — user tạo session (auth required). Sessions cũ chưa có sẽ migrate sau.
+    ownerUserId: v.optional(v.id("users")),
 
     // === Script Runner (Kịch bản) - server state cho liền mạch PPT (B) ===
     isScriptRunning: v.optional(v.boolean()),        // Đang chạy kịch bản hay không
@@ -38,7 +65,8 @@ export default defineSchema({
     currentRun: v.optional(v.number()),
   })
     .index("by_code", ["code"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_owner", ["ownerUserId"]),
 
   // Sinh viên tham gia phòng (danh tính)
   participants: defineTable({

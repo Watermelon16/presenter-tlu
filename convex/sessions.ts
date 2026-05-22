@@ -1,7 +1,25 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
-// Tạo phòng mới
+// Helper: require user đã đăng nhập + approved. Throw nếu không.
+async function requireApprovedUser(ctx: {
+  auth: unknown;
+  db: import("./_generated/server").QueryCtx["db"];
+}) {
+  const userId = await getAuthUserId(ctx as Parameters<typeof getAuthUserId>[0]);
+  if (!userId) throw new Error("Cần đăng nhập trước");
+  const profile = await ctx.db
+    .query("userProfiles")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+  if (!profile) throw new Error("Profile chưa tạo — refresh và thử lại");
+  if (profile.status === "banned") throw new Error("Tài khoản đã bị khoá");
+  if (profile.status === "pending") throw new Error("Tài khoản chờ admin duyệt");
+  return { userId, profile };
+}
+
+// Tạo phòng mới — yêu cầu auth
 export const createSession = mutation({
   args: {
     title: v.string(),
@@ -9,6 +27,8 @@ export const createSession = mutation({
     collectStudentCode: v.optional(v.boolean()),   // Có thu thập mã SV cho buổi này không
   },
   handler: async (ctx, args) => {
+    const { userId } = await requireApprovedUser(ctx);
+
     // Tạo mã phòng ngắn, dễ nhớ (6 ký tự)
     const code = generateShortCode();
 
@@ -20,9 +40,63 @@ export const createSession = mutation({
       status: "active",
       createdAt: Date.now(),
       currentRun: 1,  // Phiên đầu tiên
+      ownerUserId: userId,
     });
 
     return { sessionId, code };
+  },
+});
+
+// Liệt kê sessions của user hiện tại (cho home page) — không cần localStorage IDs nữa
+export const listMySessions = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
+      .order("desc")
+      .collect();
+
+    const results = [];
+    for (const s of sessions) {
+      const activities = await ctx.db
+        .query("activities")
+        .withIndex("by_session", (q) => q.eq("sessionId", s._id))
+        .collect();
+      const participants = await ctx.db
+        .query("participants")
+        .withIndex("by_session", (q) => q.eq("sessionId", s._id))
+        .collect();
+      const responses = await ctx.db
+        .query("responses")
+        .withIndex("by_session_and_student", (q) => q.eq("sessionId", s._id))
+        .collect();
+      const boardPosts = await ctx.db
+        .query("boardPosts")
+        .filter((q) => q.eq(q.field("sessionId"), s._id))
+        .collect();
+      results.push({
+        _id: s._id,
+        code: s.code,
+        title: s.title,
+        hostName: s.hostName,
+        status: s.status,
+        createdAt: s.createdAt,
+        endedAt: s.endedAt,
+        currentRun: s.currentRun ?? 1,
+        hasPdf: !!s.pdfStorageId,
+        pdfFileName: s.pdfFileName,
+        stats: {
+          activityCount: activities.length,
+          participantCount: participants.length,
+          responseCount: responses.length,
+          boardPostCount: boardPosts.length,
+        },
+      });
+    }
+    return results;
   },
 });
 
