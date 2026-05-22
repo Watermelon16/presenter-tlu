@@ -1995,17 +1995,38 @@ function PresenterPage() {
             </button>
           )}
 
-          {/* AI chấm opentext — chỉ hiện khi opentext có đáp án mẫu + đã đóng */}
+          {/* AI chấm opentext — hiện cho mọi opentext closed/expired.
+              Disable + tooltip giải thích nếu thiếu đáp án mẫu. */}
           {activity.type === "opentext" &&
-            activity.config?.referenceAnswer &&
             (activity.status === "closed" || activity.status === "expired") && (
-              <button
-                onClick={() => setGradingActivityId(activity._id)}
-                className="px-3 py-1.5 text-xs rounded-lg bg-violet-100 border border-violet-300 text-violet-800 hover:bg-violet-200 font-medium transition-colors"
-                title="Mở modal chấm AI tự động + review từng câu"
+              activity.config?.referenceAnswer ? (
+                <button
+                  onClick={() => setGradingActivityId(activity._id)}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-violet-100 border border-violet-300 text-violet-800 hover:bg-violet-200 font-medium transition-colors"
+                  title="Mở modal chấm AI tự động + review từng câu"
+                >
+                  🤖 Chấm AI
+                </button>
+              ) : (
+                <button
+                  onClick={onEdit}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-500 hover:bg-zinc-200 transition-colors"
+                  title="Cần thêm 'Đáp án mẫu' để AI chấm — bấm để sửa activity"
+                >
+                  🤖 Cần đáp án mẫu
+                </button>
+              )
+            )}
+          {/* Opentext draft/active có đáp án mẫu — hint nhỏ để GV biết feature có */}
+          {activity.type === "opentext" &&
+            activity.status === "active" &&
+            activity.config?.referenceAnswer && (
+              <span
+                className="px-2 py-1 text-[10px] rounded bg-violet-50 border border-violet-200 text-violet-700"
+                title="Sau khi đóng activity, sẽ có nút '🤖 Chấm AI' để chấm tự động"
               >
-                🤖 Chấm AI
-              </button>
+                🤖 sẽ chấm sau
+              </span>
             )}
 
           <button
