@@ -338,6 +338,7 @@ function PresenterPage() {
 
   // Script Runner mutations (B: server-backed kịch bản)
   const startScriptRunner = useMutation(api.activities.startScriptRunner);
+  const restartAllActivities = useMutation(api.activities.restartAllActivities);
   const stopScriptRunner = useMutation(api.activities.stopScriptRunner);
   const advanceInScript = useMutation(api.activities.advanceInScript);
   const jumpToScriptPosition = useMutation(api.activities.jumpToScriptPosition);
@@ -761,8 +762,8 @@ function PresenterPage() {
       }
 
       // R hotkey:
-      //  - Ngoài overlay: mở result overlay (xem kết quả realtime)
-      //  - Trong result overlay: toggle Công bố đáp án (reveal)
+      //  - Ngoài overlay: mở result overlay VÀ reveal luôn đáp án (1 phím = xem + công bố)
+      //  - Trong result overlay: toggle Công bố đáp án
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         if (fullscreenOverlay === "result") {
@@ -772,9 +773,11 @@ function PresenterPage() {
             return next;
           });
         } else {
-          // Mở result overlay (cần có activeActivity hoặc activity vừa đóng)
           if (activeActivity || revealActivityId) {
             switchOverlay("result");
+            // Auto-reveal ngay khi mở (UX: 1 lần bấm R = xem kết quả + công bố đáp án)
+            setResultsRevealed(true);
+            toast.message("✓ Đã công bố đáp án");
           } else {
             toast.message("Chưa có hoạt động nào để xem kết quả");
           }
@@ -2517,6 +2520,53 @@ function PresenterPage() {
                         <div>
                           <div className="font-medium">Mẫu đã lưu</div>
                           <div className="text-[11px] text-zinc-500 mt-0.5">Áp dụng mẫu cũ vào buổi này (thay activities hiện tại)</div>
+                        </div>
+                      </button>
+
+                      <div className="my-1 border-t border-zinc-100" />
+
+                      <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
+                        Chạy lại
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setShowScriptMenu(false);
+                          if (!session?._id) return;
+                          const closedCount = sortedActivities.filter(
+                            (a) => a.status === "closed" || a.status === "expired"
+                          ).length;
+                          if (closedCount === 0) {
+                            toast.message("Chưa có hoạt động nào đã chạy để reset");
+                            return;
+                          }
+                          if (
+                            !confirm(
+                              `Reset ${closedCount} hoạt động đã chạy về NHÁP?\n\n` +
+                                "• Tất cả câu trả lời + board posts của phiên hiện tại sẽ bị XOÁ\n" +
+                                "• Activity về trạng thái 'Nháp', sẵn sàng chạy lại\n" +
+                                "• Khác 'Phiên mới': cùng phiên, KHÔNG giữ lịch sử"
+                            )
+                          )
+                            return;
+                          try {
+                            const result = await restartAllActivities({
+                              sessionId: session._id,
+                            });
+                            toast.success(
+                              `Đã reset ${result.resetCount} hoạt động. Xoá ${result.responseCount} câu trả lời${result.postCount > 0 ? ` + ${result.postCount} board posts` : ""}.`
+                            );
+                          } catch (e: unknown) {
+                            toast.error(e instanceof Error ? e.message : "Reset thất bại");
+                          }
+                        }}
+                        disabled={sortedActivities.length === 0}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 flex items-start gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Reset tất cả activities về NHÁP để chạy lại cùng phiên (xoá câu trả lời)"
+                      >
+                        <span className="text-lg shrink-0">🔁</span>
+                        <div>
+                          <div className="font-medium text-amber-700">Chạy lại phiên</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">Reset tất cả hoạt động về NHÁP, xoá câu trả lời phiên hiện tại</div>
                         </div>
                       </button>
 

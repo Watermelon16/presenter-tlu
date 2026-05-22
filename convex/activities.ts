@@ -237,6 +237,84 @@ export const reorderActivities = mutation({
 });
 
 /**
+ * CHẠY LẠI TOÀN BỘ PHIÊN: với mọi activity đã close/expire (không active),
+ * xoá responses + board posts → reset status="draft".
+ * GV có thể bấm Bắt đầu từng cái HOẶC chạy script mode để chain tự động.
+ *
+ * KHÁC với `resetSessionForNewRun` (Phiên mới):
+ *   - resetSessionForNewRun: tăng currentRun, KHÔNG xoá data (giữ lịch sử)
+ *   - restartAllActivities: cùng run, XOÁ responses cũ (chạy lại y nguyên)
+ */
+export const restartAllActivities = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new Error("Không tìm thấy buổi giảng");
+
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    if (activities.some((a) => a.status === "active")) {
+      throw new Error("Đang có hoạt động chạy — đóng trước khi reset tất cả");
+    }
+
+    const currentRun = session.currentRun ?? 1;
+    let resetCount = 0;
+    let responseCount = 0;
+    let postCount = 0;
+
+    for (const activity of activities) {
+      // Bỏ qua draft (chưa chạy, không cần xoá gì)
+      if (activity.status === "draft") continue;
+
+      // Xoá responses CỦA PHIÊN HIỆN TẠI (giữ lịch sử phiên cũ)
+      const responses = await ctx.db
+        .query("responses")
+        .withIndex("by_activity", (q) => q.eq("activityId", activity._id))
+        .collect();
+      for (const r of responses) {
+        if ((r.run ?? 1) === currentRun) {
+          await ctx.db.delete(r._id);
+          responseCount++;
+        }
+      }
+
+      // Xoá board posts (nếu là board)
+      if (activity.type === "board") {
+        const posts = await ctx.db
+          .query("boardPosts")
+          .withIndex("by_activity", (q) => q.eq("activityId", activity._id))
+          .collect();
+        for (const p of posts) {
+          if ((p.run ?? 1) === currentRun) {
+            await ctx.db.delete(p._id);
+            postCount++;
+          }
+        }
+      }
+
+      // Reset về draft
+      await ctx.db.patch(activity._id, {
+        status: "draft",
+        startedAt: undefined,
+        closedAt: undefined,
+      });
+      resetCount++;
+    }
+
+    // Reset script position về đầu
+    await ctx.db.patch(args.sessionId, {
+      isScriptRunning: false,
+      currentScriptPosition: 0,
+    });
+
+    return { resetCount, responseCount, postCount };
+  },
+});
+
+/**
  * CHẠY LẠI hoạt động: xóa toàn bộ responses cũ, đặt status="active" lại,
  * reset startedAt, re-schedule timeLimit nếu có. KHÔNG tạo bản sao mới.
  */
