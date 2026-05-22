@@ -423,8 +423,8 @@ export default function ParticipantRoomPage() {
     };
 
     try {
-      // Gọi join để tạo participant (nếu session yêu cầu)
-      await joinSession({
+      // Gọi join để tạo participant + auto-compute attendance status
+      const result = await joinSession({
         code: upperCode,
         studentCode: newIdentity.studentCode,
         fullName: newIdentity.fullName,
@@ -443,8 +443,19 @@ export default function ParticipantRoomPage() {
       setFullNameInput("");
       setClassNameInput("");
 
-      // Feedback nhẹ cho sinh viên biết họ đã được ghi nhận
-      toast.success("Đã ghi nhận thông tin. Câu trả lời của bạn sẽ được dùng để tính điểm tham gia.", { duration: 4000 });
+      // Feedback với attendance status
+      if (result?.attendanceStatus === "late") {
+        const lateBy = result.lateBySeconds ?? 0;
+        const lateMinutes = Math.floor(lateBy / 60);
+        toast.warning(
+          `✓ Điểm danh: Đi muộn (trễ ${lateMinutes}p${lateBy % 60}s)`,
+          { duration: 6000 }
+        );
+      } else if (result?.attendanceStatus === "present") {
+        toast.success("✓ Điểm danh: Có mặt đúng giờ", { duration: 4000 });
+      } else {
+        toast.success("Đã ghi nhận thông tin.", { duration: 4000 });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Không thể lưu thông tin. Vui lòng thử lại.";
       toast.error(msg);

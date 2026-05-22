@@ -895,6 +895,9 @@ export const getSessionFullExport = query({
         joinedAt: p.joinedAt,
         responses: studentResponses,
         boardStats,
+        attendanceStatus: p.attendanceStatus ?? null,
+        attendanceNote: p.attendanceNote ?? null,
+        attendanceManualOverride: p.attendanceManualOverride ?? false,
       };
     });
 
@@ -908,6 +911,8 @@ export const getSessionFullExport = query({
       })),
       students,
       run: targetRun,
+      officialStartAt: session?.officialStartAt ?? null,
+      lateThresholdMinutes: session?.lateThresholdMinutes ?? 10,
     };
   },
 });

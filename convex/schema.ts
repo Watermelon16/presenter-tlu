@@ -63,6 +63,15 @@ export default defineSchema({
     // currentRun bắt đầu từ 1 và tăng mỗi lần "Bắt đầu phiên mới"
     // Records cũ không có field run → coi như run = 1 (backward compat)
     currentRun: v.optional(v.number()),
+
+    // === Điểm danh (attendance) ===
+    // officialStartAt: T0 — thời điểm tính giờ điểm danh. Auto-set khi SV ĐẦU TIÊN scan.
+    // GV có thể set tay (epoch ms) để override.
+    officialStartAt: v.optional(v.number()),
+    // Ngưỡng đi muộn (phút). Default 10. T0..T0+ngưỡng = "Có mặt", sau đó = "Đi muộn".
+    lateThresholdMinutes: v.optional(v.number()),
+    // Webhook URL — Presenter sẽ POST attendance data tới đây mỗi lần SV scan (tùy chọn).
+    attendanceWebhookUrl: v.optional(v.string()),
   })
     .index("by_code", ["code"])
     .index("by_created", ["createdAt"])
@@ -84,6 +93,21 @@ export default defineSchema({
 
     // === Phiên (run) — participant join trong phiên nào ===
     run: v.optional(v.number()),
+
+    // === Điểm danh ===
+    // Auto-compute khi join: present (≤T0+ngưỡng), late (>T0+ngưỡng).
+    // GV override thủ công: excused, absent, early_leave.
+    attendanceStatus: v.optional(v.union(
+      v.literal("present"),     // Có mặt
+      v.literal("late"),        // Đi muộn
+      v.literal("excused"),     // Vắng có phép
+      v.literal("absent"),      // Vắng không phép (auto khi kết thúc buổi, hoặc GV đánh tay)
+      v.literal("early_leave")  // Về sớm
+    )),
+    // GV đã chỉnh tay → action tự động không override lại
+    attendanceManualOverride: v.optional(v.boolean()),
+    // Ghi chú (vd lý do vắng có phép)
+    attendanceNote: v.optional(v.string()),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])

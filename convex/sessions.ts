@@ -106,6 +106,14 @@ export async function readCurrentRun(ctx: { db: { get: (id: string) => Promise<{
   return s?.currentRun ?? 1;
 }
 
+// Lấy session theo ID (dùng cho attendance modal — đã biết ID)
+export const getSessionById = query({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.sessionId);
+  },
+});
+
 // Lấy thông tin phòng theo mã
 export const getSessionByCode = query({
   args: { code: v.string() },

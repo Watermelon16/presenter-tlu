@@ -19,6 +19,7 @@ import { Logo } from "@/components/Logo";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
+import { AttendanceModal } from "@/components/AttendanceModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
 import { ApiKeysModal } from "@/components/ApiKeysModal";
 import { HelpModal } from "@/components/HelpModal";
@@ -1231,7 +1232,35 @@ function PresenterPage() {
       const ws2 = XLSX.utils.json_to_sheet(gradingRows);
       XLSX.utils.book_append_sheet(wb, ws2, "Chấm điểm");
 
-      // Sheet 3: Metadata buổi giảng
+      // Sheet "Điểm danh" — format chuẩn để import LMS
+      const STATUS_LABEL_VI: Record<string, string> = {
+        present: "Có mặt",
+        late: "Đi muộn",
+        excused: "Vắng có phép",
+        absent: "Vắng không phép",
+        early_leave: "Về sớm",
+      };
+      const attendanceRows = students.map((s, i) => ({
+        "STT": i + 1,
+        "Mã SV": s.studentCode,
+        "Họ tên": s.fullName,
+        "Lớp": s.className,
+        "Trạng thái": s.attendanceStatus ? STATUS_LABEL_VI[s.attendanceStatus] : "(chưa scan)",
+        "Giờ scan": s.joinedAt
+          ? new Date(s.joinedAt).toLocaleTimeString("vi-VN")
+          : "",
+        "Ngày": s.joinedAt
+          ? new Date(s.joinedAt).toLocaleDateString("vi-VN")
+          : "",
+        "GV chỉnh tay": s.attendanceManualOverride ? "Có" : "",
+        "Ghi chú": s.attendanceNote ?? "",
+      }));
+      const wsAttendance = XLSX.utils.json_to_sheet(attendanceRows);
+      XLSX.utils.book_append_sheet(wb, wsAttendance, "Điểm danh");
+
+      // Sheet metadata
+      const t0 = (exportData as { officialStartAt?: number | null }).officialStartAt;
+      const threshold = (exportData as { lateThresholdMinutes?: number }).lateThresholdMinutes ?? 10;
       const metaRows = [
         { "Trường": "Mã phòng", "Giá trị": upperCode },
         { "Trường": "Tên buổi giảng", "Giá trị": session.title },
@@ -1239,6 +1268,8 @@ function PresenterPage() {
         { "Trường": "Ngày xuất", "Giá trị": new Date().toLocaleString("vi-VN") },
         { "Trường": "Số sinh viên", "Giá trị": students.length },
         { "Trường": "Số hoạt động", "Giá trị": activities.length },
+        { "Trường": "Giờ bắt đầu (T₀)", "Giá trị": t0 ? new Date(t0).toLocaleString("vi-VN") : "(chưa)" },
+        { "Trường": "Ngưỡng đi muộn (phút)", "Giá trị": threshold },
       ];
       const ws3 = XLSX.utils.json_to_sheet(metaRows);
       XLSX.utils.book_append_sheet(wb, ws3, "Thông tin");
@@ -3301,61 +3332,9 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* ==================== MODAL DANH SÁCH SINH VIÊN ==================== */}
-        {showParticipantsModal && (
-          <div
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[120] p-4"
-            onClick={(e) => { if (e.target === e.currentTarget) setShowParticipantsModal(false); }}
-          >
-            <div className="bg-white border border-zinc-300 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
-                <div>
-                  <div className="text-lg font-semibold">Danh sách sinh viên tham gia</div>
-                  <div className="text-xs text-zinc-600 mt-0.5">{totalParticipants} người · cập nhật realtime</div>
-                </div>
-                <button onClick={() => setShowParticipantsModal(false)} className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none">×</button>
-              </div>
-
-              <div className="p-4">
-                {totalParticipants === 0 ? (
-                  <div className="text-center py-12 text-zinc-500">
-                    <div className="text-4xl mb-2">👥</div>
-                    Chưa có sinh viên nào tham gia. Bấm <kbd className="px-1.5 py-0.5 bg-zinc-100 border border-zinc-300 rounded text-xs">Q</kbd> để chiếu QR cho SV quét.
-                  </div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-zinc-500 border-b border-zinc-200">
-                      <tr>
-                        <th className="text-left px-2 py-2 font-medium">#</th>
-                        <th className="text-left px-2 py-2 font-medium">Mã SV</th>
-                        <th className="text-left px-2 py-2 font-medium">Họ tên</th>
-                        <th className="text-left px-2 py-2 font-medium">Lớp</th>
-                        <th className="text-left px-2 py-2 font-medium">Vào lúc</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAndSortedStudents.map((p: { _id: string; studentCode: string; fullName: string; className: string; joinedAt: number; flagged?: boolean; flagReason?: string }, idx) => (
-                        <tr key={p._id} className={`border-b border-zinc-100 ${p.flagged ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-zinc-50"}`}>
-                          <td className="px-2 py-2 text-zinc-500">{idx + 1}</td>
-                          <td className="px-2 py-2 font-mono flex items-center gap-1.5">
-                            {p.studentCode}
-                            {p.flagged && (
-                              <span title={p.flagReason || "Có dấu hiệu gian lận"} className="text-red-600 text-xs cursor-help">🚩</span>
-                            )}
-                          </td>
-                          <td className="px-2 py-2 font-medium">{p.fullName}</td>
-                          <td className="px-2 py-2 text-zinc-600">{p.className}</td>
-                          <td className="px-2 py-2 text-xs text-zinc-500">
-                            {new Date(p.joinedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* ==================== MODAL ĐIỂM DANH (replaces participants list) ==================== */}
+        {showParticipantsModal && session._id && (
+          <AttendanceModal sessionId={session._id} onClose={() => setShowParticipantsModal(false)} />
         )}
 
         {/* ==================== MODAL CẤU HÌNH ĐIỂM BẢNG THÀNH TÍCH ==================== */}

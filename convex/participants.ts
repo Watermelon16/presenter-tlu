@@ -81,19 +81,43 @@ export const joinSession = mutation({
       return { participantId: existing._id, sessionId: session._id, flagged: !!patch.flagged };
     }
 
-    // Tạo bản ghi mới — gắn currentRun
+    // Tạo bản ghi mới — gắn currentRun + auto-compute attendance status
+    const joinedAt = Date.now();
+
+    // Auto-set officialStartAt nếu chưa có (SV đầu tiên = T0)
+    let officialStartAt = session.officialStartAt;
+    if (!officialStartAt) {
+      officialStartAt = joinedAt;
+      await ctx.db.patch(session._id, { officialStartAt: joinedAt });
+    }
+
+    // Compute attendance status: ≤ T0+ngưỡng = present, > = late
+    const lateThresholdMs = (session.lateThresholdMinutes ?? 10) * 60 * 1000;
+    const attendanceStatus: "present" | "late" =
+      joinedAt - officialStartAt <= lateThresholdMs ? "present" : "late";
+
     const participantId = await ctx.db.insert("participants", {
       sessionId: session._id,
       studentCode,
       fullName,
       className,
-      joinedAt: Date.now(),
+      joinedAt,
       deviceId,
       deviceChangeCount: 0,
       run: currentRun,
+      attendanceStatus,
+      attendanceManualOverride: false,
     });
 
-    return { participantId, sessionId: session._id, flagged: false };
+    return {
+      participantId,
+      sessionId: session._id,
+      flagged: false,
+      attendanceStatus,
+      lateBySeconds: attendanceStatus === "late"
+        ? Math.round((joinedAt - officialStartAt) / 1000)
+        : 0,
+    };
   },
 });
 
@@ -109,5 +133,82 @@ export const listParticipants = query({
       .order("desc")
       .collect();
     return all.filter((p) => (p.run ?? 1) === currentRun);
+  },
+});
+
+/**
+ * GV override attendance status cho 1 SV.
+ * Set manualOverride=true để tránh auto-recompute.
+ */
+export const setAttendanceStatus = mutation({
+  args: {
+    participantId: v.id("participants"),
+    status: v.union(
+      v.literal("present"),
+      v.literal("late"),
+      v.literal("excused"),
+      v.literal("absent"),
+      v.literal("early_leave")
+    ),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.participantId, {
+      attendanceStatus: args.status,
+      attendanceManualOverride: true,
+      attendanceNote: args.note,
+    });
+  },
+});
+
+/**
+ * Bulk override — set status cho NHIỀU SV cùng lúc.
+ * Dùng cho action "Đánh tất cả vắng có phép", v.v.
+ */
+export const setAttendanceStatusBulk = mutation({
+  args: {
+    participantIds: v.array(v.id("participants")),
+    status: v.union(
+      v.literal("present"),
+      v.literal("late"),
+      v.literal("excused"),
+      v.literal("absent"),
+      v.literal("early_leave")
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const id of args.participantIds) {
+      await ctx.db.patch(id, {
+        attendanceStatus: args.status,
+        attendanceManualOverride: true,
+      });
+    }
+    return { count: args.participantIds.length };
+  },
+});
+
+/**
+ * GV chỉnh setting điểm danh của session: ngưỡng đi muộn, T0, webhook URL.
+ */
+export const updateAttendanceSettings = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+    lateThresholdMinutes: v.optional(v.number()),
+    officialStartAt: v.optional(v.number()),
+    attendanceWebhookUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const patch: Record<string, unknown> = {};
+    if (args.lateThresholdMinutes !== undefined) {
+      patch.lateThresholdMinutes = Math.max(0, Math.min(60, args.lateThresholdMinutes));
+    }
+    if (args.officialStartAt !== undefined) {
+      patch.officialStartAt = args.officialStartAt;
+    }
+    if (args.attendanceWebhookUrl !== undefined) {
+      const url = args.attendanceWebhookUrl.trim();
+      patch.attendanceWebhookUrl = url || undefined;
+    }
+    await ctx.db.patch(args.sessionId, patch);
   },
 });
