@@ -19,6 +19,7 @@ import type * as http from "../http.js";
 import type * as insights from "../insights.js";
 import type * as insightsData from "../insightsData.js";
 import type * as leaderboard from "../leaderboard.js";
+import type * as lmsProvisioning from "../lmsProvisioning.js";
 import type * as lmsSync from "../lmsSync.js";
 import type * as participants from "../participants.js";
 import type * as push from "../push.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   insights: typeof insights;
   insightsData: typeof insightsData;
   leaderboard: typeof leaderboard;
+  lmsProvisioning: typeof lmsProvisioning;
   lmsSync: typeof lmsSync;
   participants: typeof participants;
   push: typeof push;

@@ -132,9 +132,49 @@ export default function ParticipantRoomPage() {
   const registerPushSubscription = useMutation(api.pushSubscriptions.registerSubscription);
   const unregisterPushSubscription = useMutation(api.pushSubscriptions.unregisterSubscription);
 
-  // Load danh tính: ưu tiên per-room, fallback global identity (nhớ qua các phòng)
+  // Load danh tính: ưu tiên LMS deep link → per-room → fallback global identity
   useEffect(() => {
     if (!upperCode) return;
+
+    // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây
+    // URL dạng: /room/CODE?from_lms=1&sid=2351150001&name=Trần%20Văn%20An&class=65C
+    // LMS đã verify roster, attendance đã ghi sang LMS → Presenter chỉ cần auto-join
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("from_lms") === "1") {
+        const sid = params.get("sid")?.trim();
+        const name = params.get("name")?.trim();
+        const cls = params.get("class")?.trim();
+        if (sid && name && cls) {
+          const lmsIdentity: StudentIdentity = {
+            studentCode: sid,
+            fullName: name,
+            className: cls,
+          };
+          joinSession({
+            code: upperCode,
+            studentCode: lmsIdentity.studentCode,
+            fullName: lmsIdentity.fullName,
+            className: lmsIdentity.className,
+            deviceId: getOrCreateDeviceId(),
+          })
+            .then(() => {
+              localStorage.setItem(`student_${upperCode}`, JSON.stringify(lmsIdentity));
+              localStorage.setItem("student_identity_global", JSON.stringify(lmsIdentity));
+              localStorage.setItem("last_joined_code", upperCode);
+              setIdentity(lmsIdentity);
+              toast.success(`✓ Chào ${lmsIdentity.fullName} — đã chuyển từ LMS`, { duration: 4000 });
+              // Dọn URL để không lộ query params khi SV share screenshot
+              window.history.replaceState({}, "", window.location.pathname);
+            })
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : "Không thể vào phòng";
+              toast.error(`Lỗi vào phòng từ LMS: ${msg}`);
+            });
+          return;
+        }
+      }
+    }
 
     // 1. Per-room (lưu sau khi SV join phòng này)
     const perRoom = localStorage.getItem(`student_${upperCode}`);

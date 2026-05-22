@@ -2,21 +2,39 @@
 
 ## Tổng quan
 
-LMS dùng Supabase, schema chính cho điểm danh:
-- `attendance_sessions` (buổi điểm danh)
-- `attendance_records` (record per SV)
-- `class_roster` (danh sách lớp)
-- `attendance_status_configs` (status codes per class)
+LMS dùng Supabase, schema chính cho điểm danh (đã verify từ codebase Lovable):
+- `attendance_sessions` (id, class_id, status, qr_secret, qr_enabled, qr_refresh_seconds, start_time)
+- `attendance_records` (session_id, class_id, student_id, status_code, source, checkin_time, notes, flags, ip_address, user_agent)
+- `class_roster` (class_id, student_id, student_name)
+- `attendance_audit_logs`
 
-Workflow đề xuất:
-1. **GV tạo `attendance_session` trên LMS** trước buổi học (như đang làm).
-2. **Lấy ID** của session đó (UUID).
-3. **Trên Presenter, cấu hình** webhook URL + LMS session ID + secret.
-4. **Mỗi SV scan Presenter QR** → join → Presenter POST tới LMS edge function → tự tạo `attendance_record` với status auto từ time-based logic.
+LMS Supabase project: **`eivzlyfazixnkucnoyzu`**
+- URL: `https://eivzlyfazixnkucnoyzu.supabase.co`
+- Dashboard: https://supabase.com/dashboard/project/eivzlyfazixnkucnoyzu
 
-## Bước 1 — Deploy edge function lên Supabase LMS
+LMS đã có sẵn function `attendance-qr` (cho QR rotate 20s nội bộ LMS) — **KHÔNG reuse được vì cần HMAC token**.
+→ Phải deploy thêm function mới `presenter-sync` (dưới đây).
 
-Tạo file `supabase/functions/presenter-sync/index.ts` trong repo LMS:
+## Workflow
+
+1. **GV tạo `attendance_session` trên LMS** trước buổi học (UI có sẵn).
+2. **Copy UUID** của session đó từ LMS.
+3. **Trên Presenter**, mở modal Điểm danh → ⚙️ Cài đặt → dán webhook URL + LMS session ID.
+4. **SV quét QR Presenter** → join → Presenter POST `presenter-sync` → tự tạo `attendance_record` với `source: "presenter"`.
+5. GV có thể vào LMS xem lại, chỉnh tay (sẽ thành `source: "manual"` → Presenter không override).
+
+## Bước 1 — Deploy edge function `presenter-sync` lên Supabase LMS
+
+### Cách A: Qua Supabase Dashboard (low-code, khuyên dùng)
+
+1. Vào https://supabase.com/dashboard/project/eivzlyfazixnkucnoyzu
+2. Sidebar trái → ⚡ **Edge Functions** → **Deploy a new function**
+3. **Function name**: `presenter-sync`
+4. **Verify JWT**: **TẮT** (toggle off — vì Presenter không có Supabase JWT)
+5. Xóa code mẫu, paste toàn bộ code dưới đây
+6. Click **Deploy function**
+
+### Code function `presenter-sync/index.ts`
 
 ```ts
 // Public endpoint (verify_jwt=false) — nhận webhook attendance từ Presenter TLU
@@ -34,13 +52,13 @@ const SHARED_SECRET = Deno.env.get("PRESENTER_SHARED_SECRET")!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-// Map Presenter status → LMS status_code (cần khớp với attendance_status_configs của class)
+// Map Presenter status → LMS status_code
 const STATUS_MAP: Record<string, string> = {
-  present: "present",       // có mặt
-  late: "late",             // đi muộn
-  excused: "excused",       // vắng có phép
-  absent: "absent",         // vắng không phép
-  early_leave: "early_leave", // về sớm
+  present: "present",
+  late: "late",
+  excused: "excused",
+  absent: "absent",
+  early_leave: "early_leave",
 };
 
 Deno.serve(async (req) => {
@@ -75,33 +93,50 @@ Deno.serve(async (req) => {
 
     const statusCode = STATUS_MAP[presenterStatus] || "present";
 
+    // Verify SV có trong roster của class này (khớp với attendance-qr logic)
+    const { data: roster } = await admin
+      .from("class_roster")
+      .select("student_id, student_name")
+      .eq("class_id", session.class_id)
+      .eq("student_id", studentId)
+      .maybeSingle();
+    if (!roster) {
+      return json({ error: "Student not in class roster", student_id: studentId }, 403);
+    }
+
+    // Tên không khớp roster → flag để GV review
+    const norm = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+    const nameMismatch = roster.student_name && norm(studentName) !== norm(roster.student_name);
+    const notes = nameMismatch
+      ? `Presenter TLU — Tên khai: ${studentName} (roster: ${roster.student_name})`
+      : `Presenter TLU — ${studentName}`;
+    const flags = nameMismatch ? { name_mismatch: true, submitted_name: studentName } : {};
+
     // Upsert attendance_record
     const { data: existing } = await admin
       .from("attendance_records")
-      .select("id")
+      .select("id, source")
       .eq("session_id", lmsSessionId)
       .eq("student_id", studentId)
       .maybeSingle();
 
     if (existing) {
-      // Update — không override nếu source='manual' (GV đã chỉnh tay trong LMS)
-      const { data: current } = await admin
-        .from("attendance_records")
-        .select("source")
-        .eq("id", existing.id)
-        .maybeSingle();
-      if (current?.source === "manual") {
+      // Không override nếu GV đã chỉnh tay trong LMS
+      if (existing.source === "manual") {
         return json({ ok: true, skipped: "manual_override" });
       }
-      await admin
+      const { error: updErr } = await admin
         .from("attendance_records")
         .update({
           status_code: statusCode,
           source: "presenter",
           checkin_time: checkinTime,
-          notes: `Synced from Presenter TLU — ${studentName}`,
+          notes,
+          flags,
         })
         .eq("id", existing.id);
+      if (updErr) return json({ error: updErr.message }, 500);
       return json({ ok: true, updated: true, status_code: statusCode });
     }
 
@@ -112,9 +147,19 @@ Deno.serve(async (req) => {
       status_code: statusCode,
       source: "presenter",
       checkin_time: checkinTime,
-      notes: `Synced from Presenter TLU — ${studentName}`,
+      notes,
+      flags,
     });
     if (insErr) return json({ error: insErr.message }, 500);
+
+    // Audit log (giống pattern của attendance-qr)
+    await admin.from("attendance_audit_logs").insert({
+      entity_type: "attendance_record",
+      action: "presenter_sync",
+      class_id: session.class_id,
+      entity_id: lmsSessionId,
+      new_value: { student_id: studentId, status_code: statusCode, source: "presenter" },
+    });
 
     return json({ ok: true, created: true, status_code: statusCode });
   } catch (e) {
@@ -130,63 +175,66 @@ function json(data: unknown, status = 200) {
 }
 ```
 
-## Bước 2 — Cấu hình Supabase
+## Bước 2 — Set shared secret trên Supabase
 
-1. **Deploy edge function**:
+1. Tạo random secret. Trên máy bạn mở Terminal (macOS):
    ```bash
-   cd lephuong-tlu
-   supabase functions deploy presenter-sync --no-verify-jwt
+   openssl rand -hex 32
+   ```
+   Copy chuỗi 64 ký tự hex ra (vd: `a3f8b1c9...`).
+
+2. Vào Supabase Dashboard → **Project Settings** (⚙️ góc dưới sidebar) → **Edge Functions** → tab **Secrets** → **Add new secret**:
+   - Name: `PRESENTER_SHARED_SECRET`
+   - Value: chuỗi vừa tạo
+   - **Save**
+
+3. **Lấy function URL**: trở lại tab Edge Functions → click vào `presenter-sync` → copy URL có dạng:
+   ```
+   https://eivzlyfazixnkucnoyzu.supabase.co/functions/v1/presenter-sync
    ```
 
-2. **Set shared secret** (random string dài, dùng để authenticate Presenter):
-   ```bash
-   supabase secrets set PRESENTER_SHARED_SECRET=<random-hex-32-bytes>
-   ```
-   Tạo random: `openssl rand -hex 32`
+## Bước 3 — Set secret trên Convex (Presenter)
 
-3. **Lấy function URL**: `https://<project-ref>.supabase.co/functions/v1/presenter-sync`
-
-## Bước 3 — Cấu hình Presenter
-
-Trong modal "📋 Điểm danh" → ⚙️ Cài đặt:
-- **Webhook URL**: dán URL edge function vào ô
-- **LMS session ID**: TODO (cần thêm field này) — UUID của `attendance_sessions` bạn đã tạo cho buổi tương ứng trên LMS
-
-Presenter sẽ thêm header `x-presenter-secret` khi POST. Secret được set trên Convex env:
+Trên máy bạn (trong thư mục `tkbaigiang`), mở Terminal chạy:
 ```bash
-npx convex env set --prod LMS_SHARED_SECRET <giá-trị-giống-Supabase>
+npx convex env set --prod LMS_SHARED_SECRET <chuỗi-secret-giống-Supabase>
 ```
 
-## Workflow hoàn chỉnh
+(Hoặc bảo Claude làm giúp — Claude có quyền chạy Convex CLI.)
 
-1. **Trước buổi học**:
-   - GV tạo `attendance_session` trong LMS (như đang làm)
-   - Copy UUID của session đó
-   - Trên Presenter: tạo buổi giảng → mở Điểm danh → ⚙️ → paste webhook URL + UUID
+## Bước 4 — Cấu hình Presenter
 
-2. **Trong buổi**:
-   - SV quét QR Presenter → nhập info → điểm danh Presenter
-   - Presenter tự POST tới LMS edge function → record hiện trong LMS UI ngay
+Trong modal "📋 Điểm danh" → ⚙️ Cài đặt:
+- **Ngưỡng đi muộn**: 10 phút (default)
+- **LMS Webhook URL**: dán URL ở Bước 2.3
+- **LMS Session ID**: UUID của `attendance_sessions` đã tạo trên LMS cho buổi này
+  - Lấy UUID: vào LMS → trang attendance session → URL có dạng `/sessions/<uuid>` → copy phần `<uuid>`
+- Bấm **Lưu cài đặt**
 
-3. **Sau buổi**:
-   - GV xem LMS, override manual nếu cần (vắng có phép)
-   - Presenter sync tự không override `source='manual'`
+## Bước 5 — Test end-to-end
+
+1. Mở Presenter → tạo session → mở Điểm danh → cấu hình như Bước 4
+2. SV quét QR Presenter → nhập MSV + tên
+3. Sau ~1 giây vào LMS → trang attendance session → record SV hiện ra với `source: presenter`, `status_code: present` (hoặc `late` nếu quét sau ngưỡng)
+4. Nếu KHÔNG hiện → check Convex logs (`npx convex logs --prod`) tìm dòng `[lmsSync]` để xem lỗi (401 = sai secret, 403 = SV không có trong roster, 404 = sai UUID session)
 
 ## Mapping status codes
 
-| Presenter | LMS `status_code` | Mặc định LMS |
-|---|---|---|
-| `present` | `present` | "Có mặt" |
-| `late` | `late` | "Đi muộn" |
-| `excused` | `excused` | "Vắng có phép" |
-| `absent` | `absent` | "Vắng không phép" |
-| `early_leave` | `early_leave` | "Về sớm" |
+| Presenter | LMS `status_code` |
+|---|---|
+| `present` (≤T₀+10p) | `present` |
+| `late` (>T₀+10p) | `late` |
+| `excused` (GV chỉnh) | `excused` |
+| `absent` (GV chỉnh) | `absent` |
+| `early_leave` (GV chỉnh) | `early_leave` |
 
-Đảm bảo LMS `attendance_status_configs` của class có 5 status code này. Nếu LMS dùng codes khác, sửa `STATUS_MAP` trong edge function.
+Đảm bảo LMS `attendance_status_configs` của class có 5 status code này.
 
-## Lưu ý
+## Lưu ý quan trọng
 
 - Edge function dùng `service_role` key → bypass RLS, không cần GV login.
 - Auth qua `x-presenter-secret` header — đừng commit secret vào git.
-- Source `presenter` để phân biệt với `qr` (LMS) hoặc `manual` (GV trong LMS).
-- Nếu GV manual chỉnh trong LMS → record có `source='manual'` → Presenter không override.
+- SV phải có trong `class_roster` của lớp đó, nếu không sẽ bị reject 403.
+- Tên SV khai không khớp roster → vẫn record nhưng có `flags.name_mismatch=true` để GV review.
+- Nếu GV vào LMS chỉnh tay → record có `source='manual'` → Presenter không override khi sync lại.
+- Function này độc lập với `attendance-qr` của LMS — không xung đột.
