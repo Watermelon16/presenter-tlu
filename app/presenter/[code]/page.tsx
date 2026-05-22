@@ -3931,16 +3931,6 @@ function PresenterPage() {
 
       {fullscreenOverlay === "slides" && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-          {/* Countdown lớn — top-left để tránh đè QR card top-right */}
-          {activeActivity?.timeLimit && activeActivity?.startedAt && (
-            <CountdownOverlay
-              startedAt={activeActivity.startedAt}
-              timeLimitMinutes={activeActivity.timeLimit}
-              position="top-left"
-              big={bigTextMode}
-            />
-          )}
-
           {/* Slide jump buffer indicator — chỉ hiện khi đang gõ số */}
           {slideJumpBuffer.length > 0 && (
             <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[115] bg-amber-500/95 text-black px-5 py-2 rounded-xl shadow-2xl flex items-center gap-3 font-mono font-bold animate-pulse">
@@ -3949,132 +3939,128 @@ function PresenterPage() {
               <span className="text-xs text-zinc-700 ml-1">↵ để nhảy</span>
             </div>
           )}
-          {/* Slide viewer chiếm phần lớn không gian */}
-          <div className="flex-1 relative">
-            {hasPdf && pdfUrl ? (
-              <PdfSlideViewer
-                fileUrl={pdfUrl}
-                currentPage={pdfCurrentPage}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-zinc-400">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">📑</div>
-                  <div className="text-2xl mb-2">Chưa upload slide PDF</div>
-                  <div className="text-sm text-zinc-500 mb-6">Đóng overlay, upload PDF từ nút "Upload PDF" trên top bar</div>
-                  <button
-                    onClick={() => setFullscreenOverlay(null)}
-                    className="px-5 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
-                  >
-                    Đóng (Esc)
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* Card mã phòng + QR ở góc trên phải — SV vẫn join được khi đang chiếu slide */}
+          {/* Main row: slide area (flex-1) + sidebar (w-72) — KHÔNG đè nội dung slide */}
+          <div className="flex-1 flex min-h-0">
+            {/* Slide viewer area — tự fit. Countdown nổi trên góc trái slide. */}
+            <div className="flex-1 relative bg-black">
+              {activeActivity?.timeLimit && activeActivity?.startedAt && (
+                <CountdownOverlay
+                  startedAt={activeActivity.startedAt}
+                  timeLimitMinutes={activeActivity.timeLimit}
+                  position="top-left"
+                  big={bigTextMode}
+                />
+              )}
+
+              {hasPdf && pdfUrl ? (
+                <PdfSlideViewer
+                  fileUrl={pdfUrl}
+                  currentPage={pdfCurrentPage}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-zinc-400">
+                  <div className="text-center">
+                    <div className="text-6xl mb-4">📑</div>
+                    <div className="text-2xl mb-2">Chưa upload slide PDF</div>
+                    <div className="text-sm text-zinc-500 mb-6">Đóng overlay, upload PDF từ nút &ldquo;Upload PDF&rdquo; trên top bar</div>
+                    <button
+                      onClick={() => setFullscreenOverlay(null)}
+                      className="px-5 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                    >
+                      Đóng (Esc)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar dành riêng cho QR + Activity control — slide KHÔNG bao giờ bị che */}
             {hasPdf && (
-              <div className="absolute top-4 right-4 bg-black/75 backdrop-blur-md rounded-2xl p-3 text-white shadow-2xl text-center">
-                {/* Hàng 1: Mã phòng */}
-                <div className="text-[10px] text-zinc-400 tracking-[4px] font-semibold">MÃ PHÒNG</div>
-                <div className="font-mono font-bold tracking-[6px] text-3xl my-1 leading-none">{upperCode}</div>
-
-                {/* Hàng 2: QR code to */}
-                {qrDataUrl && (
-                  <img
-                    src={qrDataUrl}
-                    alt="QR mã phòng"
-                    className="w-44 h-44 rounded-lg bg-white p-1.5 mt-2 mx-auto"
-                  />
-                )}
-
-                <div className="text-[10px] text-zinc-400 mt-1.5">Quét QR để tham gia</div>
-              </div>
-            )}
-
-            {/* Bảng điều khiển hoạt động nổi trên slide — CHỈ HIỆN KHI:
-                 - Có activity đang active (giảng viên đang điều khiển), HOẶC
-                 - Có activity nháp/đã đóng có Mốc slide khớp đúng trang PDF hiện tại,
-                   HOẶC khớp revealActivityId (vừa đóng) */}
-            {(() => {
-              // 1. Active activity luôn hiển thị (đang giảng dở)
-              if (activeActivity) {
-                // (sử dụng activeActivity làm focus)
-              }
-
-              // 2. Activity vừa đóng vẫn còn revealActivityId — vẫn hiện để xem kết quả
-              const revealed = revealActivityId
-                ? sortedActivities.find((a) => a._id === revealActivityId)
-                : null;
-
-              // 3. Match theo slide cue — chỉ hiện khi đúng trang PDF
-              const slideMatch = !activeActivity && hasPdf
-                ? sortedActivities.find((a) =>
-                    a.slideCue &&
-                    /^\d+$/.test(a.slideCue.trim()) &&
-                    parseInt(a.slideCue.trim()) === pdfCurrentPage &&
-                    a.status !== "closed" &&
-                    a.status !== "expired"
-                  )
-                : null;
-
-              const focusActivity = activeActivity || revealed || slideMatch;
-
-              if (!focusActivity) return null;
-
-              const isDraft = focusActivity.status === "draft";
-              const isActive = focusActivity.status === "active";
-              const isClosed = focusActivity.status === "closed" || focusActivity.status === "expired";
-              const responseCount =
-                focusActivity.type === "poll" ? pollResults?.totalAnswered ?? 0 :
-                focusActivity.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
-                focusActivity.type === "opentext" ? (opentextResponses?.filter((r) => r.status === "answered").length ?? 0) :
-                focusActivity.type === "rating" ? ratingResults?.total ?? 0 :
-                focusActivity.type === "qa" ? qaResponses?.length ?? 0 :
-                focusActivity.type === "board" ? boardPosts?.length ?? 0 :
-                0;
-
-              return (
-                <div className="absolute bottom-6 right-6 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-2xl p-4 w-[340px] text-white shadow-2xl">
-                  <div className="flex items-center justify-between mb-1">
-                    {isActive && <div className="text-[10px] tracking-[3px] text-emerald-400 font-semibold">● ĐANG CHẠY</div>}
-                    {isDraft && <div className="text-[10px] tracking-[3px] text-zinc-400 font-semibold">NHÁP — CHƯA KÍCH HOẠT</div>}
-                    {isClosed && <div className="text-[10px] tracking-[3px] text-zinc-500 font-semibold">ĐÃ ĐÓNG</div>}
-                    <div className="text-[10px] text-zinc-500 uppercase">{focusActivity.type}</div>
-                  </div>
-                  <div className="font-semibold text-base mb-1 leading-snug">{focusActivity.title}</div>
-                  {focusActivity.slideCue && (
-                    <div className="text-[11px] text-amber-400 mb-2">📍 {fmtSlide(focusActivity.slideCue)}</div>
+              <aside className="w-72 shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col gap-3 p-4 overflow-y-auto">
+                {/* QR card */}
+                <div className="bg-black/70 rounded-2xl p-3 text-white text-center">
+                  <div className="text-[10px] text-zinc-400 tracking-[4px] font-semibold">MÃ PHÒNG</div>
+                  <div className="font-mono font-bold tracking-[6px] text-2xl my-1 leading-none">{upperCode}</div>
+                  {qrDataUrl && (
+                    <img
+                      src={qrDataUrl}
+                      alt="QR mã phòng"
+                      className="w-56 h-56 rounded-lg bg-white p-1.5 mt-2 mx-auto"
+                    />
                   )}
-
-                  {isActive && (
-                    <div className="text-xl font-bold text-emerald-300 mb-2">
-                      {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="space-y-1.5">
-                    {isDraft && (
-                      <button
-                        onClick={() => handleStart(focusActivity._id)}
-                        className="w-full px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
-                      >
-                        ▶ Kích hoạt hoạt động
-                      </button>
-                    )}
-                    {isActive && (
-                      <button
-                        onClick={() => handleCloseAndReveal(focusActivity._id)}
-                        className="w-full px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
-                      >
-                        ⏹ Đóng hoạt động
-                      </button>
-                    )}
-                  </div>
+                  <div className="text-[10px] text-zinc-400 mt-1.5">Quét QR để tham gia</div>
                 </div>
-              );
-            })()}
+
+                {/* Activity control card — render trong sidebar, dưới QR */}
+                {(() => {
+                  const revealed = revealActivityId
+                    ? sortedActivities.find((a) => a._id === revealActivityId)
+                    : null;
+                  const slideMatch = !activeActivity && hasPdf
+                    ? sortedActivities.find((a) =>
+                        a.slideCue &&
+                        /^\d+$/.test(a.slideCue.trim()) &&
+                        parseInt(a.slideCue.trim()) === pdfCurrentPage &&
+                        a.status !== "closed" &&
+                        a.status !== "expired"
+                      )
+                    : null;
+                  const focusActivity = activeActivity || revealed || slideMatch;
+                  if (!focusActivity) return null;
+
+                  const isDraft = focusActivity.status === "draft";
+                  const isActive = focusActivity.status === "active";
+                  const isClosed = focusActivity.status === "closed" || focusActivity.status === "expired";
+                  const responseCount =
+                    focusActivity.type === "poll" ? pollResults?.totalAnswered ?? 0 :
+                    focusActivity.type === "wordcloud" ? wordCloudResults?.totalResponses ?? 0 :
+                    focusActivity.type === "opentext" ? (opentextResponses?.filter((r) => r.status === "answered").length ?? 0) :
+                    focusActivity.type === "rating" ? ratingResults?.total ?? 0 :
+                    focusActivity.type === "qa" ? qaResponses?.length ?? 0 :
+                    focusActivity.type === "board" ? boardPosts?.length ?? 0 :
+                    0;
+
+                  return (
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-3 text-white">
+                      <div className="flex items-center justify-between mb-1">
+                        {isActive && <div className="text-[10px] tracking-[3px] text-emerald-400 font-semibold">● ĐANG CHẠY</div>}
+                        {isDraft && <div className="text-[10px] tracking-[3px] text-zinc-400 font-semibold">NHÁP</div>}
+                        {isClosed && <div className="text-[10px] tracking-[3px] text-zinc-500 font-semibold">ĐÃ ĐÓNG</div>}
+                        <div className="text-[10px] text-zinc-500 uppercase">{focusActivity.type}</div>
+                      </div>
+                      <div className="font-semibold text-sm mb-1 leading-snug">{focusActivity.title}</div>
+                      {focusActivity.slideCue && (
+                        <div className="text-[10px] text-amber-400 mb-2">📍 {fmtSlide(focusActivity.slideCue)}</div>
+                      )}
+                      {isActive && (
+                        <div className="text-lg font-bold text-emerald-300 mb-2">
+                          {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        {isDraft && (
+                          <button
+                            onClick={() => handleStart(focusActivity._id)}
+                            className="w-full px-3 py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                          >
+                            ▶ Kích hoạt
+                          </button>
+                        )}
+                        {isActive && (
+                          <button
+                            onClick={() => handleCloseAndReveal(focusActivity._id)}
+                            className="w-full px-3 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+                          >
+                            ⏹ Đóng hoạt động
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </aside>
+            )}
           </div>
 
           {/* Thanh điều khiển slide */}
