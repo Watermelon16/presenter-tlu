@@ -72,6 +72,8 @@ export default defineSchema({
     lateThresholdMinutes: v.optional(v.number()),
     // Webhook URL — Presenter sẽ POST attendance data tới đây mỗi lần SV scan (tùy chọn).
     attendanceWebhookUrl: v.optional(v.string()),
+    // LMS session ID (UUID Supabase) — pass vào webhook body để LMS biết upsert vào session nào.
+    lmsSessionId: v.optional(v.string()),
   })
     .index("by_code", ["code"])
     .index("by_created", ["createdAt"])

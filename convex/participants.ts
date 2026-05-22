@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
 //
@@ -109,6 +110,18 @@ export const joinSession = mutation({
       attendanceManualOverride: false,
     });
 
+    // Fire-and-forget webhook sync sang LMS (nếu đã cấu hình)
+    if (session.attendanceWebhookUrl && session.lmsSessionId) {
+      await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+        webhookUrl: session.attendanceWebhookUrl,
+        lmsSessionId: session.lmsSessionId,
+        studentId: studentCode,
+        studentName: fullName,
+        attendanceStatus,
+        checkinTime: joinedAt,
+      });
+    }
+
     return {
       participantId,
       sessionId: session._id,
@@ -196,6 +209,7 @@ export const updateAttendanceSettings = mutation({
     lateThresholdMinutes: v.optional(v.number()),
     officialStartAt: v.optional(v.number()),
     attendanceWebhookUrl: v.optional(v.string()),
+    lmsSessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {};
@@ -208,6 +222,10 @@ export const updateAttendanceSettings = mutation({
     if (args.attendanceWebhookUrl !== undefined) {
       const url = args.attendanceWebhookUrl.trim();
       patch.attendanceWebhookUrl = url || undefined;
+    }
+    if (args.lmsSessionId !== undefined) {
+      const id = args.lmsSessionId.trim();
+      patch.lmsSessionId = id || undefined;
     }
     await ctx.db.patch(args.sessionId, patch);
   },

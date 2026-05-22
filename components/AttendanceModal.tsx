@@ -49,12 +49,14 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [lateThreshold, setLateThreshold] = useState<number>(10);
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [lmsSessionId, setLmsSessionId] = useState("");
   const [settingsInitialized, setSettingsInitialized] = useState(false);
 
   // Init settings từ session khi load
   if (session && !settingsInitialized) {
     setLateThreshold(session.lateThresholdMinutes ?? 10);
     setWebhookUrl(session.attendanceWebhookUrl ?? "");
+    setLmsSessionId(session.lmsSessionId ?? "");
     setSettingsInitialized(true);
   }
 
@@ -127,6 +129,7 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
         sessionId,
         lateThresholdMinutes: lateThreshold,
         attendanceWebhookUrl: webhookUrl.trim() || undefined,
+        lmsSessionId: lmsSessionId.trim() || undefined,
       });
       toast.success("Đã lưu cài đặt điểm danh");
       setShowSettings(false);
@@ -242,17 +245,29 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
               </div>
               <div>
                 <label className="text-xs font-medium text-zinc-700 block mb-1">
-                  Webhook URL (tùy chọn)
+                  LMS Webhook URL
                 </label>
                 <Input
                   type="url"
-                  placeholder="https://lms.example.com/api/attendance"
+                  placeholder="https://<project>.supabase.co/functions/v1/presenter-sync"
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
                   className="h-9 font-mono text-xs"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium text-zinc-700 block mb-1">
+                  LMS Session ID (UUID)
+                </label>
+                <Input
+                  type="text"
+                  placeholder="UUID của attendance_session bên LMS, vd: a1b2c3d4-..."
+                  value={lmsSessionId}
+                  onChange={(e) => setLmsSessionId(e.target.value)}
+                  className="h-9 font-mono text-xs"
+                />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  Presenter POST tới URL này mỗi lần SV scan (chưa triển khai gửi — chỉ lưu config).
+                  Có cả 2 (URL + ID) + env LMS_SHARED_SECRET → Presenter tự POST sang LMS mỗi lần SV điểm danh. Xem hướng dẫn deploy ở <span className="font-mono">docs/lms-integration.md</span>.
                 </p>
               </div>
             </div>
