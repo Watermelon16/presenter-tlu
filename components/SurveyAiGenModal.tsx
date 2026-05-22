@@ -435,7 +435,7 @@ export function SurveyAiGenModal({
 
             {needsKey && (
               <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
-                ⚠ Provider <strong>{currentProvider}</strong> cần API key — mở &ldquo;🤖 AI → Từ slide PDF&rdquo; trước nhập key, sẽ dùng chung.
+                ⚠ Provider <strong>{currentProvider}</strong> cần API key — mở <strong>⚙️ Cài đặt → 🔑 API key AI</strong> để paste key (dùng chung mọi feature AI).
               </div>
             )}
 

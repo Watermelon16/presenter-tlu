@@ -48,22 +48,11 @@ const MODELS: ModelDef[] = [
 const MODEL_STORAGE_KEY = "ai_gen_model_v1";
 const KEY_STORAGE_PREFIX = "ai_gen_apikey_"; // suffix là provider name
 
-const PROVIDER_INFO: Record<Provider, { label: string; signupUrl: string; needsUserKey: boolean }> = {
-  gemini: {
-    label: "Google Gemini",
-    signupUrl: "https://aistudio.google.com/apikey",
-    needsUserKey: false, // có server key fallback
-  },
-  deepseek: {
-    label: "DeepSeek",
-    signupUrl: "https://platform.deepseek.com/api_keys",
-    needsUserKey: true,
-  },
-  openrouter: {
-    label: "OpenRouter",
-    signupUrl: "https://openrouter.ai/keys",
-    needsUserKey: true,
-  },
+// Provider có cần user key không? Gemini có server fallback; DeepSeek + OpenRouter cần user key.
+const PROVIDER_INFO: Record<Provider, { label: string; needsUserKey: boolean }> = {
+  gemini: { label: "Google Gemini", needsUserKey: false },
+  deepseek: { label: "DeepSeek", needsUserKey: true },
+  openrouter: { label: "OpenRouter", needsUserKey: true },
 };
 
 function loadSavedKey(provider: Provider): string {
@@ -73,16 +62,6 @@ function loadSavedKey(provider: Provider): string {
   } catch {
     return "";
   }
-}
-
-function saveKey(provider: Provider, key: string) {
-  try {
-    if (key.trim()) {
-      localStorage.setItem(KEY_STORAGE_PREFIX + provider, key.trim());
-    } else {
-      localStorage.removeItem(KEY_STORAGE_PREFIX + provider);
-    }
-  } catch {}
 }
 
 type Suggestion = {
@@ -143,27 +122,17 @@ export function AiGenFromPdfModal({
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
 
-  // Per-provider API key (load từ localStorage)
-  const [apiKeyByProvider, setApiKeyByProvider] = useState<Record<Provider, string>>(() => ({
-    gemini: loadSavedKey("gemini"),
-    deepseek: loadSavedKey("deepseek"),
-    openrouter: loadSavedKey("openrouter"),
-  }));
-  const currentKey = apiKeyByProvider[currentProvider];
+  // API key load từ localStorage (set trong ⚙️ Cài đặt → 🔑 API key AI).
+  // Load lazy mỗi render để pick-up thay đổi sau khi user update key ở Settings.
+  const currentKey = loadSavedKey(currentProvider);
   const needsUserKey = PROVIDER_INFO[currentProvider].needsUserKey;
   const hasKey = !!currentKey || !needsUserKey;
-  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const handleSelectModel = (id: string) => {
     setSelectedModel(id);
     try {
       localStorage.setItem(MODEL_STORAGE_KEY, id);
     } catch {}
-  };
-
-  const updateProviderKey = (provider: Provider, key: string) => {
-    setApiKeyByProvider((prev) => ({ ...prev, [provider]: key }));
-    saveKey(provider, key);
   };
 
   const extractPdfText = async (): Promise<{ pageNumber: number; text: string }[]> => {
@@ -469,53 +438,12 @@ export function AiGenFromPdfModal({
                 ))}
               </select>
 
-              {/* User API key UI — chỉ hiện cho provider cần key + chưa có key, hoặc khi user mở */}
-              {(needsUserKey || showKeyInput) && (
-                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-medium text-zinc-700">
-                      API key {PROVIDER_INFO[currentProvider].label}
-                      {!needsUserKey && (
-                        <span className="ml-1 text-zinc-400 font-normal">(tùy chọn, override server)</span>
-                      )}
-                    </label>
-                    <a
-                      href={PROVIDER_INFO[currentProvider].signupUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Lấy key →
-                    </a>
-                  </div>
-                  <Input
-                    type="password"
-                    placeholder={
-                      currentProvider === "gemini"
-                        ? "AIza... (để trống = dùng server key)"
-                        : currentProvider === "deepseek"
-                          ? "sk-..."
-                          : "sk-or-v1-..."
-                    }
-                    value={currentKey}
-                    onChange={(e) => updateProviderKey(currentProvider, e.target.value)}
-                    className="font-mono text-xs"
-                    autoComplete="off"
-                  />
-                  <p className="text-[11px] text-zinc-500">
-                    Key lưu trên máy bạn (localStorage). Mỗi lần gen, key được gửi qua HTTPS tới Convex action — server KHÔNG lưu, chỉ dùng để gọi {PROVIDER_INFO[currentProvider].label}.
-                  </p>
+              {/* Warning khi provider cần key mà chưa có — point user tới Settings */}
+              {needsUserKey && !currentKey && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900">
+                  ⚠ Model này cần API key <strong>{PROVIDER_INFO[currentProvider].label}</strong>.
+                  Mở <strong>⚙️ Cài đặt → 🔑 API key AI</strong> để paste key (lưu 1 lần dùng cho mọi feature AI).
                 </div>
-              )}
-
-              {!needsUserKey && !showKeyInput && (
-                <button
-                  type="button"
-                  onClick={() => setShowKeyInput(true)}
-                  className="text-xs text-zinc-500 hover:text-zinc-800 underline underline-offset-2"
-                >
-                  Dùng API key Gemini của riêng tôi (thay vì server key)
-                </button>
               )}
 
               <p className="text-xs text-zinc-500">

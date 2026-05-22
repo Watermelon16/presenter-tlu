@@ -161,7 +161,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
               </select>
               {needsKey && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                  ⚠ Provider <strong>{currentProvider}</strong> cần API key — mở modal &ldquo;🤖 AI gen&rdquo; trước, nhập key, key sẽ được dùng chung ở đây.
+                  ⚠ Provider <strong>{currentProvider}</strong> cần API key — mở <strong>⚙️ Cài đặt → 🔑 API key AI</strong> để paste key.
                 </p>
               )}
             </div>

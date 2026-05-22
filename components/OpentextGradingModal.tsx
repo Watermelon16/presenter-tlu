@@ -198,7 +198,7 @@ export function OpentextGradingModal({ activityId, onClose }: Props) {
           </div>
           {needsKey && (
             <div className="text-[11px] text-amber-700">
-              ⚠ Provider {currentProvider} cần API key — nhập trong modal &ldquo;🤖 AI gen&rdquo; trước.
+              ⚠ Provider {currentProvider} cần API key — mở <strong>⚙️ Cài đặt → 🔑 API key AI</strong> để paste.
             </div>
           )}
         </div>
