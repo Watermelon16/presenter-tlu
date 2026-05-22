@@ -20,6 +20,8 @@ import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
+import { ApiKeysModal } from "@/components/ApiKeysModal";
+import { HelpModal } from "@/components/HelpModal";
 // Note: PollBarChart / RatingBarChart / WordcloudBars vẫn export trong components/ResultCharts.tsx
 // dùng cho fullscreen overlay nếu cần — không import ở đây vì block "Kết quả realtime" trên màn chính đã bỏ.
 
@@ -356,8 +358,7 @@ function PresenterPage() {
   const [isPresentationMode, setIsPresentationMode] = useState(false); // Chế độ Trình diễn cực mạnh (Focus Mode)
   const [isAdvancing, setIsAdvancing] = useState(false); // Transition state in Presentation Mode
 
-  // Panel hướng dẫn sử dụng (toggle để giảng viên xem nhanh khi cần)
-  const [showHelp, setShowHelp] = useState(false);
+  // Help giờ là modal mở từ ⚙️ Cài đặt → 📖 Hướng dẫn sử dụng (state showHelpModal bên dưới).
 
   // Dropdown "+ Tạo hoạt động"
   const [showCreatePicker, setShowCreatePicker] = useState(false);
@@ -467,6 +468,8 @@ function PresenterPage() {
   const [showAiGenModal, setShowAiGenModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
   const [showSurveyModal, setShowSurveyModal] = useState(false);
+  const [showApiKeysModal, setShowApiKeysModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [gradingActivityId, setGradingActivityId] = useState<Id<"activities"> | null>(null);
 
   const handleUploadPdf = async (file: File) => {
@@ -2291,6 +2294,35 @@ function PresenterPage() {
             >
               {(close) => (
                 <>
+                  <DropdownLabel>Trợ giúp & cấu hình</DropdownLabel>
+                  <DropdownItem
+                    icon="📖"
+                    label="Hướng dẫn sử dụng"
+                    hint="Workflow, phím tắt, AI features"
+                    onClick={() => {
+                      setShowHelpModal(true);
+                      close();
+                    }}
+                  />
+                  <DropdownItem
+                    icon="🔑"
+                    label="API key AI"
+                    hint="Gemini · DeepSeek · OpenRouter — paste key của bạn để dùng quota riêng"
+                    onClick={() => {
+                      setShowApiKeysModal(true);
+                      close();
+                    }}
+                  />
+                  <DropdownItem
+                    icon="🎯"
+                    label="Cấu hình điểm thành tích"
+                    hint="Tuỳ chỉnh điểm cho từng loại hoạt động trong Bảng thành tích"
+                    onClick={() => {
+                      setShowScoringConfig(true);
+                      close();
+                    }}
+                  />
+                  <DropdownDivider />
                   <DropdownLabel>Hiển thị</DropdownLabel>
                   <DropdownItem
                     icon={bigTextMode ? "🔍" : "🔎"}
@@ -2327,122 +2359,6 @@ function PresenterPage() {
         </div>
       </div>
 
-      {/* ==================== PANEL HƯỚNG DẪN (toggle) ==================== */}
-      <div className="max-w-7xl mx-auto px-6 pt-4">
-        <button
-          onClick={() => setShowHelp(!showHelp)}
-          className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 font-medium transition-colors"
-        >
-          {showHelp ? "▼" : "▶"} 📖 Hướng dẫn sử dụng nhanh
-        </button>
-
-        {showHelp && (
-          <div className="mt-3 bg-white border border-blue-200 rounded-2xl p-6 shadow-sm space-y-5">
-            {/* Hàng 1: 2 workflow chọn cách dùng phù hợp */}
-            <div>
-              <div className="text-sm font-semibold text-zinc-900 mb-2.5">Chọn workflow phù hợp:</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Workflow 1: PDF */}
-                <div className="border-2 border-indigo-200 rounded-xl p-4 bg-indigo-50/40">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-2xl">📑</span>
-                    <div className="font-semibold text-indigo-900">Workflow A — PDF, 1 cửa sổ</div>
-                  </div>
-                  <div className="text-xs text-zinc-700 leading-relaxed mb-2">
-                    Xuất PPT → PDF rồi upload. Toàn bộ buổi giảng trong 1 tab browser, <strong>không Alt+Tab</strong>.
-                  </div>
-                  <ol className="text-xs text-zinc-700 space-y-1 list-decimal pl-4">
-                    <li>Upload PDF qua nút <strong>📑 Upload PDF</strong></li>
-                    <li>Bấm <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">S</kbd> chiếu slide fullscreen, <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">← →</kbd> chuyển trang</li>
-                    <li>Bấm <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">F</kbd> chiếu kết quả khi cần</li>
-                    <li><kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-indigo-300 rounded">Esc</kbd> tự về slide</li>
-                  </ol>
-                  <div className="text-[11px] text-indigo-700 mt-2">⚠ Mất animation PPT, chỉ có ảnh tĩnh slide.</div>
-                </div>
-
-                {/* Workflow 2: PPT */}
-                <div className="border-2 border-amber-200 rounded-xl p-4 bg-amber-50/40">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-2xl">🎯</span>
-                    <div className="font-semibold text-amber-900">Workflow B — Giữ PPT, dùng cửa sổ nổi</div>
-                  </div>
-                  <div className="text-xs text-zinc-700 leading-relaxed mb-2">
-                    PPT giữ nguyên cho animation đẹp. Web app mở <strong>cửa sổ nổi nhỏ trên PPT</strong> để điều khiển không Alt+Tab.
-                  </div>
-                  <ol className="text-xs text-zinc-700 space-y-1 list-decimal pl-4">
-                    <li><strong>Trước buổi:</strong> Bấm Q → 💾 <strong>Tải QR</strong> → dán vào slide đầu PPT</li>
-                    <li>Vào menu <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-amber-300 rounded">⋯</kbd> → <strong>Bảng điều khiển nổi</strong> (Chrome 116+)</li>
-                    <li>PPT chạy fullscreen, cửa sổ nổi hiện ở góc → thấy response count, bấm Bắt đầu/Đóng từ đó</li>
-                    <li>Khi cần chiếu kết quả to: Alt+Tab → <kbd className="px-1 py-0.5 text-[10px] font-mono bg-white border border-amber-300 rounded">F</kbd> → Alt+Tab về PPT</li>
-                  </ol>
-                  <div className="text-[11px] text-amber-700 mt-2">💡 Cửa sổ nổi này nổi trên MỌI ứng dụng (kể cả PPT fullscreen)</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Hàng 2: 3 cột chi tiết */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-zinc-200">
-              {/* Cột 1: Flow tạo */}
-              <div>
-                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-bold">1</span>
-                  Tạo & chạy hoạt động
-                </div>
-                <ol className="text-xs text-zinc-700 space-y-1.5 list-decimal pl-4 leading-relaxed">
-                  <li>Bấm <strong className="text-emerald-700">+ Tạo hoạt động</strong> → chọn loại (6 loại)</li>
-                  <li>Điền cấu hình → bấm <strong className="text-emerald-700">Tạo</strong></li>
-                  <li>Hoạt động ở trạng thái <span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700">NHÁP</span></li>
-                  <li>Bấm <strong className="text-emerald-700">▶ Bắt đầu</strong> → SV thấy & trả lời</li>
-                  <li>Bấm <strong className="text-red-700">⏹ Đóng</strong> khi xong</li>
-                  <li>Bấm <strong className="text-blue-700">🔄 Chạy lại</strong> nếu muốn mở lại với câu trả lời mới</li>
-                </ol>
-              </div>
-
-              {/* Cột 2: Phím tắt */}
-              <div>
-                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs flex items-center justify-center font-bold">⌨</span>
-                  Phím tắt
-                </div>
-                <div className="text-xs text-zinc-700 space-y-1.5 leading-relaxed">
-                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1">CHIẾU OVERLAY</div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Q</kbd><span>QR + mã phòng to</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">F</kbd><span>Kết quả + Bảng thành tích (2 tab)</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">S</kbd><span>Chiếu slide PDF</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">T</kbd><span>Toggle tab trong overlay F</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Esc</kbd><span>Thoát overlay</span></div>
-
-                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">ĐIỀU KHIỂN HOẠT ĐỘNG</div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-emerald-100 border border-emerald-300 text-emerald-800 rounded shadow-sm">A</kbd><span>▶ Kích hoạt + mở overlay (kết quả ẩn)</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-amber-100 border border-amber-300 text-amber-800 rounded shadow-sm">R</kbd><span>👁 Công bố kết quả lên màn hình</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-red-100 border border-red-300 text-red-800 rounded shadow-sm">X</kbd><span>⏹ Đóng activity (bấm X 2 lần = đóng overlay về slide)</span></div>
-
-                  <div className="text-[10px] tracking-wider font-semibold text-zinc-500 mb-1 pt-2 mt-1 border-t border-zinc-200">DI CHUYỂN</div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">Space</kbd><span>Bước kế / next slide</span></div>
-                  <div className="flex items-center gap-2"><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">←</kbd><kbd className="px-2 py-0.5 text-[11px] font-mono bg-zinc-100 border border-zinc-300 rounded shadow-sm">→</kbd><span>Chuyển slide</span></div>
-                </div>
-              </div>
-
-              {/* Cột 3: Trạng thái */}
-              <div>
-                <div className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center font-bold">●</span>
-                  Trạng thái hoạt động
-                </div>
-                <div className="text-xs text-zinc-700 space-y-2 leading-relaxed">
-                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 text-zinc-700 font-medium">NHÁP</span> Đã tạo nhưng SV chưa thấy</div>
-                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span> SV đang trả lời được</div>
-                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG</span> Không nhận thêm trả lời</div>
-                  <div><span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-200 text-amber-800 font-medium">HẾT GIỜ</span> Tự đóng do hết timeLimit</div>
-                  <div className="pt-2 mt-2 border-t border-zinc-200">
-                    <strong>📋 Tính điểm:</strong> Bật toggle <em>Ghi nhận điểm tham gia</em> → câu trả lời tính vào Bảng thành tích.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* === TỔNG QUAN BUỔI GIẢNG (tạm ẩn để ổn định syntax — sẽ khôi phục + cải thiện ở Results) === */}
@@ -2499,14 +2415,60 @@ function PresenterPage() {
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setShowScriptMenu(false)} />
                     <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-zinc-200 rounded-xl shadow-lg z-40 py-1">
+                      {/* Mẫu kịch bản */}
+                      <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
+                        Mẫu kịch bản
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setShowScriptMenu(false);
+                          const name = prompt("Tên mẫu kịch bản (vd: Đập và Hồ chứa - Buổi 1):");
+                          if (!name || !session?._id) return;
+                          try {
+                            await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
+                            toast.success("Đã lưu mẫu kịch bản");
+                          } catch (e: unknown) {
+                            toast.error(e instanceof Error ? e.message : "Lỗi");
+                          }
+                        }}
+                        disabled={sortedActivities.length === 0}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-start gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Lưu danh sách hoạt động hiện tại thành mẫu để dùng lại buổi sau"
+                      >
+                        <span className="text-lg shrink-0">💾</span>
+                        <div>
+                          <div className="font-medium">Lưu mẫu kịch bản</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">Snapshot danh sách hoạt động hiện tại → dùng lại buổi sau</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowScriptMenu(false);
+                          setShowTemplatesModal(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-start gap-2"
+                        title="Mở danh sách mẫu đã lưu để áp dụng vào buổi này"
+                      >
+                        <span className="text-lg shrink-0">📚</span>
+                        <div>
+                          <div className="font-medium">Mẫu đã lưu</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">Áp dụng mẫu cũ vào buổi này (thay activities hiện tại)</div>
+                        </div>
+                      </button>
+
+                      <div className="my-1 border-t border-zinc-100" />
+
+                      <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
+                        Cửa sổ nổi
+                      </div>
                       <button
                         onClick={() => { openFloatingPanel(); setShowScriptMenu(false); }}
-                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-100 flex items-start gap-2"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 flex items-start gap-2"
                         title="Cửa sổ nhỏ nổi trên PPT (Chrome 116+) — không cần Alt+Tab"
                       >
-                        <span className="text-xl shrink-0">🪟</span>
+                        <span className="text-lg shrink-0">🪟</span>
                         <div>
-                          <div className="font-semibold">Bảng điều khiển nổi</div>
+                          <div className="font-medium">Bảng điều khiển nổi</div>
                           <div className="text-[11px] text-zinc-500 mt-0.5">Nổi trên PPT, không cần Alt+Tab (Chrome 116+)</div>
                         </div>
                       </button>
@@ -2518,40 +2480,7 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* === Hàng tiện ích: Lưu mẫu / Mẫu đã lưu / Cấu hình điểm === */}
-        <div className="mb-6 flex items-center gap-2 flex-wrap">
-          <button
-            onClick={async () => {
-              const name = prompt("Tên kịch bản mẫu (vd: Đập và Hồ chứa - Buổi 1):");
-              if (!name || !session?._id) return;
-              try {
-                await saveScriptAsTemplate({ sessionId: session._id, name: name.trim() });
-                toast.success("Đã lưu kịch bản mẫu");
-              } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : "Lỗi");
-              }
-            }}
-            disabled={sortedActivities.length === 0}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700 disabled:opacity-50"
-            title="Lưu danh sách hoạt động hiện tại thành mẫu để dùng lại buổi sau"
-          >
-            💾 Lưu mẫu kịch bản
-          </button>
-          <button
-            onClick={() => setShowTemplatesModal(true)}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-            title="Mở danh sách mẫu đã lưu để áp dụng vào buổi này"
-          >
-            📚 Mẫu đã lưu
-          </button>
-          <button
-            onClick={() => setShowScoringConfig(true)}
-            className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-700"
-            title="Tùy chỉnh điểm cho từng loại hoạt động trong Bảng thành tích"
-          >
-            ⚙️ Cấu hình điểm thành tích
-          </button>
-        </div>
+        {/* Hàng tiện ích đã bỏ — chuyển vào: Settings dropdown (Cấu hình điểm) + menu ⋯ trong Kịch bản (Lưu/Mẫu) */}
 
         {/* === Slide PDF status (nếu đã upload) === */}
         {hasPdf && (
@@ -4261,6 +4190,12 @@ function PresenterPage() {
           onClose={() => setShowSurveyModal(false)}
         />
       )}
+
+      {/* API keys modal */}
+      {showApiKeysModal && <ApiKeysModal onClose={() => setShowApiKeysModal(false)} />}
+
+      {/* Help modal */}
+      {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
     </div>
   );
 }
