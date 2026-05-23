@@ -160,6 +160,16 @@ export default function ParticipantRoomPage() {
   useEffect(() => {
     if (!upperCode) return;
 
+    // GATE: nếu user đã login Convex (GV) thì KHÔNG auto-join SV identity
+    // — sẽ tự redirect sang /presenter/CODE ở effect khác. Chỉ chạy auto-join
+    // khi me query đã load và xác nhận KHÔNG phải GV approved.
+    // me === undefined = đang load, !me?.user = không login (= SV thực sự)
+    if (me === undefined) return; // đợi me load
+    if (me?.user && me?.profile?.status === "approved") {
+      // GV đã login → skip toàn bộ auto-join SV
+      return;
+    }
+
     // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây
     // URL dạng: /room/CODE?from_lms=1&sid=2351150001&name=Trần%20Văn%20An&class=65C
     // LMS đã verify roster, attendance đã ghi sang LMS → Presenter chỉ cần auto-join
@@ -238,7 +248,7 @@ export default function ParticipantRoomPage() {
       } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upperCode]);
+  }, [upperCode, me?.user?._id, me?.profile?.status]);
 
   // Tự động re-register khi:
   //  - Identity tồn tại (đã có trong localStorage)
@@ -246,8 +256,10 @@ export default function ParticipantRoomPage() {
   // → Backend joinSession sẽ tạo participant cho run hiện tại (idempotent)
   // Tránh lỗi: SV reload, localStorage có identity nhưng KHÔNG có participant record
   // cho phiên hiện tại → bảng thành tích bỏ qua SV này
+  // GATE: skip nếu user là GV approved (cùng logic effect ở trên)
   useEffect(() => {
     if (!session?._id || !upperCode || !identity?.studentCode) return;
+    if (me?.user && me?.profile?.status === "approved") return;
     joinSession({
       code: upperCode,
       studentCode: identity.studentCode,
@@ -258,7 +270,7 @@ export default function ParticipantRoomPage() {
       // Im lặng — phòng đóng / lỗi mạng
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?._id, session?.currentRun, identity?.studentCode]);
+  }, [session?._id, session?.currentRun, identity?.studentCode, me?.user?._id, me?.profile?.status]);
 
   // Đọc trạng thái push hiện tại + auto-resubscribe nếu đã subscribed trước đó.
   useEffect(() => {

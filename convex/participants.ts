@@ -175,6 +175,43 @@ export const setAttendanceStatus = mutation({
 });
 
 /**
+ * Reset officialStartAt (T0) của session — dùng khi GV muốn lấy giờ
+ * scan đầu tiên thực sự làm T0 thay vì giá trị đã set tạm.
+ */
+export const resetOfficialStartAt = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.sessionId, { officialStartAt: undefined });
+    return { ok: true };
+  },
+});
+
+/**
+ * Xóa 1 participant (GV cleanup nhầm/giả). Cũng xóa response của SV đó
+ * cho session này để giữ DB sạch.
+ */
+export const removeParticipant = mutation({
+  args: { participantId: v.id("participants") },
+  handler: async (ctx, args) => {
+    const p = await ctx.db.get(args.participantId);
+    if (!p) return { ok: false, reason: "not_found" };
+    // Xóa responses của SV này trong session
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) =>
+        q.eq("sessionId", p.sessionId).eq("studentCode", p.studentCode)
+      )
+      .collect();
+    for (const r of responses) {
+      await ctx.db.delete(r._id);
+    }
+    await ctx.db.delete(args.participantId);
+    // Reset officialStartAt nếu vừa xóa SV đầu tiên (so far ko critical, skip)
+    return { ok: true, responsesDeleted: responses.length };
+  },
+});
+
+/**
  * Bulk override — set status cho NHIỀU SV cùng lúc.
  * Dùng cho action "Đánh tất cả vắng có phép", v.v.
  */
