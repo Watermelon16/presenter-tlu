@@ -370,6 +370,7 @@ function PresenterPage() {
   const [showScriptMenu, setShowScriptMenu] = useState(false);
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
 
   // Tab cho overlay kết quả (F): "result" = kết quả activity hiện tại, "leaderboard" = bảng thành tích
   const [resultTab, setResultTab] = useState<"result" | "leaderboard">("result");
@@ -2225,6 +2226,15 @@ function PresenterPage() {
               <span className="text-xs text-zinc-500 hidden sm:inline">SV</span>
             </button>
 
+            <button
+              onClick={() => setShowHeatmapModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
+              title="Xem biểu đồ nhịp lớp theo phút"
+            >
+              <span className="text-sm">📊</span>
+              <span className="text-xs text-zinc-500 hidden sm:inline">Nhịp lớp</span>
+            </button>
+
             {/* 🎬 Chiếu */}
             <Dropdown
               align="right"
@@ -2473,10 +2483,7 @@ function PresenterPage() {
 
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* Panel điểm danh giờ là modal — render ở cuối file, mở qua nút "X SV" trên topbar */}
-
-        {/* ==================== HEATMAP NHỊP LỚP (live engagement per minute) ==================== */}
-        <EngagementHeatmap sessionId={session._id} />
+        {/* Panel điểm danh + Heatmap đều là modal — render ở cuối file, mở qua nút topbar */}
 
         {/* === TỔNG QUAN BUỔI GIẢNG (tạm ẩn để ổn định syntax — sẽ khôi phục + cải thiện ở Results) === */}
         {/* {exportData && ( ... dashboard stats ... )} */}
@@ -3356,6 +3363,15 @@ function PresenterPage() {
             sessionId={session._id}
             open={showAttendanceModal}
             onClose={() => setShowAttendanceModal(false)}
+          />
+        )}
+
+        {/* ==================== MODAL HEATMAP NHỊP LỚP ==================== */}
+        {session._id && (
+          <EngagementHeatmap
+            sessionId={session._id}
+            open={showHeatmapModal}
+            onClose={() => setShowHeatmapModal(false)}
           />
         )}
 
