@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -20,15 +20,49 @@ function formatTime(ts: number | null): string {
   return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Format quãng thời gian "còn 8p" / "đã quá 3p"
+function formatRemaining(targetMs: number, nowMs: number): string {
+  const diffSec = Math.round((targetMs - nowMs) / 1000);
+  if (diffSec > 0) {
+    const m = Math.floor(diffSec / 60);
+    const s = diffSec % 60;
+    return m > 0 ? `còn ${m}p${s.toString().padStart(2, "0")}s` : `còn ${s}s`;
+  }
+  const abs = Math.abs(diffSec);
+  const m = Math.floor(abs / 60);
+  return m > 0 ? `đã quá ${m}p` : `vừa qua`;
+}
+
+function formatRelative(ts: number, nowMs: number): string {
+  const diffSec = Math.round((nowMs - ts) / 1000);
+  if (diffSec < 60) return "vừa xong";
+  const m = Math.floor(diffSec / 60);
+  if (m < 60) return `${m} phút trước`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}p trước`;
+}
+
 export function LmsAttendancePanel({ code }: { code: string }) {
   const state = useQuery(api.lms.getAttendanceState, { code });
   const [expanded, setExpanded] = useState(false);
 
+  // Tick mỗi 5 giây để cập nhật countdown realtime
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!state || !state.isLmsLinked) return null;
 
-  const { counts, rows, rosterCount, className, attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt } = state;
+  const { counts, rows, rosterCount, className, attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt, rosterSyncedAt } = state;
   const lateCutoffAt = attendanceOpenAt ? attendanceOpenAt + lateCutoffMinutes * 60_000 : null;
   const absentCutoffAt = attendanceOpenAt ? attendanceOpenAt + absentAfterMinutes * 60_000 : null;
+
+  // Mốc đang đến (chỉ hiện cái gần nhất chưa qua)
+  let nextCutoff: { label: string; at: number } | null = null;
+  if (lateCutoffAt && now < lateCutoffAt) nextCutoff = { label: "muộn", at: lateCutoffAt };
+  else if (absentCutoffAt && now < absentCutoffAt) nextCutoff = { label: "vắng", at: absentCutoffAt };
 
   return (
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
@@ -55,6 +89,11 @@ export function LmsAttendancePanel({ code }: { code: string }) {
               {absentCutoffAt && (
                 <> · Vắng sau {formatTime(absentCutoffAt)}</>
               )}
+              {nextCutoff && (
+                <span className="ml-1.5 text-emerald-700 font-medium">
+                  ({formatRemaining(nextCutoff.at, now)} đến mốc {nextCutoff.label})
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -76,6 +115,11 @@ export function LmsAttendancePanel({ code }: { code: string }) {
 
       {expanded && (
         <div className="mt-4 bg-white rounded-xl border border-zinc-200 overflow-hidden">
+          {rosterSyncedAt && (
+            <div className="px-3 py-2 text-[11px] text-zinc-500 bg-zinc-50/60 border-b border-zinc-100">
+              Roster cập nhật từ LMS {formatRelative(rosterSyncedAt, now)} ({formatTime(rosterSyncedAt)})
+            </div>
+          )}
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 sticky top-0">

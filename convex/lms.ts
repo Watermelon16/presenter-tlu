@@ -83,8 +83,11 @@ export const setAttendanceOpenAt = internalMutation({
       .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
       .first();
     if (!session) throw new ConvexError("Không tìm thấy phòng cho lmsSessionId");
+    // Clear officialStartAt (auto-set khi SV đầu scan) — LMS-driven T0 ưu tiên hơn.
+    // Tránh 2 T0 conflict trong panel + late computation.
     await ctx.db.patch(session._id, {
       attendanceOpenAt: args.openAt,
+      officialStartAt: undefined,
       lateCutoffMinutes: args.lateCutoffMinutes ?? session.lateCutoffMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
       absentAfterMinutes: args.absentAfterMinutes ?? session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
     });
@@ -138,6 +141,24 @@ export const upsertParticipantFromLms = internalMutation({
           session.lateThresholdMinutes,
           session.absentAfterMinutes
         );
+
+    // Auto-add vào rosterCache nếu chưa có (LMS coi SV này hợp lệ → mitigate stale roster:
+    // lần sau SV scan QR Presenter cùng MSV này sẽ pass roster validation luôn).
+    const rosterRow = await ctx.db
+      .query("rosterCache")
+      .withIndex("by_session_and_student", (q) =>
+        q.eq("sessionId", session._id).eq("studentCode", args.studentCode)
+      )
+      .first();
+    if (!rosterRow) {
+      await ctx.db.insert("rosterCache", {
+        sessionId: session._id,
+        lmsSessionId: args.lmsSessionId,
+        studentCode: args.studentCode,
+        fullName: args.fullName,
+        syncedAt: Date.now(),
+      });
+    }
 
     const existing = await ctx.db
       .query("participants")
@@ -269,6 +290,7 @@ export const getAttendanceState = query({
         attendanceFinalizedAt: null,
         className: null,
         rosterCount: 0,
+        rosterSyncedAt: null,
         counts: { present: 0, late: 0, absent: 0, excused: 0, earlyLeave: 0, notCheckedIn: 0 },
         rows: [],
       };
@@ -324,6 +346,12 @@ export const getAttendanceState = query({
 
     rows.sort((a, b) => a.studentCode.localeCompare(b.studentCode));
 
+    // Lấy syncedAt của roster row mới nhất (nếu có) để hiện trên panel
+    const rosterSyncedAt = roster.reduce<number | null>(
+      (max, r) => (max == null || r.syncedAt > max ? r.syncedAt : max),
+      null
+    );
+
     return {
       sessionId: session._id,
       isLmsLinked: true as const,
@@ -333,6 +361,7 @@ export const getAttendanceState = query({
       attendanceFinalizedAt: session.attendanceFinalizedAt ?? null,
       className: session.className ?? null,
       rosterCount: roster.length,
+      rosterSyncedAt,
       counts: {
         present: rows.filter((r) => r.attendanceStatus === "present").length,
         late: rows.filter((r) => r.attendanceStatus === "late").length,
