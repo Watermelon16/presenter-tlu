@@ -16,12 +16,11 @@ import { VnInput, VnTextarea } from "@/components/VnInput";
 import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
-import { LmsAttendancePanel } from "@/components/LmsAttendancePanel";
+import { AttendancePanel } from "@/components/AttendancePanel";
 import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
-import { AttendanceModal } from "@/components/AttendanceModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
 import { ApiKeysModal } from "@/components/ApiKeysModal";
 import { HelpModal } from "@/components/HelpModal";
@@ -369,7 +368,7 @@ function PresenterPage() {
   // Dropdown "⋯ Thêm" trong block Kịch bản
   const [showScriptMenu, setShowScriptMenu] = useState(false);
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
-  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+  // showParticipantsModal removed — panel attendance giờ inline always-visible
 
   // Tab cho overlay kết quả (F): "result" = kết quả activity hiện tại, "leaderboard" = bảng thành tích
   const [resultTab, setResultTab] = useState<"result" | "leaderboard">("result");
@@ -2215,9 +2214,12 @@ function PresenterPage() {
           {/* RIGHT: SV count + Dropdowns */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
-              onClick={() => setShowParticipantsModal(true)}
+              onClick={() => {
+                const el = document.getElementById("attendance-panel");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
-              title="Xem danh sách sinh viên đã tham gia"
+              title="Cuộn đến panel điểm danh"
             >
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               <span className="text-sm font-medium tabular-nums">{totalParticipants}</span>
@@ -2463,8 +2465,10 @@ function PresenterPage() {
 
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* ==================== PANEL ĐIỂM DANH LMS (chỉ hiện khi phòng được LMS provision) ==================== */}
-        <LmsAttendancePanel code={session.code} />
+        {/* ==================== PANEL ĐIỂM DANH HỢP NHẤT (cho cả LMS lẫn tự do) ==================== */}
+        <div id="attendance-panel">
+          <AttendancePanel code={session.code} sessionId={session._id} />
+        </div>
 
         {/* ==================== HEATMAP NHỊP LỚP (live engagement per minute) ==================== */}
         <EngagementHeatmap sessionId={session._id} />
@@ -3340,10 +3344,7 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* ==================== MODAL ĐIỂM DANH (replaces participants list) ==================== */}
-        {showParticipantsModal && session._id && (
-          <AttendanceModal sessionId={session._id} onClose={() => setShowParticipantsModal(false)} />
-        )}
+        {/* Modal điểm danh đã merge vào <AttendancePanel> inline phía trên */}
 
         {/* ==================== MODAL CẤU HÌNH ĐIỂM BẢNG THÀNH TÍCH ==================== */}
         {showScoringConfig && (

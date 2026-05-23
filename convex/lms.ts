@@ -3,7 +3,7 @@
 //   - upsertParticipantFromLms: SV checkin LMS QR → mirror sang presenter
 //   - syncRosterFromLms: refresh roster lớp
 //   - finalizeAttendance: LMS đóng buổi → mark absent cho roster chưa join
-//   - getAttendanceState: query realtime cho LmsAttendancePanel UI
+//   - getAttendanceState: query realtime cho AttendancePanel UI
 
 import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
@@ -268,7 +268,7 @@ export const getSessionByLmsId = internalQuery({
   },
 });
 
-// ─── Public query: state attendance cho LmsAttendancePanel ─────────────────
+// ─── Public query: state attendance cho AttendancePanel ─────────────────
 export const getAttendanceState = query({
   args: { code: v.string() },
   handler: async (ctx, args) => {
@@ -279,23 +279,6 @@ export const getAttendanceState = query({
     if (!session) return null;
 
     const isLmsLinked = !!session.lmsSessionId;
-    if (!isLmsLinked) {
-      // Không liên thông LMS → panel ẩn (return null isLmsLinked = false)
-      return {
-        sessionId: session._id,
-        isLmsLinked: false as const,
-        attendanceOpenAt: null,
-        lateCutoffMinutes: DEFAULT_LATE_CUTOFF_MINUTES,
-        absentAfterMinutes: DEFAULT_ABSENT_AFTER_MINUTES,
-        attendanceFinalizedAt: null,
-        className: null,
-        rosterCount: 0,
-        rosterSyncedAt: null,
-        counts: { present: 0, late: 0, absent: 0, excused: 0, earlyLeave: 0, notCheckedIn: 0 },
-        rows: [],
-      };
-    }
-
     const currentRun = session.currentRun ?? 1;
     const roster = await ctx.db
       .query("rosterCache")
@@ -313,10 +296,13 @@ export const getAttendanceState = query({
     type Row = {
       studentCode: string;
       fullName: string;
+      className: string;
       attendanceStatus: InternalStatus | null;
+      attendanceManualOverride: boolean;
       checkinSource: "lms" | "presenter" | null;
       checkinAt: number | null;
       flagged: boolean;
+      participantId: string | null;
     };
     const rows: Row[] = [];
 
@@ -325,10 +311,13 @@ export const getAttendanceState = query({
       rows.push({
         studentCode: r.studentCode,
         fullName: p?.fullName ?? r.fullName,
+        className: p?.className ?? session.className ?? "",
         attendanceStatus: (p?.attendanceStatus ?? null) as InternalStatus | null,
+        attendanceManualOverride: !!p?.attendanceManualOverride,
         checkinSource: p?.checkinSource ?? null,
         checkinAt: p?.checkinAt ?? p?.joinedAt ?? null,
         flagged: !!p?.flagged,
+        participantId: p?._id ?? null,
       });
       if (p) byCode.delete(r.studentCode);
     }
@@ -337,10 +326,13 @@ export const getAttendanceState = query({
       rows.push({
         studentCode: p.studentCode,
         fullName: p.fullName,
+        className: p.className,
         attendanceStatus: (p.attendanceStatus ?? null) as InternalStatus | null,
+        attendanceManualOverride: !!p.attendanceManualOverride,
         checkinSource: p.checkinSource ?? null,
         checkinAt: p.checkinAt ?? p.joinedAt ?? null,
-        flagged: true,
+        flagged: !isLmsLinked ? false : true, // chỉ flag nếu LMS-linked (vì non-LMS không có roster)
+        participantId: p._id,
       });
     }
 
@@ -354,7 +346,8 @@ export const getAttendanceState = query({
 
     return {
       sessionId: session._id,
-      isLmsLinked: true as const,
+      sessionTitle: session.title,
+      isLmsLinked,
       attendanceOpenAt: session.attendanceOpenAt ?? session.officialStartAt ?? null,
       lateCutoffMinutes: session.lateCutoffMinutes ?? session.lateThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
       absentAfterMinutes: session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
