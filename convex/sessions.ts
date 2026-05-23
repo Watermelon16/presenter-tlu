@@ -435,12 +435,13 @@ export const deleteSession = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new Error("Không tìm thấy buổi giảng");
 
-    let counts = {
+    const counts = {
       activities: 0,
       responses: 0,
       participants: 0,
       boardPosts: 0,
       images: 0,
+      rosterCache: 0,
     };
 
     // 1. Board posts (có ảnh storage)
@@ -485,7 +486,26 @@ export const deleteSession = mutation({
       counts.activities++;
     }
 
-    // 5. PDF storage
+    // 5. Roster cache (LMS-linked sessions)
+    const rosterRows = await ctx.db
+      .query("rosterCache")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const r of rosterRows) {
+      await ctx.db.delete(r._id);
+      counts.rosterCache++;
+    }
+
+    // 5b. Push subscriptions (web-push)
+    const pushSubs = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    for (const s of pushSubs) {
+      await ctx.db.delete(s._id);
+    }
+
+    // 6. PDF storage
     if (session.pdfStorageId) {
       try {
         await ctx.storage.delete(session.pdfStorageId);
@@ -495,7 +515,7 @@ export const deleteSession = mutation({
       }
     }
 
-    // 6. Session itself
+    // 7. Session itself
     await ctx.db.delete(args.sessionId);
 
     return { success: true, counts };

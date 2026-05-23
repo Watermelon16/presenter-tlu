@@ -5,7 +5,7 @@
 //   - finalizeAttendance: LMS đóng buổi → mark absent cho roster chưa join
 //   - getAttendanceState: query realtime cho LmsAttendancePanel UI
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
 import { replaceRoster } from "./lmsProvisioning";
@@ -82,7 +82,7 @@ export const setAttendanceOpenAt = internalMutation({
       .query("sessions")
       .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
       .first();
-    if (!session) throw new Error("Không tìm thấy phòng cho lmsSessionId");
+    if (!session) throw new ConvexError("Không tìm thấy phòng cho lmsSessionId");
     await ctx.db.patch(session._id, {
       attendanceOpenAt: args.openAt,
       lateCutoffMinutes: args.lateCutoffMinutes ?? session.lateCutoffMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
@@ -103,7 +103,7 @@ export const syncRosterFromLms = internalMutation({
       .query("sessions")
       .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
       .first();
-    if (!session) throw new Error("Không tìm thấy phòng cho lmsSessionId");
+    if (!session) throw new ConvexError("Không tìm thấy phòng cho lmsSessionId");
     await replaceRoster(ctx, session._id, args.lmsSessionId, args.roster);
     return { count: args.roster.length };
   },
@@ -123,7 +123,7 @@ export const upsertParticipantFromLms = internalMutation({
       .query("sessions")
       .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
       .first();
-    if (!session) throw new Error("Không tìm thấy phòng cho lmsSessionId");
+    if (!session) throw new ConvexError("Không tìm thấy phòng cho lmsSessionId");
 
     const currentRun = session.currentRun ?? 1;
 
@@ -187,7 +187,7 @@ export const finalizeAttendance = internalMutation({
       .query("sessions")
       .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
       .first();
-    if (!session) throw new Error("Không tìm thấy phòng cho lmsSessionId");
+    if (!session) throw new ConvexError("Không tìm thấy phòng cho lmsSessionId");
 
     const currentRun = session.currentRun ?? 1;
     const roster = await ctx.db

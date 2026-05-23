@@ -1,7 +1,20 @@
 import { httpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
+
+// Helper: extract clean message + status from caught error.
+// ConvexError (thrown từ internal mutation) → message ở .data, dùng 404 nếu nói "Không tìm thấy".
+// Raw Error → message ở .message.
+function errorResponse(e: unknown): { msg: string; status: number } {
+  if (e instanceof ConvexError) {
+    const msg = String(e.data ?? "Lỗi máy chủ");
+    return { msg, status: msg.includes("Không tìm thấy") ? 404 : 400 };
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return { msg, status: 500 };
+}
 
 const http = httpRouter();
 
@@ -105,12 +118,13 @@ http.route({
         roster_count: result.rosterCount,
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // 4xx-style errors (user-fixable) đi vào 400
+      const { msg } = errorResponse(e);
+      // 4xx-style errors (user-fixable) đi vào 400, còn lại 500
       const status =
         msg.includes("không tìm thấy") ||
         msg.includes("chưa được") ||
-        msg.includes("đã bị khoá")
+        msg.includes("đã bị khoá") ||
+        msg.includes("Không tìm thấy")
           ? 400
           : 500;
       return jsonResp({ error: msg }, status);
@@ -144,8 +158,8 @@ http.route({
       });
       return jsonResp({ ok: true, ...result });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+      const { msg, status } = errorResponse(e);
+      return jsonResp({ error: msg }, status);
     }
   }),
 });
@@ -182,8 +196,8 @@ http.route({
       });
       return jsonResp({ ok: true, ...result });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+      const { msg, status } = errorResponse(e);
+      return jsonResp({ error: msg }, status);
     }
   }),
 });
@@ -211,8 +225,8 @@ http.route({
       });
       return jsonResp({ ok: true, ...result });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+      const { msg, status } = errorResponse(e);
+      return jsonResp({ error: msg }, status);
     }
   }),
 });
@@ -240,8 +254,8 @@ http.route({
       });
       return jsonResp({ ok: true, ...result });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+      const { msg, status } = errorResponse(e);
+      return jsonResp({ error: msg }, status);
     }
   }),
 });

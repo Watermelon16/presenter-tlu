@@ -912,7 +912,9 @@ export const getSessionFullExport = query({
       students,
       run: targetRun,
       officialStartAt: session?.officialStartAt ?? null,
+      attendanceOpenAt: session?.attendanceOpenAt ?? null,
       lateThresholdMinutes: session?.lateThresholdMinutes ?? 10,
+      absentAfterMinutes: session?.absentAfterMinutes ?? 50,
     };
   },
 });

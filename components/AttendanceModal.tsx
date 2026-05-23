@@ -48,6 +48,7 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
 
   const [showSettings, setShowSettings] = useState(false);
   const [lateThreshold, setLateThreshold] = useState<number>(10);
+  const [absentAfter, setAbsentAfter] = useState<number>(50);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [lmsSessionId, setLmsSessionId] = useState("");
   const [settingsInitialized, setSettingsInitialized] = useState(false);
@@ -55,6 +56,7 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
   // Init settings từ session khi load
   if (session && !settingsInitialized) {
     setLateThreshold(session.lateThresholdMinutes ?? 10);
+    setAbsentAfter((session as { absentAfterMinutes?: number }).absentAfterMinutes ?? 50);
     setWebhookUrl(session.attendanceWebhookUrl ?? "");
     setLmsSessionId(session.lmsSessionId ?? "");
     setSettingsInitialized(true);
@@ -128,6 +130,7 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
       await updateSettings({
         sessionId,
         lateThresholdMinutes: lateThreshold,
+        absentAfterMinutes: absentAfter,
         attendanceWebhookUrl: webhookUrl.trim() || undefined,
         lmsSessionId: lmsSessionId.trim() || undefined,
       });
@@ -180,14 +183,23 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
             <h2 className="text-lg font-semibold">📋 Điểm danh — {session.title}</h2>
             <p className="text-xs text-zinc-500 mt-0.5">
               {counts.total} SV đã scan ·{" "}
-              {session.officialStartAt ? (
-                <>
-                  Giờ bắt đầu (T₀): <strong>{formatTime(session.officialStartAt)}</strong> · Ngưỡng đi muộn:{" "}
-                  <strong>{session.lateThresholdMinutes ?? 10} phút</strong>
-                </>
-              ) : (
-                "Chưa có SV nào scan — T₀ chưa xác lập"
-              )}
+              {(() => {
+                const s = session as {
+                  attendanceOpenAt?: number;
+                  officialStartAt?: number;
+                  lateThresholdMinutes?: number;
+                  absentAfterMinutes?: number;
+                };
+                const t0 = s.attendanceOpenAt ?? s.officialStartAt;
+                if (!t0) return "Chưa có SV nào scan — T₀ chưa xác lập";
+                return (
+                  <>
+                    Giờ bắt đầu (T₀): <strong>{formatTime(t0)}</strong> · Muộn sau{" "}
+                    <strong>{s.lateThresholdMinutes ?? 10}p</strong>, vắng sau{" "}
+                    <strong>{s.absentAfterMinutes ?? 50}p</strong>
+                  </>
+                );
+              })()}
             </p>
           </div>
           <button
@@ -234,13 +246,29 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
                 <Input
                   type="number"
                   min={0}
-                  max={60}
+                  max={120}
                   value={lateThreshold}
                   onChange={(e) => setLateThreshold(Number(e.target.value) || 0)}
                   className="h-9"
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  SV scan trong {lateThreshold} phút đầu = Có mặt. Sau đó = Đi muộn.
+                  0..{lateThreshold}p = Có mặt · {lateThreshold}..{absentAfter}p = Muộn · &gt;{absentAfter}p = Vắng
+                </p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-zinc-700 block mb-1">
+                  Ngưỡng vắng (phút sau T₀)
+                </label>
+                <Input
+                  type="number"
+                  min={lateThreshold + 1}
+                  max={240}
+                  value={absentAfter}
+                  onChange={(e) => setAbsentAfter(Number(e.target.value) || 0)}
+                  className="h-9"
+                />
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Scan sau {absentAfter} phút → tự đánh dấu Vắng (GV chỉnh sau)
                 </p>
               </div>
               <div>
@@ -377,7 +405,9 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
 
         <div className="px-6 py-3 border-t border-zinc-200 flex items-center justify-between bg-zinc-50 text-xs text-zinc-500">
           <div>
-            Auto-compute: T₀ + {session.lateThresholdMinutes ?? 10}p → muộn. GV bấm icon trạng thái để override.
+            Auto: T₀+{session.lateThresholdMinutes ?? 10}p → muộn ·
+            T₀+{(session as { absentAfterMinutes?: number }).absentAfterMinutes ?? 50}p → vắng.
+            GV bấm icon trạng thái để override.
           </div>
           <Button onClick={onClose} variant="outline" size="sm">
             Đóng

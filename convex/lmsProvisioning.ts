@@ -1,6 +1,6 @@
 import { internalMutation, MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 
 /**
  * Tạo (hoặc reuse) Presenter session từ request của LMS.
@@ -68,15 +68,15 @@ export const createSessionFromLms = internalMutation({
         .first();
     }
     if (!profile) {
-      throw new Error(
+      throw new ConvexError(
         `Không tìm thấy GV với email "${args.hostEmail}" trên Presenter. GV cần đăng nhập Presenter (Google) ít nhất 1 lần, hoặc admin cần set lmsEmail = "${args.hostEmail}" cho user tương ứng.`
       );
     }
     if (profile.status === "banned") {
-      throw new Error(`GV "${args.hostEmail}" đã bị khoá tài khoản trên Presenter`);
+      throw new ConvexError(`GV "${args.hostEmail}" đã bị khoá tài khoản trên Presenter`);
     }
     if (profile.status === "pending") {
-      throw new Error(`GV "${args.hostEmail}" chưa được admin Presenter duyệt`);
+      throw new ConvexError(`GV "${args.hostEmail}" chưa được admin Presenter duyệt`);
     }
 
     // 3. Sinh code phòng — retry nếu collision (rất hiếm với 32^6 ≈ 1B)

@@ -292,6 +292,7 @@ export const updateAttendanceSettings = mutation({
   args: {
     sessionId: v.id("sessions"),
     lateThresholdMinutes: v.optional(v.number()),
+    absentAfterMinutes: v.optional(v.number()),
     officialStartAt: v.optional(v.number()),
     attendanceWebhookUrl: v.optional(v.string()),
     lmsSessionId: v.optional(v.string()),
@@ -299,7 +300,15 @@ export const updateAttendanceSettings = mutation({
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {};
     if (args.lateThresholdMinutes !== undefined) {
-      patch.lateThresholdMinutes = Math.max(0, Math.min(60, args.lateThresholdMinutes));
+      patch.lateThresholdMinutes = Math.max(0, Math.min(120, args.lateThresholdMinutes));
+    }
+    if (args.absentAfterMinutes !== undefined) {
+      patch.absentAfterMinutes = Math.max(0, Math.min(240, args.absentAfterMinutes));
+      // Phải > lateThresholdMinutes
+      const lt = args.lateThresholdMinutes ?? (await ctx.db.get(args.sessionId))?.lateThresholdMinutes ?? 10;
+      if ((patch.absentAfterMinutes as number) <= lt) {
+        throw new ConvexError(`Ngưỡng vắng (${patch.absentAfterMinutes}p) phải lớn hơn ngưỡng đi muộn (${lt}p)`);
+      }
     }
     if (args.officialStartAt !== undefined) {
       patch.officialStartAt = args.officialStartAt;
