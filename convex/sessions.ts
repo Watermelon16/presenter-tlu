@@ -88,6 +88,8 @@ export const listMySessions = query({
         currentRun: s.currentRun ?? 1,
         hasPdf: !!s.pdfStorageId,
         pdfFileName: s.pdfFileName,
+        lmsSessionId: s.lmsSessionId ?? null,
+        className: s.className ?? null,
         stats: {
           activityCount: activities.length,
           participantCount: participants.length,

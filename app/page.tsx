@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { toast } from "sonner";
@@ -49,6 +49,26 @@ export default function CreateRoomPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
+
+  // Phòng LMS đang mở (active + có lmsSessionId)
+  const lmsActiveSessions = (mySessions ?? []).filter(
+    (s) => s.status === "active" && s.lmsSessionId
+  );
+
+  // Auto-redirect: nếu có đúng 1 phòng LMS active vừa tạo <5 phút → mở thẳng
+  // (GV bấm "Tạo phòng giảng" trên LMS xong sang Presenter — không cần thấy form)
+  const autoRedirectFired = useRef(false);
+  useEffect(() => {
+    if (autoRedirectFired.current) return;
+    if (!mySessions) return;
+    const FIVE_MIN = 5 * 60 * 1000;
+    const recent = lmsActiveSessions.filter((s) => Date.now() - s.createdAt < FIVE_MIN);
+    if (recent.length === 1) {
+      autoRedirectFired.current = true;
+      router.replace(`/presenter/${recent[0].code}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mySessions]);
 
   const handleCreateRoom = async () => {
     if (!title.trim()) {
@@ -215,10 +235,53 @@ export default function CreateRoomPage() {
             <p className="text-zinc-600 mt-2">Công cụ tương tác giảng dạy — Đại học Thủy Lợi</p>
           </div>
 
+          {/* ===== Banner: Phòng đã tạo từ LMS đang mở ===== */}
+          {lmsActiveSessions.length > 0 && (
+            <div className="max-w-md mx-auto mb-6">
+              <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-semibold">LMS</span>
+                  <span className="text-sm font-semibold text-emerald-900">
+                    Phòng đã tạo từ LMS — bấm để mở
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {lmsActiveSessions.map((s) => (
+                    <Link
+                      key={s._id}
+                      href={`/presenter/${s.code}`}
+                      className="flex items-center justify-between gap-3 bg-white rounded-xl px-4 py-3 hover:bg-emerald-100/40 transition-colors border border-emerald-200"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-700">{s.code}</span>
+                          <span className="font-medium text-zinc-900 truncate">{s.title}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                          {s.className && <span>Lớp {s.className}</span>}
+                          <span>👥 {s.stats.participantCount}</span>
+                          <span>· {formatDate(s.createdAt)}</span>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white font-medium shrink-0">
+                        Mở →
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+                <p className="text-[11px] text-emerald-700 mt-2 text-center">
+                  Tự động xuất hiện khi bạn bấm "Tạo phòng giảng" trên LMS
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="max-w-md mx-auto">
             <Card>
               <CardHeader>
-                <CardTitle>Tạo phòng mới</CardTitle>
+                <CardTitle>
+                  {lmsActiveSessions.length > 0 ? "Hoặc tạo phòng mới thủ công" : "Tạo phòng mới"}
+                </CardTitle>
                 <CardDescription>
                   Sinh viên sẽ tham gia bằng mã phòng hoặc quét QR
                 </CardDescription>
