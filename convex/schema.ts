@@ -219,6 +219,9 @@ export default defineSchema({
     studentCode: v.optional(v.string()),
     content: v.string(),                   // Nội dung text
     imageUrl: v.optional(v.string()),      // URL ảnh đã upload (Convex storage hoặc external)
+    // imageStorageId — để cleanup storage khi xóa post/session. Posts cũ chỉ
+    // có imageUrl (legacy) → không xóa được storage; posts mới lưu cả 2.
+    imageStorageId: v.optional(v.id("_storage")),
     columnId: v.string(),                  // ID cột (ví dụ: "col1", "understood", ...)
     likes: v.number(),                     // Số lượt like
     status: v.union(v.literal("visible"), v.literal("hidden")),

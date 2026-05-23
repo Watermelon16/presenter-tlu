@@ -288,7 +288,7 @@ export const restartAllActivities = mutation({
         }
       }
 
-      // Xoá board posts (nếu là board)
+      // Xoá board posts (nếu là board) — kèm ảnh storage
       if (activity.type === "board") {
         const posts = await ctx.db
           .query("boardPosts")
@@ -296,6 +296,9 @@ export const restartAllActivities = mutation({
           .collect();
         for (const p of posts) {
           if ((p.run ?? 1) === currentRun) {
+            if (p.imageStorageId) {
+              try { await ctx.storage.delete(p.imageStorageId); } catch { /* ignore */ }
+            }
             await ctx.db.delete(p._id);
             postCount++;
           }
@@ -344,13 +347,16 @@ export const restartActivity = mutation({
       await ctx.db.delete(r._id);
     }
 
-    // Xóa luôn board posts cũ nếu là board
+    // Xóa luôn board posts cũ nếu là board — kèm ảnh storage
     if (activity.type === "board") {
       const posts = await ctx.db
         .query("boardPosts")
         .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
         .collect();
       for (const p of posts) {
+        if (p.imageStorageId) {
+          try { await ctx.storage.delete(p.imageStorageId); } catch { /* ignore */ }
+        }
         await ctx.db.delete(p._id);
       }
     }
@@ -469,6 +475,20 @@ export const deleteActivity = mutation({
         await ctx.storage.delete(activity.config.videoStorageId);
       } catch {
         // ignore nếu file đã bị xóa hoặc không tồn tại
+      }
+    }
+
+    // Nếu là board → cascade xóa boardPosts (+ ảnh storage)
+    if (activity.type === "board") {
+      const posts = await ctx.db
+        .query("boardPosts")
+        .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+        .collect();
+      for (const p of posts) {
+        if (p.imageStorageId) {
+          try { await ctx.storage.delete(p.imageStorageId); } catch { /* ignore */ }
+        }
+        await ctx.db.delete(p._id);
       }
     }
 

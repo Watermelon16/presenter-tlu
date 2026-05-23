@@ -78,6 +78,7 @@ export const createBoardPost = mutation({
       studentCode: args.studentCode,
       content: args.content.trim(),
       imageUrl: finalImageUrl,
+      imageStorageId: args.imageStorageId,  // lưu để cleanup storage khi delete
       columnId: args.columnId,
       likes: 0,
       status: "visible",
@@ -118,6 +119,12 @@ export const setBoardPostStatus = mutation({
 export const deleteBoardPost = mutation({
   args: { postId: v.id("boardPosts") },
   handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    if (!post) return;
+    // Cleanup ảnh khỏi Convex storage nếu có (chỉ posts mới có imageStorageId).
+    if (post.imageStorageId) {
+      try { await ctx.storage.delete(post.imageStorageId); } catch { /* ignore */ }
+    }
     await ctx.db.delete(args.postId);
   },
 });

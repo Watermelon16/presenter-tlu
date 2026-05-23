@@ -319,12 +319,18 @@ export const deleteSessionByLmsId = internalMutation({
       images: 0, rosterCache: 0,
     };
 
-    // 1. Board posts
+    // 1. Board posts (+ ảnh storage)
     const boardPosts = await ctx.db
       .query("boardPosts")
       .filter((q) => q.eq(q.field("sessionId"), session._id))
       .collect();
-    for (const p of boardPosts) { await ctx.db.delete(p._id); counts.boardPosts++; }
+    for (const p of boardPosts) {
+      if (p.imageStorageId) {
+        try { await ctx.storage.delete(p.imageStorageId); counts.images++; } catch { /* ignore */ }
+      }
+      await ctx.db.delete(p._id);
+      counts.boardPosts++;
+    }
 
     // 2. Responses
     const responses = await ctx.db

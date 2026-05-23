@@ -444,14 +444,15 @@ export const deleteSession = mutation({
       rosterCache: 0,
     };
 
-    // 1. Board posts (có ảnh storage)
+    // 1. Board posts (+ ảnh storage)
     const boardPosts = await ctx.db
       .query("boardPosts")
       .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
       .collect();
     for (const p of boardPosts) {
-      // Note: imageUrl là URL public — không có storageId riêng để xóa
-      // Convex storage URLs sẽ orphan nếu không track riêng. Skip for now.
+      if (p.imageStorageId) {
+        try { await ctx.storage.delete(p.imageStorageId); counts.images++; } catch { /* ignore */ }
+      }
       await ctx.db.delete(p._id);
       counts.boardPosts++;
     }

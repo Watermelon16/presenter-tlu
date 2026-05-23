@@ -398,6 +398,9 @@ export const adminWipeAllSessions = mutation({
         .filter((q) => q.eq(q.field("sessionId"), s._id))
         .collect();
       for (const p of posts) {
+        if (p.imageStorageId) {
+          try { await ctx.storage.delete(p.imageStorageId); } catch { /* ignore */ }
+        }
         await ctx.db.delete(p._id);
         counts.boardPosts++;
       }
