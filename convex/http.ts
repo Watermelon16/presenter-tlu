@@ -28,24 +28,38 @@ http.route({
   }),
 });
 
+function checkSecret(req: Request): { ok: true } | { ok: false; res: Response } {
+  const expected = process.env.LMS_PROVISIONING_SECRET;
+  if (!expected) {
+    return { ok: false, res: jsonResp({ error: "Server chưa cấu hình LMS_PROVISIONING_SECRET" }, 500) };
+  }
+  const secret = req.headers.get("x-lms-secret");
+  if (secret !== expected) {
+    return { ok: false, res: jsonResp({ error: "Unauthorized: sai secret" }, 401) };
+  }
+  return { ok: true };
+}
+
+function parseRoster(raw: unknown): Array<{ studentCode: string; fullName: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const r = (item ?? {}) as Record<string, unknown>;
+      return {
+        studentCode: String(r.student_code ?? r.studentCode ?? "").trim(),
+        fullName: String(r.full_name ?? r.fullName ?? r.student_name ?? "").trim(),
+      };
+    })
+    .filter((r) => !!r.studentCode);
+}
+
 http.route({
   path: "/lms/create-room",
   method: "POST",
   handler: httpAction(async (ctx, req) => {
-    // Verify shared secret
-    const expected = process.env.LMS_PROVISIONING_SECRET;
-    if (!expected) {
-      return jsonResp(
-        { error: "Server chưa cấu hình LMS_PROVISIONING_SECRET" },
-        500
-      );
-    }
-    const secret = req.headers.get("x-lms-secret");
-    if (secret !== expected) {
-      return jsonResp({ error: "Unauthorized: sai secret" }, 401);
-    }
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
 
-    // Parse body
     let body: unknown;
     try {
       body = await req.json();
@@ -74,6 +88,8 @@ http.route({
           hostEmail,
           hostName: b.host_name ? String(b.host_name).trim() : undefined,
           className: b.class_name ? String(b.class_name).trim() : undefined,
+          lmsClassId: b.lms_class_id ? String(b.lms_class_id).trim() : undefined,
+          roster: parseRoster(b.roster),
         }
       );
 
@@ -86,6 +102,7 @@ http.route({
         url: `${publicUrl}/room/${result.code}`,
         session_id: result.sessionId,
         created: result.created,
+        roster_count: result.rosterCount,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -97,6 +114,133 @@ http.route({
           ? 400
           : 500;
       return jsonResp({ error: msg }, status);
+    }
+  }),
+});
+
+// ─── /lms/session-opened ───────────────────────────────────────────────────
+http.route({
+  path: "/lms/session-opened",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+http.route({
+  path: "/lms/session-opened",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      const lmsSessionId = String(body.lms_session_id ?? "").trim();
+      if (!lmsSessionId) return jsonResp({ error: "Thiếu lms_session_id" }, 400);
+      const openAt = body.start_time ? new Date(String(body.start_time)).getTime() : Date.now();
+      if (!Number.isFinite(openAt)) return jsonResp({ error: "start_time không hợp lệ" }, 400);
+      const result = await ctx.runMutation(internal.lms.setAttendanceOpenAt, {
+        lmsSessionId,
+        openAt,
+        lateCutoffMinutes: body.late_cutoff_minutes ? Number(body.late_cutoff_minutes) : undefined,
+      });
+      return jsonResp({ ok: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+    }
+  }),
+});
+
+// ─── /lms/student-checkin (SV scan QR LMS → mirror sang Presenter) ─────────
+http.route({
+  path: "/lms/student-checkin",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+http.route({
+  path: "/lms/student-checkin",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      const lmsSessionId = String(body.lms_session_id ?? "").trim();
+      const studentCode = String(body.student_id ?? "").trim();
+      const fullName = String(body.student_name ?? "").trim();
+      if (!lmsSessionId || !studentCode) {
+        return jsonResp({ error: "Thiếu lms_session_id hoặc student_id" }, 400);
+      }
+      const checkinAt = body.checkin_time ? new Date(String(body.checkin_time)).getTime() : Date.now();
+      const statusFromLms = typeof body.status_code === "string" ? body.status_code : undefined;
+
+      const result = await ctx.runMutation(internal.lms.upsertParticipantFromLms, {
+        lmsSessionId,
+        studentCode,
+        fullName: fullName || studentCode,
+        checkinAt,
+        statusFromLms,
+      });
+      return jsonResp({ ok: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+    }
+  }),
+});
+
+// ─── /lms/sync-roster ──────────────────────────────────────────────────────
+http.route({
+  path: "/lms/sync-roster",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+http.route({
+  path: "/lms/sync-roster",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      const lmsSessionId = String(body.lms_session_id ?? "").trim();
+      if (!lmsSessionId) return jsonResp({ error: "Thiếu lms_session_id" }, 400);
+      const roster = parseRoster(body.roster);
+      const result = await ctx.runMutation(internal.lms.syncRosterFromLms, {
+        lmsSessionId,
+        roster,
+      });
+      return jsonResp({ ok: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
+    }
+  }),
+});
+
+// ─── /lms/session-closed ───────────────────────────────────────────────────
+http.route({
+  path: "/lms/session-closed",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+http.route({
+  path: "/lms/session-closed",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      const lmsSessionId = String(body.lms_session_id ?? "").trim();
+      if (!lmsSessionId) return jsonResp({ error: "Thiếu lms_session_id" }, 400);
+      const closedAt = body.closed_at ? new Date(String(body.closed_at)).getTime() : Date.now();
+      const result = await ctx.runMutation(internal.lms.finalizeAttendance, {
+        lmsSessionId,
+        closedAt,
+      });
+      return jsonResp({ ok: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonResp({ error: msg }, msg.includes("Không tìm thấy") ? 404 : 500);
     }
   }),
 });

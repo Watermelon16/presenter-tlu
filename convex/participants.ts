@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { computePresentOrLate } from "./lms";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
 //
@@ -8,12 +9,18 @@ import { internal } from "./_generated/api";
 // - 1 thiết bị (deviceId) chỉ được dùng cho 1 studentCode duy nhất trong 1 phòng
 // - Nếu cố join code khác từ cùng thiết bị → reject (báo "thiết bị đã đăng ký SV khác")
 // - Nếu studentCode đã có nhưng từ thiết bị khác → flag participant để giảng viên kiểm tra
+//
+// LIÊN THÔNG LMS: nếu session.lmsSessionId set:
+// - fullName/className truyền vào bị bỏ qua, lấy từ rosterCache theo studentCode
+// - studentCode không có trong rosterCache → REJECT
+// - Cutoff đi muộn dùng attendanceOpenAt + lateCutoffMinutes (LMS-driven)
+//   fallback sang officialStartAt + lateThresholdMinutes (legacy first-scan)
 export const joinSession = mutation({
   args: {
     code: v.string(),
     studentCode: v.string(),
-    fullName: v.string(),
-    className: v.string(),
+    fullName: v.optional(v.string()),
+    className: v.optional(v.string()),
     deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -31,9 +38,34 @@ export const joinSession = mutation({
     }
 
     const studentCode = args.studentCode.trim();
-    const fullName = args.fullName.trim();
-    const className = args.className.trim();
+    if (!studentCode) {
+      throw new Error("Vui lòng nhập mã sinh viên");
+    }
     const deviceId = args.deviceId?.trim() || undefined;
+    const isLmsLinked = !!session.lmsSessionId;
+
+    // Resolve fullName + className
+    let fullName: string;
+    let className: string;
+    if (isLmsLinked) {
+      const rosterRow = await ctx.db
+        .query("rosterCache")
+        .withIndex("by_session_and_student", (q) =>
+          q.eq("sessionId", session._id).eq("studentCode", studentCode)
+        )
+        .first();
+      if (!rosterRow) {
+        throw new Error("Mã sinh viên không có trong danh sách lớp. Liên hệ giảng viên để kiểm tra.");
+      }
+      fullName = rosterRow.fullName;
+      className = session.className ?? "";
+    } else {
+      fullName = (args.fullName ?? "").trim();
+      className = (args.className ?? "").trim();
+      if (!fullName || !className) {
+        throw new Error("Vui lòng nhập đầy đủ Họ tên và Lớp");
+      }
+    }
 
     // CHECK 1: Thiết bị này đã đăng ký SV khác trong phòng này chưa?
     if (deviceId) {
@@ -60,6 +92,7 @@ export const joinSession = mutation({
       .first();
 
     const currentRun = session.currentRun ?? 1;
+    const joinedAt = Date.now();
 
     // CHECK 2: tìm participant của SV này trong PHIÊN HIỆN TẠI (run filter)
     // Nếu existing là của phiên trước → tạo participant mới cho phiên này
@@ -79,23 +112,31 @@ export const joinSession = mutation({
       }
 
       await ctx.db.patch(existing._id, patch);
-      return { participantId: existing._id, sessionId: session._id, flagged: !!patch.flagged };
+      return {
+        participantId: existing._id,
+        sessionId: session._id,
+        flagged: !!patch.flagged,
+        attendanceStatus: existing.attendanceStatus ?? null,
+        fullName,
+        className,
+      };
     }
 
-    // Tạo bản ghi mới — gắn currentRun + auto-compute attendance status
-    const joinedAt = Date.now();
-
-    // Auto-set officialStartAt nếu chưa có (SV đầu tiên = T0)
+    // Auto-set officialStartAt nếu chưa có và session KHÔNG dùng attendanceOpenAt (LMS-driven)
     let officialStartAt = session.officialStartAt;
-    if (!officialStartAt) {
+    if (!officialStartAt && !session.attendanceOpenAt) {
       officialStartAt = joinedAt;
       await ctx.db.patch(session._id, { officialStartAt: joinedAt });
     }
 
-    // Compute attendance status: ≤ T0+ngưỡng = present, > = late
-    const lateThresholdMs = (session.lateThresholdMinutes ?? 10) * 60 * 1000;
-    const attendanceStatus: "present" | "late" =
-      joinedAt - officialStartAt <= lateThresholdMs ? "present" : "late";
+    // Compute attendance: ưu tiên attendanceOpenAt (LMS), fallback officialStartAt
+    const attendanceStatus = computePresentOrLate(
+      joinedAt,
+      session.attendanceOpenAt,
+      officialStartAt,
+      session.lateCutoffMinutes,
+      session.lateThresholdMinutes
+    );
 
     const participantId = await ctx.db.insert("participants", {
       sessionId: session._id,
@@ -108,9 +149,11 @@ export const joinSession = mutation({
       run: currentRun,
       attendanceStatus,
       attendanceManualOverride: false,
+      checkinAt: joinedAt,
+      checkinSource: isLmsLinked ? "presenter" : undefined,
     });
 
-    // Fire-and-forget webhook sync sang LMS (nếu đã cấu hình)
+    // Fire-and-forget webhook sync sang LMS (nếu đã cấu hình URL trên session)
     if (session.attendanceWebhookUrl && session.lmsSessionId) {
       await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
         webhookUrl: session.attendanceWebhookUrl,
@@ -122,13 +165,16 @@ export const joinSession = mutation({
       });
     }
 
+    const t0 = session.attendanceOpenAt ?? officialStartAt;
     return {
       participantId,
       sessionId: session._id,
       flagged: false,
       attendanceStatus,
-      lateBySeconds: attendanceStatus === "late"
-        ? Math.round((joinedAt - officialStartAt) / 1000)
+      fullName,
+      className,
+      lateBySeconds: attendanceStatus === "late" && t0
+        ? Math.round((joinedAt - t0) / 1000)
         : 0,
     };
   },

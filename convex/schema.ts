@@ -134,6 +134,19 @@ export default defineSchema({
     .index("by_session_and_device", ["sessionId", "deviceId"])
     .index("by_student", ["studentCode"]),
 
+  // Cache roster LMS — populated khi LMS gọi /lms/create-room (hoặc /lms/sync-roster).
+  // Dùng để validate MSV + auto-fill họ tên khi SV join (nếu session liên thông LMS).
+  rosterCache: defineTable({
+    sessionId: v.id("sessions"),
+    lmsSessionId: v.string(),
+    studentCode: v.string(),
+    fullName: v.string(),
+    syncedAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_and_student", ["sessionId", "studentCode"])
+    .index("by_lms_session", ["lmsSessionId"]),
+
   // Hoạt động trong buổi giảng (Poll, Board, Q&A...)
   activities: defineTable({
     sessionId: v.id("sessions"),

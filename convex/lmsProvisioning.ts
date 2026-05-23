@@ -1,4 +1,5 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, MutationCtx } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 /**
@@ -6,6 +7,7 @@ import { v } from "convex/values";
  *
  * Gọi qua HTTP endpoint POST /lms/create-room (xem convex/http.ts).
  * LMS gửi `lms_session_id` (UUID attendance_session) + `host_email` (GV).
+ * Optionally LMS gửi `roster` để Presenter cache validate MSV + auto-fill họ tên.
  * Idempotent: cùng `lms_session_id` → trả về session cũ thay vì tạo mới.
  *
  * Yêu cầu: GV đã từng login Presenter (Google OAuth) → có `userProfiles`
@@ -18,18 +20,35 @@ export const createSessionFromLms = internalMutation({
     hostEmail: v.string(),
     hostName: v.optional(v.string()),
     className: v.optional(v.string()),
+    lmsClassId: v.optional(v.string()),
+    roster: v.optional(
+      v.array(v.object({ studentCode: v.string(), fullName: v.string() }))
+    ),
   },
   handler: async (ctx, args) => {
     // 1. Idempotency: đã có session linked LMS này chưa?
     const existing = await ctx.db
       .query("sessions")
-      .filter((q) => q.eq(q.field("lmsSessionId"), args.lmsSessionId))
+      .withIndex("by_lms_session", (q) =>
+        q.eq("lmsSessionId", args.lmsSessionId)
+      )
       .first();
     if (existing) {
+      // Refresh roster (nếu LMS gửi) — danh sách SV có thể thay đổi
+      if (args.roster) {
+        await replaceRoster(ctx, existing._id, args.lmsSessionId, args.roster);
+      }
+      // Refresh className/lmsClassId nếu LMS gửi
+      const patch: Record<string, unknown> = {};
+      if (args.className !== undefined) patch.className = args.className;
+      if (args.lmsClassId !== undefined) patch.lmsClassId = args.lmsClassId;
+      if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
+
       return {
         sessionId: existing._id,
         code: existing.code,
         created: false,
+        rosterCount: args.roster?.length ?? 0,
       };
     }
 
@@ -82,11 +101,49 @@ export const createSessionFromLms = internalMutation({
       currentRun: 1,
       ownerUserId: profile.userId,
       lmsSessionId: args.lmsSessionId,
+      className: args.className,
+      lmsClassId: args.lmsClassId,
+      hostEmail: emailLower,
     });
 
-    return { sessionId, code, created: true };
+    // 5. Cache roster nếu LMS gửi
+    if (args.roster) {
+      await replaceRoster(ctx, sessionId, args.lmsSessionId, args.roster);
+    }
+
+    return {
+      sessionId,
+      code,
+      created: true,
+      rosterCount: args.roster?.length ?? 0,
+    };
   },
 });
+
+// Helper: thay roster cache (xoá hết rồi insert lại) — exported để dùng lại trong lms.ts
+export async function replaceRoster(
+  ctx: MutationCtx,
+  sessionId: Id<"sessions">,
+  lmsSessionId: string,
+  roster: Array<{ studentCode: string; fullName: string }>
+): Promise<void> {
+  const existing = await ctx.db
+    .query("rosterCache")
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+    .collect();
+  for (const r of existing) await ctx.db.delete(r._id);
+  const now = Date.now();
+  for (const item of roster) {
+    if (!item.studentCode?.trim()) continue;
+    await ctx.db.insert("rosterCache", {
+      sessionId,
+      lmsSessionId,
+      studentCode: item.studentCode.trim(),
+      fullName: item.fullName.trim(),
+      syncedAt: now,
+    });
+  }
+}
 
 // Tạo mã ngắn (chung với sessions.ts — copy để tránh import cross-file in internal)
 function generateShortCode(length = 6): string {

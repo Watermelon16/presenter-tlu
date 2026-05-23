@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,17 @@ function JoinRoomForm() {
   const [className, setClassName] = useState(savedIdentity?.className ?? "");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Tra ngữ cảnh phòng — có liên thông LMS không, MSV có trong roster không
+  const ctxQuery = useQuery(
+    api.lms.peekJoinContext,
+    code.trim().length >= 4
+      ? { code: code.trim().toUpperCase(), studentCode: studentCode.trim() || undefined }
+      : "skip"
+  );
+  const isLmsLinked = ctxQuery?.isLmsLinked ?? false;
+  const lmsRosterMatch = ctxQuery?.rosterMatch ?? null;
+  const lmsClassName = ctxQuery?.className ?? null;
 
   // Sync code state khi codePrefill đổi (hydration timing) — chỉ trên transition từ rỗng → có
   useEffect(() => {
@@ -245,8 +256,16 @@ function JoinRoomForm() {
             )}
 
             <div className="pt-2 border-t">
-              <p className="text-sm font-medium mb-3">Thông tin sinh viên</p>
-              {hasRememberedIdentity && (
+              <p className="text-sm font-medium mb-3">
+                {isLmsLinked ? "Mã sinh viên" : "Thông tin sinh viên"}
+              </p>
+              {isLmsLinked && (
+                <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  Buổi này liên thông với LMS — chỉ cần nhập mã sinh viên,
+                  họ tên và lớp lấy tự động.
+                </div>
+              )}
+              {!isLmsLinked && hasRememberedIdentity && (
                 <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                   ✓ Đã nhớ thông tin từ lần trước. Sửa nếu cần.
                 </div>
@@ -261,27 +280,45 @@ function JoinRoomForm() {
                     onValueChange={setStudentCode}
                     className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
+                  {isLmsLinked && studentCode.trim().length >= 4 && (
+                    <p className="text-xs mt-1.5">
+                      {lmsRosterMatch ? (
+                        <span className="text-emerald-700">
+                          ✓ {lmsRosterMatch.fullName}
+                          {lmsClassName ? ` — Lớp ${lmsClassName}` : ""}
+                        </span>
+                      ) : ctxQuery && ctxQuery.rosterCount !== null ? (
+                        <span className="text-amber-700">
+                          ⚠️ MSV chưa khớp danh sách lớp ({ctxQuery.rosterCount} SV)
+                        </span>
+                      ) : null}
+                    </p>
+                  )}
                 </div>
 
-                <div>
-                  <label className="text-sm text-zinc-600 mb-1.5 block">Họ và tên</label>
-                  <VnInput
-                    placeholder="Trần Văn An"
-                    value={fullName}
-                    onValueChange={setFullName}
-                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
-                  />
-                </div>
+                {!isLmsLinked && (
+                  <>
+                    <div>
+                      <label className="text-sm text-zinc-600 mb-1.5 block">Họ và tên</label>
+                      <VnInput
+                        placeholder="Trần Văn An"
+                        value={fullName}
+                        onValueChange={setFullName}
+                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                      />
+                    </div>
 
-                <div>
-                  <label className="text-sm text-zinc-600 mb-1.5 block">Lớp</label>
-                  <VnInput
-                    placeholder="VD: 65C"
-                    value={className}
-                    onValueChange={setClassName}
-                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
-                  />
-                </div>
+                    <div>
+                      <label className="text-sm text-zinc-600 mb-1.5 block">Lớp</label>
+                      <VnInput
+                        placeholder="VD: 65C"
+                        value={className}
+                        onValueChange={setClassName}
+                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -291,14 +328,21 @@ function JoinRoomForm() {
 
             <Button
               onClick={handleJoin}
-              disabled={isLoading || !code.trim() || !studentCode.trim() || !fullName.trim() || !className.trim()}
+              disabled={
+                isLoading ||
+                !code.trim() ||
+                !studentCode.trim() ||
+                (!isLmsLinked && (!fullName.trim() || !className.trim()))
+              }
               className="w-full h-11 text-base mt-2"
             >
               {isLoading ? "Đang tham gia..." : "Tham gia phòng"}
             </Button>
 
             <p className="text-xs text-center text-zinc-500">
-              Thông tin sẽ được lưu trên máy này. Lần sau quét QR sẽ tự động vào phòng.
+              {isLmsLinked
+                ? "Họ tên và lớp lấy từ danh sách LMS"
+                : "Thông tin sẽ được lưu trên máy này. Lần sau quét QR sẽ tự động vào phòng."}
             </p>
           </CardContent>
         </Card>

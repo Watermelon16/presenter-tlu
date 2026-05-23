@@ -38,6 +38,9 @@ export const sendAttendanceToLms = internalAction({
     }
 
     try {
+      // Map internal status → LMS status code (LMS DB dùng left_early, không phải early_leave)
+      const lmsStatus = args.attendanceStatus === "early_leave" ? "left_early" : args.attendanceStatus;
+
       const res = await fetch(args.webhookUrl, {
         method: "POST",
         headers: {
@@ -48,7 +51,7 @@ export const sendAttendanceToLms = internalAction({
           lms_session_id: args.lmsSessionId,
           student_id: args.studentId,
           student_name: args.studentName,
-          attendance_status: args.attendanceStatus,
+          attendance_status: lmsStatus,
           checkin_time: new Date(args.checkinTime).toISOString(),
         }),
       });
