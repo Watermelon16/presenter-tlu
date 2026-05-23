@@ -7,7 +7,7 @@ import { api } from "./_generated/api";
 export const createActivity = mutation({
   args: {
     sessionId: v.id("sessions"),
-    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa"), v.literal("opentext")),
+    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa"), v.literal("opentext"), v.literal("video")),
     title: v.string(),
     config: v.any(),
     requiresStudentCode: v.boolean(),
@@ -82,7 +82,8 @@ export const startActivity = mutation({
     }
 
     // Gửi push notification cho SV đã subscribe (nếu VAPID đã cấu hình)
-    if (session) {
+    // Video chỉ chiếu trên máy chiếu — không cần báo cho SV
+    if (session && activity.type !== "video") {
       const typeLabel =
         activity.type === "poll"
           ? "Trắc nghiệm"
@@ -151,14 +152,20 @@ export const closeActivity = mutation({
   },
 });
 
-// Lấy hoạt động đang active của session (nếu có)
+// Lấy hoạt động đang active của session (nếu có).
+// Bỏ qua video — video chỉ chiếu trên máy chiếu, SV không xem trên điện thoại.
 export const getActiveActivity = query({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-      .filter((q) => q.eq(q.field("status"), "active"))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "active"),
+          q.neq(q.field("type"), "video")
+        )
+      )
       .first();
   },
 });
@@ -454,6 +461,15 @@ export const deleteActivity = mutation({
 
     for (const r of responses) {
       await ctx.db.delete(r._id);
+    }
+
+    // Nếu là video → xóa file trong storage để khỏi tốn dung lượng
+    if (activity.type === "video" && activity.config?.videoStorageId) {
+      try {
+        await ctx.storage.delete(activity.config.videoStorageId);
+      } catch {
+        // ignore nếu file đã bị xóa hoặc không tồn tại
+      }
     }
 
     await ctx.db.delete(args.activityId);

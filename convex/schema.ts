@@ -157,7 +157,8 @@ export default defineSchema({
       v.literal("rating"),
       v.literal("board"),
       v.literal("qa"),
-      v.literal("opentext")
+      v.literal("opentext"),
+      v.literal("video")
     ),
     title: v.string(),                    // Tiêu đề hoạt động
     config: v.any(),                      // Cấu hình chi tiết (câu hỏi, lựa chọn, thang điểm...)

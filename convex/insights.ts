@@ -94,7 +94,7 @@ function buildInsightsPrompt(data: SessionInsightsData): string {
 
 type BaseStat = {
   id: string;
-  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext";
+  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video";
   title: string;
   slideCue: string | null;
   status: string;

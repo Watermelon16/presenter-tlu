@@ -12,7 +12,7 @@ type PollConfig = {
 
 type ReplayActivity = {
   _id: string;
-  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext";
+  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video";
   title: string;
   status: "draft" | "active" | "closed" | "expired";
   slideCue?: string | null;
@@ -40,8 +40,10 @@ export function ActivityReplay({ items }: { items: ReplayActivity[] }) {
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Chỉ hiện activities đã closed/expired
-  const closed = items.filter((a) => a.status === "closed" || a.status === "expired");
+  // Chỉ hiện activities đã closed/expired. Bỏ video — SV không tham gia.
+  const closed = items.filter(
+    (a) => (a.status === "closed" || a.status === "expired") && a.type !== "video"
+  );
   if (closed.length === 0) return null;
 
   const participated = closed.filter((a) => a.myResponse?.status === "answered" || a.myBoardPosts.length > 0).length;

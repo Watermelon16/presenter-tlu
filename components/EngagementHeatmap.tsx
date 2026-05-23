@@ -33,10 +33,13 @@ export function EngagementHeatmap({
   sessionId,
   open,
   onClose,
+  onDisable,
 }: {
   sessionId: Id<"sessions">;
   open: boolean;
   onClose: () => void;
+  /** Nếu cung cấp: hiện nút "Tắt nhịp lớp" ở footer để GV tắt hẳn tính năng. */
+  onDisable?: () => void;
 }) {
   const data = useQuery(api.engagement.getEngagementHeatmap, open ? { sessionId } : "skip");
 
@@ -176,13 +179,24 @@ export function EngagementHeatmap({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between shrink-0">
-          <div className="text-xs text-zinc-500">
+        <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-zinc-500 flex-1 min-w-0">
             Cập nhật mỗi 10 giây · Dùng để phát hiện lúc lớp drop và điều chỉnh nhịp giảng.
           </div>
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 font-medium">
-            Đóng
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onDisable && (
+              <button
+                onClick={onDisable}
+                className="px-3 py-1.5 text-xs rounded-lg border border-zinc-300 bg-white hover:bg-red-50 hover:border-red-300 hover:text-red-700 text-zinc-600 font-medium transition-colors"
+                title="Tắt hẳn tính năng Nhịp lớp — không tự cập nhật nữa. Có thể bật lại từ topbar."
+              >
+                🔕 Tắt nhịp lớp
+              </button>
+            )}
+            <button onClick={onClose} className="px-4 py-1.5 text-sm rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 font-medium">
+              Đóng
+            </button>
+          </div>
         </div>
       </div>
     </div>
