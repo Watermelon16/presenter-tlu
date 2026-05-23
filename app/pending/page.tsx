@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -10,10 +13,23 @@ import { Logo } from "@/components/Logo";
 
 export default function PendingPage() {
   const { signOut } = useAuthActions();
+  const router = useRouter();
   const me = useQuery(api.userProfiles.me);
 
   const status = me?.profile?.status;
   const isBanned = status === "banned";
+
+  // Auto-redirect khi admin duyệt — useQuery reactive nên sẽ tự cập nhật
+  // status khi admin patch DB, không cần manual refresh.
+  useEffect(() => {
+    if (status === "approved") {
+      toast.success("✓ Admin đã duyệt tài khoản — đang chuyển vào hệ thống...");
+      const t = setTimeout(() => {
+        router.replace("/");
+      }, 1200);
+      return () => clearTimeout(t);
+    }
+  }, [status, router]);
 
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -25,11 +41,19 @@ export default function PendingPage() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>{isBanned ? "🚫 Tài khoản bị khoá" : "⏳ Đang chờ duyệt"}</CardTitle>
+            <CardTitle>
+              {status === "approved"
+                ? "✅ Đã được duyệt"
+                : isBanned
+                  ? "🚫 Tài khoản bị khoá"
+                  : "⏳ Đang chờ duyệt"}
+            </CardTitle>
             <CardDescription>
-              {isBanned
-                ? "Admin đã khoá tài khoản này. Liên hệ admin để biết lý do."
-                : "Tài khoản của bạn đang chờ admin phê duyệt. Vui lòng quay lại sau."}
+              {status === "approved"
+                ? "Admin đã phê duyệt. Đang chuyển vào trang chủ..."
+                : isBanned
+                  ? "Admin đã khoá tài khoản này. Liên hệ admin để biết lý do."
+                  : "Tài khoản của bạn đang chờ admin phê duyệt. Trang này sẽ tự chuyển khi admin duyệt — không cần refresh."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

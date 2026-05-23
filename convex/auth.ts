@@ -3,43 +3,44 @@ import MicrosoftEntraID from "@auth/core/providers/microsoft-entra-id";
 import { convexAuth } from "@convex-dev/auth/server";
 
 /**
- * Convex Auth — Google OAuth + Microsoft Entra ID (Azure AD) cho giảng viên.
+ * Convex Auth — Google OAuth + Microsoft Entra ID cho giảng viên.
  *
- * Google: cho GV có Gmail cá nhân hoặc tài khoản Google Workspace
- * Microsoft: cho GV có email Microsoft 365 (đặc biệt @tlu.edu.vn — TLU dùng MS)
- *
- * Cần env vars (Convex):
- *   AUTH_GOOGLE_ID                       (Google OAuth client ID)
- *   AUTH_GOOGLE_SECRET                   (Google OAuth client secret)
- *   AUTH_MICROSOFT_ENTRA_ID_ID           (MS Entra app client ID)
- *   AUTH_MICROSOFT_ENTRA_ID_SECRET       (MS Entra app client secret)
- *   AUTH_MICROSOFT_ENTRA_ID_ISSUER       (optional, default common = multi-tenant)
- *   JWT_PRIVATE_KEY        (auto-gen từ `npx @convex-dev/auth`)
- *   JWKS                   (auto-gen)
- *   SITE_URL               (vd https://presenter-tlu.vercel.app)
- *
- * Setup Microsoft OAuth: portal.azure.com → App registrations → New
- *   - Supported accounts: "Accounts in any organizational directory (multi-tenant)"
- *   - Redirect URI: <CONVEX_SITE_URL>/api/auth/callback/microsoft-entra-id
- *     vd https://chatty-hornet-671.convex.site/api/auth/callback/microsoft-entra-id
- *   - Lấy Application (client) ID → set AUTH_MICROSOFT_ENTRA_ID_ID
- *   - Certificates & secrets → New client secret → set AUTH_MICROSOFT_ENTRA_ID_SECRET
- *
- * Setup Google OAuth: console.cloud.google.com → APIs & Services → Credentials
- *   - Authorized redirect URI: <CONVEX_SITE_URL>/api/auth/callback/google
- *     vd https://chatty-hornet-671.convex.site/api/auth/callback/google
+ * 2 patches cần thiết cho MS provider:
+ * 1. token_endpoint_auth_method = "client_secret_post" + bỏ PKCE:
+ *    Default config (basic auth + PKCE) bị Microsoft v2.0 single-tenant
+ *    reject ở token exchange. Manual test với client_secret_post (body)
+ *    không PKCE đã prove hoạt động.
+ * 2. Strip null image trong profile(): MS Graph trả image=null khi SV
+ *    không có avatar → schema users.image v.optional(v.string()) reject
+ *    null (chỉ accept undefined). Bỏ image nếu null.
  */
+const msBase = MicrosoftEntraID({
+  issuer:
+    process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER ||
+    "https://login.microsoftonline.com/common/v2.0",
+});
+
+const originalProfile = msBase.profile;
+
+const msProvider = {
+  ...msBase,
+  checks: ["state", "nonce"] as ("state" | "nonce" | "pkce")[],
+  client: {
+    ...(msBase as { client?: Record<string, unknown> }).client,
+    token_endpoint_auth_method: "client_secret_post",
+  },
+  profile: async (profile: Record<string, unknown>, tokens: unknown) => {
+    const result = (await originalProfile?.(
+      profile as never,
+      tokens as never
+    )) as { id?: string; name?: string; email?: string; image?: string | null };
+    if (result?.image === null) {
+      delete result.image;
+    }
+    return result;
+  },
+};
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [
-    Google,
-    MicrosoftEntraID({
-      // tenant common = multi-tenant (chấp nhận tất cả Microsoft accounts:
-      // @tlu.edu.vn, @outlook.com, @hotmail.com, work/school accounts...)
-      // Nếu muốn chỉ chấp nhận @tlu.edu.vn, đặt AUTH_MICROSOFT_ENTRA_ID_ISSUER
-      // = https://login.microsoftonline.com/<TLU_TENANT_ID>/v2.0
-      issuer:
-        process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER ||
-        "https://login.microsoftonline.com/common/v2.0",
-    }),
-  ],
+  providers: [Google, msProvider],
 });

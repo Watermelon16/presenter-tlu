@@ -21,6 +21,7 @@ import type * as insightsData from "../insightsData.js";
 import type * as leaderboard from "../leaderboard.js";
 import type * as lmsProvisioning from "../lmsProvisioning.js";
 import type * as lmsSync from "../lmsSync.js";
+import type * as msDebug from "../msDebug.js";
 import type * as participants from "../participants.js";
 import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   leaderboard: typeof leaderboard;
   lmsProvisioning: typeof lmsProvisioning;
   lmsSync: typeof lmsSync;
+  msDebug: typeof msDebug;
   participants: typeof participants;
   push: typeof push;
   pushSubscriptions: typeof pushSubscriptions;
