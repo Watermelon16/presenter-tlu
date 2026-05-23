@@ -173,12 +173,24 @@ export const upsertParticipantFromLms = internalMutation({
       .first();
 
     let participantId;
-    let created;
+    let created = false;
     if (existing && (existing.run ?? 1) === currentRun) {
       // Nếu GV đã override tay → không đè
       if (existing.attendanceManualOverride) {
         return { participantId: existing._id, skipped: "manual_override" };
       }
+      // First-scan-wins: nếu SV đã quét QR rồi (đã có checkinAt) → giữ nguyên
+      // status + checkinAt của lần đầu. Chỉ update light fields (tên, lớp).
+      // Lý do: lần quét đầu mới là mốc tính có mặt/đi muộn/vắng. Lần quét sau
+      // (nhầm, scan lại để verify, v.v.) không được phép thay đổi trạng thái.
+      if (existing.checkinAt) {
+        await ctx.db.patch(existing._id, {
+          fullName: args.fullName,
+          className: session.className ?? existing.className,
+        });
+        return { participantId: existing._id, skipped: "first_scan_wins" };
+      }
+      // Edge: existing nhưng chưa có checkinAt → treat as first scan
       await ctx.db.patch(existing._id, {
         attendanceStatus: status,
         checkinAt: args.checkinAt,
@@ -188,7 +200,6 @@ export const upsertParticipantFromLms = internalMutation({
         syncedToLmsAt: Date.now(),
       });
       participantId = existing._id;
-      created = false;
     } else {
       participantId = await ctx.db.insert("participants", {
         sessionId: session._id,
@@ -210,6 +221,7 @@ export const upsertParticipantFromLms = internalMutation({
     // Lý do: LMS có thể chưa biết T0 hoặc dùng logic late khác → Presenter là
     // source of truth cho present/late/absent (compute từ checkinAt + T0 + cutoffs).
     // Không gây loop vì LMS không tự push lại khi nhận status update.
+    // (Path rescan đã return ở trên → tới đây chỉ là first scan hoặc edge fix.)
     const lmsSaid = toInternalStatus(args.statusFromLms ?? null);
     if (status !== lmsSaid) {
       await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
