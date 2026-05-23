@@ -7,6 +7,15 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect } from "react";
 import { VnInput, VnTextarea } from "@/components/VnInput";
+import { VoiceInputButton } from "@/components/VoiceInputButton";
+
+// Append voice transcript vào current text (space giữa nếu cần)
+function appendVoice(current: string, voice: string): string {
+  const c = current.trim();
+  const v = voice.trim();
+  if (!c) return v;
+  return `${c} ${v}`;
+}
 import {
   isPushSupported,
   getNotificationPermission,
@@ -1201,20 +1210,25 @@ export default function ParticipantRoomPage() {
                   Nhập từ khóa hoặc ý kiến ngắn (tối đa 30 ký tự)
                 </div>
 
-                <VnInput
-                  type="text"
-                  maxLength={30}
-                  value={wordcloudInput}
-                  onValueChange={setWordcloudInput}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && wordcloudInput.trim()) {
-                      handleSubmit();
-                    }
-                  }}
-                  placeholder="Ví dụ: cao trình đỉnh đập, dung tích hồ, mực nước chết..."
-                  className="w-full px-5 py-4 rounded-2xl border border-zinc-200 text-lg focus:outline-none focus:border-emerald-500"
-                  disabled={isSubmitting || timeLeft === 0}
-                />
+                <div className="flex items-center gap-2">
+                  <VnInput
+                    type="text"
+                    maxLength={30}
+                    value={wordcloudInput}
+                    onValueChange={setWordcloudInput}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && wordcloudInput.trim()) {
+                        handleSubmit();
+                      }
+                    }}
+                    placeholder="Ví dụ: cao trình đỉnh đập, dung tích hồ, mực nước chết..."
+                    className="flex-1 px-5 py-4 rounded-2xl border border-zinc-200 text-lg focus:outline-none focus:border-emerald-500"
+                    disabled={isSubmitting || timeLeft === 0}
+                  />
+                  <VoiceInputButton
+                    onTranscript={(t) => setWordcloudInput(appendVoice(wordcloudInput, t).slice(0, 30))}
+                  />
+                </div>
 
                 {submitError && (
                   <div className="mt-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl">
@@ -1242,15 +1256,23 @@ export default function ParticipantRoomPage() {
                 <div className="mb-3 text-sm text-zinc-500">
                   Câu trả lời ngắn (tối đa 500 ký tự)
                 </div>
-                <VnTextarea
-                  value={wordcloudInput}
-                  onValueChange={setWordcloudInput}
-                  maxLength={500}
-                  rows={4}
-                  placeholder="Nhập câu trả lời của bạn..."
-                  className="w-full px-5 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
-                  disabled={isSubmitting || timeLeft === 0}
-                />
+                <div className="relative">
+                  <VnTextarea
+                    value={wordcloudInput}
+                    onValueChange={setWordcloudInput}
+                    maxLength={500}
+                    rows={4}
+                    placeholder="Nhập câu trả lời (hoặc bấm 🎤 để nói)..."
+                    className="w-full px-5 py-3 pr-14 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
+                    disabled={isSubmitting || timeLeft === 0}
+                  />
+                  <div className="absolute top-2 right-2">
+                    <VoiceInputButton
+                      size="sm"
+                      onTranscript={(t) => setWordcloudInput(appendVoice(wordcloudInput, t).slice(0, 500))}
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-end text-xs text-zinc-500 mt-1">
                   {wordcloudInput.length} / 500
                 </div>
@@ -1376,14 +1398,22 @@ export default function ParticipantRoomPage() {
                   <>
                     <div>
                       <div className="mb-2 text-sm text-zinc-500">Bạn có câu hỏi gì?</div>
-                      <VnTextarea
-                        value={qaQuestionInput}
-                        onValueChange={setQaQuestionInput}
-                        placeholder="Nhập câu hỏi của bạn..."
-                        rows={2}
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
-                        disabled={isSubmitting || timeLeft === 0}
-                      />
+                      <div className="relative">
+                        <VnTextarea
+                          value={qaQuestionInput}
+                          onValueChange={setQaQuestionInput}
+                          placeholder="Nhập câu hỏi (hoặc bấm 🎤 để nói)..."
+                          rows={2}
+                          className="w-full px-4 py-3 pr-12 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
+                          disabled={isSubmitting || timeLeft === 0}
+                        />
+                        <div className="absolute top-2 right-2">
+                          <VoiceInputButton
+                            size="sm"
+                            onTranscript={(t) => setQaQuestionInput(appendVoice(qaQuestionInput, t))}
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     <button
@@ -1586,14 +1616,22 @@ export default function ParticipantRoomPage() {
                           ))}
                         </div>
 
-                        <VnTextarea
-                          value={boardContentInput}
-                          onValueChange={setBoardContentInput}
-                          placeholder="Viết ý tưởng, nhận xét, câu hỏi... (có thể đăng nhiều lần)"
-                          rows={2}
-                          className="w-full px-4 py-3 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
-                          disabled={isSubmitting || timeLeft === 0 || isUploadingImage}
-                        />
+                        <div className="relative">
+                          <VnTextarea
+                            value={boardContentInput}
+                            onValueChange={setBoardContentInput}
+                            placeholder="Viết ý tưởng, nhận xét, câu hỏi... (có thể đăng nhiều lần — hoặc bấm 🎤 để nói)"
+                            rows={2}
+                            className="w-full px-4 py-3 pr-12 rounded-2xl border border-zinc-200 text-base focus:outline-none focus:border-emerald-500 resize-y"
+                            disabled={isSubmitting || timeLeft === 0 || isUploadingImage}
+                          />
+                          <div className="absolute top-2 right-2">
+                            <VoiceInputButton
+                              size="sm"
+                              onTranscript={(t) => setBoardContentInput(appendVoice(boardContentInput, t))}
+                            />
+                          </div>
+                        </div>
 
                         {/* Ảnh đính kèm */}
                         <div>

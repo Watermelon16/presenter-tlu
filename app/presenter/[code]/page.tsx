@@ -17,6 +17,7 @@ import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
 import { LmsAttendancePanel } from "@/components/LmsAttendancePanel";
+import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
@@ -2464,6 +2465,9 @@ function PresenterPage() {
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         {/* ==================== PANEL ĐIỂM DANH LMS (chỉ hiện khi phòng được LMS provision) ==================== */}
         <LmsAttendancePanel code={session.code} />
+
+        {/* ==================== HEATMAP NHỊP LỚP (live engagement per minute) ==================== */}
+        <EngagementHeatmap sessionId={session._id} />
 
         {/* === TỔNG QUAN BUỔI GIẢNG (tạm ẩn để ổn định syntax — sẽ khôi phục + cải thiện ở Results) === */}
         {/* {exportData && ( ... dashboard stats ... )} */}

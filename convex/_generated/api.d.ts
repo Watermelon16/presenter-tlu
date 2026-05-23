@@ -12,6 +12,7 @@ import type * as activities from "../activities.js";
 import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
 import type * as board from "../board.js";
+import type * as engagement from "../engagement.js";
 import type * as files from "../files.js";
 import type * as grading from "../grading.js";
 import type * as gradingData from "../gradingData.js";
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   auth: typeof auth;
   board: typeof board;
+  engagement: typeof engagement;
   files: typeof files;
   grading: typeof grading;
   gradingData: typeof gradingData;
