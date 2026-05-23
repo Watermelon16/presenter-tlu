@@ -5,9 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { VnInput, VnTextarea } from "@/components/VnInput";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
+import { ActivityReplay } from "@/components/ActivityReplay";
 
 // Append voice transcript vào current text (space giữa nếu cần)
 function appendVoice(current: string, voice: string): string {
@@ -892,6 +893,11 @@ export default function ParticipantRoomPage() {
               ✕
             </button>
           </div>
+        )}
+
+        {/* LỊCH SỬ BUỔI — SV xem lại closed activities */}
+        {identity && myHistory && (
+          <ActivityReplay items={(myHistory.items ?? []) as unknown as React.ComponentProps<typeof ActivityReplay>["items"]} />
         )}
 
         {/* THÀNH TÍCH CÁ NHÂN — chỉ hiện khi SV đã có điểm (đã tham gia ≥1 hoạt động) */}

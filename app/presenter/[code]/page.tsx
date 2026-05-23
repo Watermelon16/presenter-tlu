@@ -19,6 +19,7 @@ import { Logo } from "@/components/Logo";
 import { AttendancePanel } from "@/components/AttendancePanel";
 import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
+import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -469,6 +470,7 @@ function PresenterPage() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const [showAiGenModal, setShowAiGenModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
   const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
@@ -2331,6 +2333,15 @@ function PresenterPage() {
                   />
                   <DropdownDivider />
                   <DropdownLabel>Phân tích cuối buổi</DropdownLabel>
+                  <DropdownItem
+                    icon="📋"
+                    label="Tóm tắt buổi (AI)"
+                    hint="3 điểm hiểu rõ + 2-3 nhầm + gợi ý buổi sau"
+                    onClick={() => {
+                      setShowSummaryModal(true);
+                      close();
+                    }}
+                  />
                   <DropdownItem
                     icon="🧠"
                     label="Smart insights"
@@ -4302,6 +4313,14 @@ function PresenterPage() {
           run={session.currentRun ?? 1}
           sessionTitle={session.title}
           onClose={() => setShowInsightsModal(false)}
+        />
+      )}
+
+      {/* Session summary AI modal */}
+      {showSummaryModal && session._id && (
+        <SessionSummaryModal
+          sessionId={session._id}
+          onClose={() => setShowSummaryModal(false)}
         />
       )}
 

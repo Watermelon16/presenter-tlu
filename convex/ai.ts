@@ -1,6 +1,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 
 /**
@@ -745,6 +746,176 @@ export const generateSurveyActivities = action({
       tokenUsage,
       modelUsed: model,
       providerUsed: provider,
+    };
+  },
+});
+
+// ============================================================
+// TÓM TẮT BUỔI GIẢNG (Feature A) — AI đọc engagement + Q&A và rút insight cho GV
+// ============================================================
+
+const SUMMARY_SCHEMA_DESCRIPTION = `Trả về JSON với shape đúng:
+{
+  "overview": "<1-2 câu tóm tắt buổi học>",
+  "understandings": ["<3 điểm SV nắm rõ>", ...],
+  "confusions": ["<2-3 điểm SV còn nhầm/lúng túng>", ...],
+  "notableQuestions": ["<3-5 câu hỏi Q&A đáng chú ý>", ...],
+  "nextSuggestions": ["<2-3 gợi ý cho buổi sau>", ...]
+}
+KHÔNG markdown code fence, KHÔNG text thừa.`;
+
+function buildSummaryPrompt(snapshot: {
+  sessionTitle: string;
+  className: string | null;
+  participantCount: number;
+  attendanceCounts: { present: number; late: number; absent: number; excused: number };
+  activities: Array<{
+    type: string;
+    title: string;
+    slideCue: string | null;
+    responseCount: number;
+    detail: Record<string, unknown>;
+  }>;
+  board: Array<{ content: string; column: string; likes: number }>;
+}): string {
+  const activitiesText = snapshot.activities
+    .map((a, i) => {
+      const detailLines: string[] = [];
+      const d = a.detail as Record<string, unknown>;
+      if (a.type === "poll" && Array.isArray(d.options)) {
+        const opts = d.options as Array<{ text: string; count: number; isCorrect: boolean }>;
+        const total = opts.reduce((s, o) => s + o.count, 0) || 1;
+        detailLines.push(...opts.map((o) => `      - ${o.text}: ${o.count}/${total} (${Math.round((o.count / total) * 100)}%)${o.isCorrect ? " ✓ ĐÁP ÁN ĐÚNG" : ""}`));
+      } else if ((a.type === "wordcloud" || a.type === "opentext") && Array.isArray(d.answers)) {
+        const answers = d.answers as string[];
+        detailLines.push(...answers.slice(0, 20).map((s) => `      - ${s.slice(0, 200)}`));
+      } else if (a.type === "rating") {
+        detailLines.push(`      Avg ${d.average}/${d.max} (n=${d.count})`);
+      } else if (a.type === "qa" && Array.isArray(d.questions)) {
+        const qs = d.questions as Array<{ question: string; upvotes?: number; isAnswered?: boolean }>;
+        detailLines.push(...qs.slice(0, 15).map((q) => `      - "${q.question}" (${q.upvotes ?? 0} 👍${q.isAnswered ? ", đã trả lời" : ""})`));
+      }
+      return `${i + 1}. [${a.type}] "${a.title}"${a.slideCue ? ` @${a.slideCue}` : ""} — ${a.responseCount} câu trả lời\n${detailLines.join("\n")}`;
+    })
+    .join("\n\n");
+
+  const boardText = snapshot.board.length > 0
+    ? snapshot.board.slice(0, 30).map((b) => `   - ${b.content.slice(0, 200)} (👍${b.likes})`).join("\n")
+    : "(không có)";
+
+  return `Bạn là trợ lý giảng viên ĐH Việt Nam. Hãy tóm tắt buổi giảng dưới đây và đưa ra insight để cải thiện chất lượng dạy. Trả lời bằng tiếng Việt, ngắn gọn, thực tế.
+
+THÔNG TIN BUỔI:
+- Tên: ${snapshot.sessionTitle}
+- Lớp: ${snapshot.className ?? "không rõ"}
+- ${snapshot.participantCount} SV tham gia (có mặt ${snapshot.attendanceCounts.present}, muộn ${snapshot.attendanceCounts.late}, vắng ${snapshot.attendanceCounts.absent}, có phép ${snapshot.attendanceCounts.excused})
+
+CÁC HOẠT ĐỘNG TƯƠNG TÁC:
+${activitiesText || "(không có hoạt động nào)"}
+
+BÀI ĐĂNG TRÊN BOARD:
+${boardText}
+
+YÊU CẦU:
+- "overview": 1-2 câu thực tế, không ca ngợi rỗng. Nêu mức độ tham gia + chủ đề chính.
+- "understandings": 3 điểm SV nắm rõ. Dựa vào % đáp án đúng / chất lượng câu trả lời.
+- "confusions": 2-3 điểm SV nhầm/lúng túng. Dựa vào câu sai nhiều, câu trả lời hời hợt, Q&A liên quan.
+- "notableQuestions": 3-5 câu hỏi Q&A đáng chú ý (có thể rephrase cho gọn).
+- "nextSuggestions": 2-3 gợi ý cụ thể buổi sau (ví dụ: "Dành 10p ôn lại khái niệm X vì 60% SV nhầm").
+
+${SUMMARY_SCHEMA_DESCRIPTION}`;
+}
+
+export const summarizeSession = action({
+  args: {
+    sessionId: v.id("sessions"),
+    provider: v.optional(v.string()),
+    model: v.optional(v.string()),
+    apiKey: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    overview: string;
+    understandings: string[];
+    confusions: string[];
+    notableQuestions: string[];
+    nextSuggestions: string[];
+    activityCount: number;
+    responseCount: number;
+    modelUsed: string;
+    providerUsed: Provider;
+    tokenUsage: unknown;
+  }> => {
+    const provider: Provider = ((): Provider => {
+      const p = (args.provider as Provider) ?? "gemini";
+      return p in PROVIDERS ? p : "gemini";
+    })();
+    const defaultModel = ALLOWED_MODELS_BY_PROVIDER[provider][0];
+    const requestedModel = args.model || defaultModel;
+    const allowed = ALLOWED_MODELS_BY_PROVIDER[provider];
+    const model = allowed.includes(requestedModel) ? requestedModel : defaultModel;
+
+    const apiKey = args.apiKey?.trim();
+    if (!apiKey) {
+      throw new ConvexError({
+        code: "no_key",
+        provider, model,
+        message: `Chưa có API key ${provider}. Mở ⚙️ Cài đặt → 🔑 API key để nhập.`,
+      });
+    }
+
+    const snapshot = await ctx.runQuery(internal.sessionSummary.getSessionSnapshot, {
+      sessionId: args.sessionId,
+    });
+    if (!snapshot) {
+      throw new ConvexError({ code: "no_session", provider, model, message: "Không tìm thấy buổi giảng." });
+    }
+    if (snapshot.activities.length === 0 && snapshot.board.length === 0) {
+      throw new ConvexError({
+        code: "no_data",
+        provider, model,
+        message: "Buổi giảng chưa có hoạt động nào để tóm tắt. Hãy chạy ít nhất 1 activity trước.",
+      });
+    }
+
+    const prompt = buildSummaryPrompt(snapshot as Parameters<typeof buildSummaryPrompt>[0]);
+    const { rawText, tokenUsage } =
+      provider === "gemini"
+        ? await callGemini({ apiKey, model, prompt })
+        : await callOpenAICompat({ provider, apiKey, model, prompt });
+
+    let parsed: {
+      overview?: string;
+      understandings?: string[];
+      confusions?: string[];
+      notableQuestions?: string[];
+      nextSuggestions?: string[];
+    };
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      throw new ConvexError({
+        code: "invalid_json",
+        provider, model,
+        message: `${provider} (${model}) trả về JSON không hợp lệ. Thử model khác.`,
+      });
+    }
+
+    const responseCount = snapshot.activities.reduce(
+      (s: number, a: { responseCount: number }) => s + a.responseCount,
+      0
+    );
+
+    return {
+      overview: (parsed.overview ?? "").trim() || "Không có dữ liệu để tóm tắt.",
+      understandings: (parsed.understandings ?? []).map((s) => String(s).trim()).filter(Boolean),
+      confusions: (parsed.confusions ?? []).map((s) => String(s).trim()).filter(Boolean),
+      notableQuestions: (parsed.notableQuestions ?? []).map((s) => String(s).trim()).filter(Boolean),
+      nextSuggestions: (parsed.nextSuggestions ?? []).map((s) => String(s).trim()).filter(Boolean),
+      activityCount: snapshot.activities.length,
+      responseCount,
+      modelUsed: model,
+      providerUsed: provider,
+      tokenUsage,
     };
   },
 });

@@ -167,10 +167,60 @@ export const getMyHistoryInSession = query({
       }
     }
 
+    // Poll breakdown — đếm vote per option để SV xem stats lớp khi activity đã đóng
+    const pollBreakdownByActivity = new Map<string, Record<string, number>>();
+    for (const act of visible.filter((a) => a.type === "poll")) {
+      const counts: Record<string, number> = {};
+      for (const r of allResponses.filter((x) => x.activityId === act._id && x.status === "answered")) {
+        const v = r.value as { selectedOptions?: string[] } | undefined;
+        for (const id of v?.selectedOptions ?? []) {
+          counts[id] = (counts[id] ?? 0) + 1;
+        }
+      }
+      pollBreakdownByActivity.set(act._id as unknown as string, counts);
+    }
+
+    // Wordcloud breakdown — top từ + count
+    const wordcloudBreakdownByActivity = new Map<string, Array<{ word: string; count: number }>>();
+    for (const act of visible.filter((a) => a.type === "wordcloud")) {
+      const wordCounts = new Map<string, number>();
+      for (const r of allResponses.filter((x) => x.activityId === act._id && x.status === "answered")) {
+        const text = typeof r.value === "string" ? r.value : "";
+        const word = text.trim().toLowerCase();
+        if (word) wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
+      }
+      const top = Array.from(wordCounts.entries())
+        .map(([word, count]) => ({ word, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20);
+      wordcloudBreakdownByActivity.set(act._id as unknown as string, top);
+    }
+
+    // Rating breakdown — average
+    const ratingBreakdownByActivity = new Map<string, { average: number; count: number; distribution: Record<number, number> }>();
+    for (const act of visible.filter((a) => a.type === "rating")) {
+      const ratings: number[] = [];
+      const dist: Record<number, number> = {};
+      for (const r of allResponses.filter((x) => x.activityId === act._id && x.status === "answered")) {
+        const v = (r.value as { rating?: number })?.rating;
+        if (typeof v === "number") {
+          ratings.push(v);
+          dist[v] = (dist[v] ?? 0) + 1;
+        }
+      }
+      const avg = ratings.length > 0 ? ratings.reduce((s, n) => s + n, 0) / ratings.length : 0;
+      ratingBreakdownByActivity.set(act._id as unknown as string, {
+        average: Math.round(avg * 10) / 10,
+        count: ratings.length,
+        distribution: dist,
+      });
+    }
+
     const items = visible.map((act) => {
       const myResp = responseByActivity.get(act._id) || null;
       const myBoard = boardPostsByActivity.get(act._id) || [];
       const hasParticipated = !!myResp || myBoard.length > 0;
+      const actIdStr = act._id as unknown as string;
 
       return {
         _id: act._id,
@@ -188,6 +238,10 @@ export const getMyHistoryInSession = query({
         myBoardPosts: myBoard,
         hasParticipated,
         totalAnswers: totalResponseCountByActivity.get(act._id) || 0,
+        // Breakdown để replay (chỉ có giá trị khi activity đã closed/expired)
+        pollBreakdown: pollBreakdownByActivity.get(actIdStr) ?? null,
+        wordcloudTop: wordcloudBreakdownByActivity.get(actIdStr) ?? null,
+        ratingBreakdown: ratingBreakdownByActivity.get(actIdStr) ?? null,
       };
     });
 
