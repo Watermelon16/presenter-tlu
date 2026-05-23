@@ -53,7 +53,18 @@ export default function PendingPage() {
                 ? "Admin đã phê duyệt. Đang chuyển vào trang chủ..."
                 : isBanned
                   ? "Admin đã khoá tài khoản này. Liên hệ admin để biết lý do."
-                  : "Tài khoản của bạn đang chờ admin phê duyệt. Trang này sẽ tự chuyển khi admin duyệt — không cần refresh."}
+                  : (
+                    <>
+                      Tài khoản của bạn đang chờ admin phê duyệt. Trang này sẽ tự chuyển khi admin duyệt — không cần refresh.
+                      <br />
+                      <span className="text-xs">
+                        Để được duyệt nhanh, liên hệ admin{" "}
+                        <a href="mailto:phuonglh43@gmail.com?subject=Duy%E1%BB%87t%20t%C3%A0i%20kho%E1%BA%A3n%20Presenter%20TLU" className="text-emerald-700 underline">
+                          phuonglh43@gmail.com
+                        </a>
+                      </span>
+                    </>
+                  )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
