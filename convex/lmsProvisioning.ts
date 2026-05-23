@@ -33,19 +33,19 @@ export const createSessionFromLms = internalMutation({
       };
     }
 
-    // 2. Tìm Convex user theo email (đã từng login Google Presenter)
-    //    Ưu tiên match lmsEmail (email LMS dùng), fallback sang email chính.
-    //    Lý do: GV có thể login Presenter bằng phuonglh43@gmail.com nhưng
-    //    LMS dùng phuongle@tlu.edu.vn → cần map qua field lmsEmail.
+    // 2. Tìm Convex user theo email
+    //    Ưu tiên match email TRỰC TIẾP (vì giờ GV có thể login Presenter
+    //    bằng @tlu.edu.vn qua MS), fallback sang lmsEmail mapping nếu
+    //    user @tlu.edu.vn chưa từng login Presenter.
     const emailLower = args.hostEmail.trim().toLowerCase();
     let profile = await ctx.db
       .query("userProfiles")
-      .withIndex("by_lms_email", (q) => q.eq("lmsEmail", emailLower))
+      .withIndex("by_email", (q) => q.eq("email", emailLower))
       .first();
     if (!profile) {
       profile = await ctx.db
         .query("userProfiles")
-        .withIndex("by_email", (q) => q.eq("email", emailLower))
+        .withIndex("by_lms_email", (q) => q.eq("lmsEmail", emailLower))
         .first();
     }
     if (!profile) {
