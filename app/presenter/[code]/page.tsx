@@ -368,7 +368,7 @@ function PresenterPage() {
   // Dropdown "⋯ Thêm" trong block Kịch bản
   const [showScriptMenu, setShowScriptMenu] = useState(false);
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
-  // showParticipantsModal removed — panel attendance giờ inline always-visible
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
 
   // Tab cho overlay kết quả (F): "result" = kết quả activity hiện tại, "leaderboard" = bảng thành tích
   const [resultTab, setResultTab] = useState<"result" | "leaderboard">("result");
@@ -2214,12 +2214,9 @@ function PresenterPage() {
           {/* RIGHT: SV count + Dropdowns */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
-              onClick={() => {
-                const el = document.getElementById("attendance-panel");
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
+              onClick={() => setShowAttendanceModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
-              title="Cuộn đến panel điểm danh"
+              title="Mở bảng điểm danh"
             >
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               <span className="text-sm font-medium tabular-nums">{totalParticipants}</span>
@@ -2465,10 +2462,7 @@ function PresenterPage() {
 
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* ==================== PANEL ĐIỂM DANH HỢP NHẤT (cho cả LMS lẫn tự do) ==================== */}
-        <div id="attendance-panel">
-          <AttendancePanel code={session.code} sessionId={session._id} />
-        </div>
+        {/* Panel điểm danh giờ là modal — render ở cuối file, mở qua nút "X SV" trên topbar */}
 
         {/* ==================== HEATMAP NHỊP LỚP (live engagement per minute) ==================== */}
         <EngagementHeatmap sessionId={session._id} />
@@ -3344,7 +3338,15 @@ function PresenterPage() {
           </div>
         )}
 
-        {/* Modal điểm danh đã merge vào <AttendancePanel> inline phía trên */}
+        {/* ==================== MODAL ĐIỂM DANH ==================== */}
+        {session._id && (
+          <AttendancePanel
+            code={session.code}
+            sessionId={session._id}
+            open={showAttendanceModal}
+            onClose={() => setShowAttendanceModal(false)}
+          />
+        )}
 
         {/* ==================== MODAL CẤU HÌNH ĐIỂM BẢNG THÀNH TÍCH ==================== */}
         {showScoringConfig && (

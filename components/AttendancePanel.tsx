@@ -9,13 +9,12 @@ import type { Id } from "@/convex/_generated/dataModel";
 type Status = "present" | "late" | "excused" | "absent" | "early_leave";
 
 const STATUS_META: Record<Status, { label: string; icon: string; cls: string; ring: string }> = {
-  present:    { label: "Có mặt",         icon: "✓", cls: "bg-emerald-100 text-emerald-800 border-emerald-300", ring: "ring-emerald-500" },
-  late:       { label: "Đi muộn",        icon: "⏰", cls: "bg-amber-100 text-amber-800 border-amber-300", ring: "ring-amber-500" },
-  excused:    { label: "Vắng có phép",   icon: "📝", cls: "bg-sky-100 text-sky-800 border-sky-300", ring: "ring-sky-500" },
-  absent:     { label: "Vắng không phép",icon: "✗", cls: "bg-rose-100 text-rose-800 border-rose-300", ring: "ring-rose-500" },
-  early_leave:{ label: "Về sớm",         icon: "↩", cls: "bg-violet-100 text-violet-800 border-violet-300", ring: "ring-violet-500" },
+  present:     { label: "Có mặt",          icon: "✓", cls: "bg-emerald-100 text-emerald-800 border-emerald-300", ring: "ring-emerald-500" },
+  late:        { label: "Đi muộn",         icon: "⏰", cls: "bg-amber-100 text-amber-800 border-amber-300",       ring: "ring-amber-500" },
+  excused:     { label: "Vắng có phép",    icon: "📝", cls: "bg-sky-100 text-sky-800 border-sky-300",             ring: "ring-sky-500" },
+  absent:      { label: "Vắng không phép", icon: "✗", cls: "bg-rose-100 text-rose-800 border-rose-300",           ring: "ring-rose-500" },
+  early_leave: { label: "Về sớm",          icon: "↩", cls: "bg-violet-100 text-violet-800 border-violet-300",     ring: "ring-violet-500" },
 };
-
 const STATUS_ORDER: Status[] = ["present", "late", "excused", "absent", "early_leave"];
 
 function fmtTime(ts: number | null): string {
@@ -43,26 +42,43 @@ function fmtRelative(ts: number, nowMs: number): string {
   return `${Math.floor(m / 60)}h${m % 60}p trước`;
 }
 
-export function AttendancePanel({ code, sessionId }: { code: string; sessionId: Id<"sessions"> }) {
-  const state = useQuery(api.lms.getAttendanceState, { code });
+export function AttendancePanel({
+  code,
+  sessionId,
+  open,
+  onClose,
+}: {
+  code: string;
+  sessionId: Id<"sessions">;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const state = useQuery(api.lms.getAttendanceState, open ? { code } : "skip");
   const setStatus = useMutation(api.participants.setAttendanceStatus);
   const setStatusBulk = useMutation(api.participants.setAttendanceStatusBulk);
   const updateSettings = useMutation(api.participants.updateAttendanceSettings);
 
-  const [expanded, setExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [lateThreshold, setLateThreshold] = useState(10);
   const [absentAfter, setAbsentAfter] = useState(50);
   const [settingsInited, setSettingsInited] = useState(false);
 
-  // Tick mỗi 5s update countdown
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!open) return;
     const id = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(id);
-  }, []);
+  }, [open]);
 
-  // Init settings inputs từ state
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
   useEffect(() => {
     if (state && !settingsInited) {
       setLateThreshold(state.lateCutoffMinutes ?? 10);
@@ -71,27 +87,38 @@ export function AttendancePanel({ code, sessionId }: { code: string; sessionId: 
     }
   }, [state, settingsInited]);
 
-  if (!state) return null;
+  if (!open) return null;
+  if (!state) {
+    return (
+      <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-white rounded-2xl px-6 py-8 text-zinc-500" onClick={(e) => e.stopPropagation()}>
+          Đang tải...
+        </div>
+      </div>
+    );
+  }
 
-  const { counts, rows, isLmsLinked, className, attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt, rosterCount, rosterSyncedAt, sessionTitle } = state;
+  const {
+    counts, rows, isLmsLinked, className,
+    attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt,
+    rosterCount, rosterSyncedAt, sessionTitle,
+  } = state;
   const lateCutoffAt = attendanceOpenAt ? attendanceOpenAt + lateCutoffMinutes * 60_000 : null;
   const absentCutoffAt = attendanceOpenAt ? attendanceOpenAt + absentAfterMinutes * 60_000 : null;
 
-  // Mốc countdown gần nhất chưa qua
   let nextCutoff: { label: string; at: number } | null = null;
   if (lateCutoffAt && now < lateCutoffAt) nextCutoff = { label: "muộn", at: lateCutoffAt };
   else if (absentCutoffAt && now < absentCutoffAt) nextCutoff = { label: "vắng", at: absentCutoffAt };
 
-  // Tổng số (LMS = roster + extra, non-LMS = participants)
   const totalSV = isLmsLinked ? Math.max(rosterCount, rows.length) : rows.length;
+  const scannedSV = rows.filter((r) => r.attendanceStatus != null).length;
 
-  // Counts pills order
   const pills: Array<{ key: keyof typeof counts; label: string; value: number; color: string }> = [
-    { key: "present",       label: "Có mặt",       value: counts.present,       color: "bg-emerald-50 border-emerald-300 text-emerald-800" },
-    { key: "late",          label: "Đi muộn",      value: counts.late,          color: "bg-amber-50 border-amber-300 text-amber-800" },
-    { key: "excused",       label: "Có phép",      value: counts.excused,       color: "bg-sky-50 border-sky-300 text-sky-800" },
-    { key: "absent",        label: "Vắng",         value: counts.absent,        color: "bg-rose-50 border-rose-300 text-rose-800" },
-    { key: "earlyLeave",    label: "Về sớm",       value: counts.earlyLeave,    color: "bg-violet-50 border-violet-300 text-violet-800" },
+    { key: "present",    label: "Có mặt",       value: counts.present,    color: "bg-emerald-50 border-emerald-300 text-emerald-800" },
+    { key: "late",       label: "Đi muộn",      value: counts.late,       color: "bg-amber-50 border-amber-300 text-amber-800" },
+    { key: "excused",    label: "Vắng có phép", value: counts.excused,    color: "bg-sky-50 border-sky-300 text-sky-800" },
+    { key: "absent",     label: "Vắng không phép", value: counts.absent,  color: "bg-rose-50 border-rose-300 text-rose-800" },
+    { key: "earlyLeave", label: "Về sớm",       value: counts.earlyLeave, color: "bg-violet-50 border-violet-300 text-violet-800" },
   ];
   if (isLmsLinked) {
     pills.push({ key: "notCheckedIn", label: "Chưa điểm danh", value: counts.notCheckedIn, color: "bg-zinc-50 border-zinc-300 text-zinc-700" });
@@ -146,10 +173,7 @@ export function AttendancePanel({ code, sessionId }: { code: string; sessionId: 
     rows.forEach((r, i) => {
       const meta = r.attendanceStatus ? STATUS_META[r.attendanceStatus as Status] : null;
       const cells = [
-        i + 1,
-        r.studentCode,
-        r.fullName,
-        r.className,
+        i + 1, r.studentCode, r.fullName, r.className || className || "",
         meta ? meta.label : "(chưa điểm danh)",
         fmtTime(r.checkinAt),
         r.checkinSource === "lms" ? "LMS" : r.checkinSource === "presenter" ? "Presenter" : "—",
@@ -168,202 +192,211 @@ export function AttendancePanel({ code, sessionId }: { code: string; sessionId: 
     toast.success("Đã tải CSV");
   };
 
-  const borderColor = isLmsLinked ? "border-emerald-300" : "border-zinc-200";
-  const bgColor = isLmsLinked ? "bg-emerald-50/40" : "bg-white";
+  const t0Text = attendanceOpenAt
+    ? `Giờ bắt đầu (T₀): ${fmtClock(attendanceOpenAt)} · Muộn sau ${lateCutoffMinutes}p, vắng sau ${absentAfterMinutes}p`
+    : "Chưa có T₀ — đợi LMS bấm 'Bắt đầu' hoặc SV đầu tiên scan";
 
   return (
-    <div className={`rounded-2xl border ${borderColor} ${bgColor}`}>
-      {/* HEADER */}
-      <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          {isLmsLinked && (
-            <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-semibold">LMS</span>
-          )}
-          <span className="text-sm font-semibold text-zinc-900">
-            📋 Điểm danh{className ? ` · Lớp ${className}` : ` · ${sessionTitle}`}
-          </span>
-          {/* Status badge */}
-          {attendanceFinalizedAt ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-medium">ĐÃ ĐÓNG</span>
-          ) : attendanceOpenAt ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
-              T₀ {fmtTime(attendanceOpenAt)}
-            </span>
-          ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
-              CHƯA MỞ
-            </span>
-          )}
-          {/* Cutoff hint + countdown */}
-          {lateCutoffAt && !attendanceFinalizedAt && (
-            <span className="text-[10px] text-zinc-500">
-              · Muộn sau {fmtTime(lateCutoffAt)}{absentCutoffAt && ` · Vắng sau ${fmtTime(absentCutoffAt)}`}
-              {nextCutoff && (
-                <span className="ml-1 text-emerald-700 font-medium">({fmtRemaining(nextCutoff.at, now)} đến mốc {nextCutoff.label})</span>
+    <div
+      className="fixed inset-0 z-[120] bg-black/60 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-6 flex flex-col max-h-[calc(100vh-3rem)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-start justify-between gap-3 shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold flex items-center gap-2 flex-wrap">
+              📋 Điểm danh — {sessionTitle}
+              {isLmsLinked && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-semibold">LMS</span>
               )}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => setShowSettings((v) => !v)} className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50">
-            ⚙️ <span className="hidden sm:inline">Cài đặt</span>
-          </button>
-          <button onClick={exportCsv} className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50">
-            💾 <span className="hidden sm:inline">CSV</span>
-          </button>
-          <button onClick={() => setExpanded((v) => !v)} className="px-2.5 py-1 text-xs rounded-lg bg-zinc-900 text-white hover:bg-zinc-800">
-            {expanded ? "Thu gọn" : `Xem danh sách (${totalSV})`}
-          </button>
-        </div>
-      </div>
-
-      {/* COUNTS PILLS */}
-      <div className="px-4 pb-3 flex flex-wrap gap-2">
-        {pills.map((p) => (
-          <div key={p.key} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${p.color}`}>
-            {p.label}: <span className="font-bold tabular-nums">{p.value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* SETTINGS COLLAPSE */}
-      {showSettings && (
-        <div className="px-4 py-3 border-t border-zinc-200 bg-white/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng đi muộn (phút sau T₀)</label>
-            <input
-              type="number"
-              min={0}
-              max={120}
-              value={lateThreshold}
-              onChange={(e) => setLateThreshold(Number(e.target.value) || 0)}
-              className="w-full h-9 px-3 rounded-md border border-zinc-200 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng vắng (phút sau T₀)</label>
-            <input
-              type="number"
-              min={lateThreshold + 1}
-              max={240}
-              value={absentAfter}
-              onChange={(e) => setAbsentAfter(Number(e.target.value) || 0)}
-              className="w-full h-9 px-3 rounded-md border border-zinc-200 text-sm"
-            />
-          </div>
-          <div className="sm:col-span-2 flex items-center justify-between">
-            <p className="text-[11px] text-zinc-500">
-              0..{lateThreshold}p = Có mặt · {lateThreshold}..{absentAfter}p = Muộn · &gt;{absentAfter}p = Vắng
+              {className && (
+                <span className="text-sm text-zinc-500 font-normal">· Lớp {className}</span>
+              )}
+              {attendanceFinalizedAt && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-medium">ĐÃ ĐÓNG</span>
+              )}
+            </h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              <strong className="text-zinc-700">{scannedSV}/{totalSV}</strong> SV đã scan · {t0Text}
+              {nextCutoff && !attendanceFinalizedAt && (
+                <span className="ml-2 text-emerald-700 font-medium">
+                  ({fmtRemaining(nextCutoff.at, now)} đến mốc {nextCutoff.label})
+                </span>
+              )}
             </p>
-            <button onClick={handleSaveSettings} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500">
-              Lưu
+          </div>
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none shrink-0"
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Counts pills + actions */}
+        <div className="px-6 py-3 border-b border-zinc-100 flex items-center gap-2 flex-wrap bg-zinc-50">
+          {pills.map((p) => (
+            <div key={p.key} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${p.color}`}>
+              {p.label}: <span className="font-bold tabular-nums">{p.value}</span>
+            </div>
+          ))}
+          <div className="ml-auto flex items-center gap-1.5">
+            <button onClick={() => setShowSettings((v) => !v)} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 font-medium">
+              ⚙️ Cài đặt
+            </button>
+            <button onClick={exportCsv} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 font-medium">
+              💾 Tải CSV
             </button>
           </div>
         </div>
-      )}
 
-      {/* EXPANDED — bulk actions + table */}
-      {expanded && (
-        <div className="border-t border-zinc-200 bg-white">
-          {/* Bulk actions */}
-          {counts.notCheckedIn + counts.present + counts.late > 0 && (
-            <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-2 flex-wrap text-xs">
-              <span className="text-zinc-600 font-medium">Đánh tất cả SV chưa scan:</span>
-              {STATUS_ORDER.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleBulkRemaining(s)}
-                  className={`px-2.5 py-1 rounded-md border ${STATUS_META[s].cls} font-medium hover:scale-105 transition-transform`}
-                >
-                  {STATUS_META[s].icon} {STATUS_META[s].label}
-                </button>
-              ))}
+        {/* Settings collapsible */}
+        {showSettings && (
+          <div className="px-6 py-3 border-b border-zinc-100 bg-amber-50/40 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng đi muộn (phút sau T₀)</label>
+              <input
+                type="number"
+                min={0}
+                max={120}
+                value={lateThreshold}
+                onChange={(e) => setLateThreshold(Number(e.target.value) || 0)}
+                className="w-full h-9 px-3 rounded-md border border-zinc-200 text-sm"
+              />
             </div>
-          )}
-
-          {rosterSyncedAt && isLmsLinked && (
-            <div className="px-4 py-1.5 text-[11px] text-zinc-500 bg-zinc-50/60 border-b border-zinc-100">
-              Roster cập nhật từ LMS {fmtRelative(rosterSyncedAt, now)} ({fmtTime(rosterSyncedAt)})
+            <div>
+              <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng vắng (phút sau T₀)</label>
+              <input
+                type="number"
+                min={lateThreshold + 1}
+                max={240}
+                value={absentAfter}
+                onChange={(e) => setAbsentAfter(Number(e.target.value) || 0)}
+                className="w-full h-9 px-3 rounded-md border border-zinc-200 text-sm"
+              />
             </div>
-          )}
+            <div className="sm:col-span-2 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-[11px] text-zinc-500">
+                0..{lateThreshold}p = Có mặt · {lateThreshold}..{absentAfter}p = Muộn · &gt;{absentAfter}p = Vắng
+              </p>
+              <button onClick={handleSaveSettings} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500">
+                Lưu cài đặt
+              </button>
+            </div>
+          </div>
+        )}
 
-          {/* Table */}
-          <div className="max-h-[450px] overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 sticky top-0 z-10">
-                <tr className="text-left text-xs text-zinc-600">
-                  <th className="px-3 py-2 font-medium w-10">#</th>
-                  <th className="px-3 py-2 font-medium">Mã SV</th>
-                  <th className="px-3 py-2 font-medium">Họ tên</th>
-                  {!isLmsLinked && <th className="px-3 py-2 font-medium">Lớp</th>}
-                  <th className="px-3 py-2 font-medium">Giờ scan</th>
-                  {isLmsLinked && <th className="px-3 py-2 font-medium">Nguồn</th>}
-                  <th className="px-3 py-2 font-medium">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {rows.map((r, i) => {
-                  const active = r.attendanceStatus;
-                  return (
-                    <tr key={r.studentCode + (r.participantId ?? "")} className={r.flagged ? "bg-amber-50/60" : ""}>
-                      <td className="px-3 py-2 text-xs text-zinc-400 tabular-nums">{i + 1}</td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        {r.studentCode}
-                        {r.flagged && <span className="ml-1 text-amber-600" title="Không có trong roster LMS">⚠</span>}
+        {/* Bulk actions */}
+        <div className="px-6 py-2.5 border-b border-zinc-100 flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-zinc-600 font-medium shrink-0">Đánh tất cả còn lại:</span>
+          {STATUS_ORDER.map((s) => (
+            <button
+              key={s}
+              onClick={() => handleBulkRemaining(s)}
+              className={`px-3 py-1.5 rounded-lg border ${STATUS_META[s].cls} font-medium hover:opacity-80 transition-opacity`}
+            >
+              {STATUS_META[s].icon} {STATUS_META[s].label}
+            </button>
+          ))}
+        </div>
+
+        {rosterSyncedAt && isLmsLinked && (
+          <div className="px-6 py-1.5 text-[11px] text-zinc-500 bg-zinc-50/60 border-b border-zinc-100">
+            Roster đồng bộ từ LMS {fmtRelative(rosterSyncedAt, now)} ({fmtTime(rosterSyncedAt)})
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-white sticky top-0 z-10 border-b border-zinc-200">
+              <tr className="text-left text-xs text-zinc-500">
+                <th className="px-6 py-2.5 font-medium w-10">#</th>
+                <th className="px-3 py-2.5 font-medium">Mã SV</th>
+                <th className="px-3 py-2.5 font-medium">Họ tên</th>
+                <th className="px-3 py-2.5 font-medium">Lớp</th>
+                <th className="px-3 py-2.5 font-medium">Giờ scan</th>
+                {isLmsLinked && <th className="px-3 py-2.5 font-medium">Nguồn</th>}
+                <th className="px-3 py-2.5 font-medium">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {rows.map((r, i) => {
+                const active = r.attendanceStatus;
+                return (
+                  <tr key={r.studentCode + (r.participantId ?? "")} className={r.flagged ? "bg-amber-50/60" : "hover:bg-zinc-50/60"}>
+                    <td className="px-6 py-2.5 text-xs text-zinc-400 tabular-nums">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-mono text-sm">
+                      {r.studentCode}
+                      {r.flagged && <span className="ml-1 text-amber-600" title="Không có trong roster LMS">⚠</span>}
+                    </td>
+                    <td className="px-3 py-2.5 font-medium">{r.fullName}</td>
+                    <td className="px-3 py-2.5 text-zinc-600">{r.className || className || "—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-500 tabular-nums">{fmtClock(r.checkinAt)}</td>
+                    {isLmsLinked && (
+                      <td className="px-3 py-2.5 text-xs text-zinc-500">
+                        {r.checkinSource === "lms" ? "LMS" : r.checkinSource === "presenter" ? "Presenter" : "—"}
                       </td>
-                      <td className="px-3 py-2">{r.fullName}</td>
-                      {!isLmsLinked && <td className="px-3 py-2 text-zinc-600">{r.className}</td>}
-                      <td className="px-3 py-2 text-xs text-zinc-500">{fmtClock(r.checkinAt)}</td>
-                      {isLmsLinked && (
-                        <td className="px-3 py-2 text-xs text-zinc-500">
-                          {r.checkinSource === "lms" ? "LMS" : r.checkinSource === "presenter" ? "Presenter" : "—"}
-                        </td>
-                      )}
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          {STATUS_ORDER.map((s) => {
-                            const isActive = active === s;
-                            const meta = STATUS_META[s];
-                            return (
-                              <button
-                                key={s}
-                                onClick={() => handleSetStatus(r.participantId, s)}
-                                disabled={!r.participantId}
-                                className={`w-7 h-7 rounded text-xs border transition-all ${
-                                  isActive
-                                    ? `${meta.cls} ring-2 ${meta.ring} font-bold`
-                                    : "border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                                }`}
-                                title={meta.label + (r.attendanceManualOverride && isActive ? " (GV chỉnh tay)" : "")}
-                              >
-                                {meta.icon}
-                              </button>
-                            );
-                          })}
-                          {r.attendanceManualOverride && (
-                            <span className="text-[10px] text-violet-700 ml-1" title="GV chỉnh tay — ko bị auto đè">✏️</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={isLmsLinked ? 6 : 5} className="px-3 py-8 text-center text-sm text-zinc-500">
-                      Chưa có SV nào{isLmsLinked ? " trong roster LMS" : " tham gia"}.
+                    )}
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1">
+                        {STATUS_ORDER.map((s) => {
+                          const isActive = active === s;
+                          const meta = STATUS_META[s];
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => handleSetStatus(r.participantId, s)}
+                              disabled={!r.participantId}
+                              className={`w-7 h-7 rounded text-xs border transition-all ${
+                                isActive
+                                  ? `${meta.cls} ring-2 ${meta.ring} font-bold`
+                                  : "border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                              }`}
+                              title={meta.label + (r.attendanceManualOverride && isActive ? " (GV chỉnh tay)" : "")}
+                            >
+                              {meta.icon}
+                            </button>
+                          );
+                        })}
+                        {r.attendanceManualOverride && (
+                          <span className="text-[10px] text-violet-700 ml-1" title="GV chỉnh tay — auto sẽ không đè">✏️</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="px-4 py-2 text-[11px] text-zinc-500 bg-zinc-50 border-t border-zinc-100">
-            Auto: T₀+{lateCutoffMinutes}p → muộn · T₀+{absentAfterMinutes}p → vắng. Bấm icon trạng thái để override (GV chỉnh tay được ghim).
-          </div>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={isLmsLinked ? 7 : 6} className="px-6 py-12 text-center text-sm text-zinc-500">
+                    Chưa có SV nào{isLmsLinked ? " trong roster LMS" : " tham gia"}.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-zinc-500">
+            Auto: T₀+{lateCutoffMinutes}p → muộn · T₀+{absentAfterMinutes}p → vắng. GV bấm icon trạng thái để override.
+            {isLmsLinked && <span className="ml-1 text-emerald-700 font-medium">· Đồng bộ realtime với LMS</span>}
+          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 text-sm rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 font-medium"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
