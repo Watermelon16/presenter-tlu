@@ -130,17 +130,21 @@ export const upsertParticipantFromLms = internalMutation({
 
     const currentRun = session.currentRun ?? 1;
 
-    // Status: nếu LMS gửi explicit thì tôn trọng, không thì tự tính 3 trạng thái
-    const status: InternalStatus = args.statusFromLms
+    // Status: Presenter là source of truth cho logic late/absent — luôn recompute
+    // từ checkinAt + T₀ + cutoffs. Chỉ trust status_code từ LMS nếu là override
+    // do GV LMS đánh tay (excused / early_leave) — Presenter compute không ra
+    // được 2 trạng thái này.
+    const lmsOverride = args.statusFromLms === "excused" || args.statusFromLms === "left_early" || args.statusFromLms === "early_leave"
       ? toInternalStatus(args.statusFromLms)
-      : computeAttendanceFromCheckin(
-          args.checkinAt,
-          session.attendanceOpenAt,
-          session.officialStartAt,
-          session.lateCutoffMinutes,
-          session.lateThresholdMinutes,
-          session.absentAfterMinutes
-        );
+      : null;
+    const status: InternalStatus = lmsOverride ?? computeAttendanceFromCheckin(
+      args.checkinAt,
+      session.attendanceOpenAt,
+      session.officialStartAt,
+      session.lateCutoffMinutes,
+      session.lateThresholdMinutes,
+      session.absentAfterMinutes
+    );
 
     // Auto-add vào rosterCache nếu chưa có (LMS coi SV này hợp lệ → mitigate stale roster:
     // lần sau SV scan QR Presenter cùng MSV này sẽ pass roster validation luôn).
@@ -299,6 +303,7 @@ export const getAttendanceState = query({
       className: string;
       attendanceStatus: InternalStatus | null;
       attendanceManualOverride: boolean;
+      attendanceNote: string | null;
       checkinSource: "lms" | "presenter" | null;
       checkinAt: number | null;
       flagged: boolean;
@@ -314,6 +319,7 @@ export const getAttendanceState = query({
         className: p?.className ?? session.className ?? "",
         attendanceStatus: (p?.attendanceStatus ?? null) as InternalStatus | null,
         attendanceManualOverride: !!p?.attendanceManualOverride,
+        attendanceNote: p?.attendanceNote ?? null,
         checkinSource: p?.checkinSource ?? null,
         checkinAt: p?.checkinAt ?? p?.joinedAt ?? null,
         flagged: !!p?.flagged,
@@ -329,6 +335,7 @@ export const getAttendanceState = query({
         className: p.className,
         attendanceStatus: (p.attendanceStatus ?? null) as InternalStatus | null,
         attendanceManualOverride: !!p.attendanceManualOverride,
+        attendanceNote: p.attendanceNote ?? null,
         checkinSource: p.checkinSource ?? null,
         checkinAt: p.checkinAt ?? p.joinedAt ?? null,
         flagged: !isLmsLinked ? false : true, // chỉ flag nếu LMS-linked (vì non-LMS không có roster)

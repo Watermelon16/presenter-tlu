@@ -124,13 +124,27 @@ export function AttendancePanel({
     pills.push({ key: "notCheckedIn", label: "Chưa điểm danh", value: counts.notCheckedIn, color: "bg-zinc-50 border-zinc-300 text-zinc-700" });
   }
 
-  const handleSetStatus = async (participantId: string | null, newStatus: Status) => {
+  const handleSetStatus = async (participantId: string | null, newStatus: Status, currentNote?: string | null) => {
     if (!participantId) {
       toast.message("SV chưa có bản ghi điểm danh — đợi SV scan QR trước");
       return;
     }
+    // Yêu cầu ghi chú cho 2 trạng thái cần lý do
+    let note: string | undefined = undefined;
+    if (newStatus === "excused" || newStatus === "early_leave") {
+      const placeholder = newStatus === "excused"
+        ? "VD: nghỉ ốm có giấy, đi công tác đoàn..."
+        : "VD: về sớm vì việc gia đình, lúc 15:30...";
+      const input = window.prompt(
+        `Ghi chú lý do "${STATUS_META[newStatus].label}" (tuỳ chọn):`,
+        currentNote ?? placeholder
+      );
+      if (input === null) return; // user cancel
+      note = input.trim() || undefined;
+    }
     try {
-      await setStatus({ participantId: participantId as Id<"participants">, status: newStatus });
+      await setStatus({ participantId: participantId as Id<"participants">, status: newStatus, note });
+      toast.success(`Đã đánh ${STATUS_META[newStatus].label}${note ? ` · ${note}` : ""}`);
     } catch (e: unknown) {
       const err = e as { data?: string; message?: string };
       toast.error(err.data || err.message || "Lỗi");
@@ -168,13 +182,14 @@ export function AttendancePanel({
   };
 
   const exportCsv = () => {
-    const header = ["STT", "Mã SV", "Họ tên", "Lớp", "Trạng thái", "Giờ scan", "Nguồn"];
+    const header = ["STT", "Mã SV", "Họ tên", "Lớp", "Trạng thái", "Ghi chú", "Giờ scan", "Nguồn"];
     const lines = [header.join(",")];
     rows.forEach((r, i) => {
       const meta = r.attendanceStatus ? STATUS_META[r.attendanceStatus as Status] : null;
       const cells = [
         i + 1, r.studentCode, r.fullName, r.className || className || "",
         meta ? meta.label : "(chưa điểm danh)",
+        r.attendanceNote ?? "",
         fmtTime(r.checkinAt),
         r.checkinSource === "lms" ? "LMS" : r.checkinSource === "presenter" ? "Presenter" : "—",
       ];
@@ -335,7 +350,14 @@ export function AttendancePanel({
                       {r.studentCode}
                       {r.flagged && <span className="ml-1 text-amber-600" title="Không có trong roster LMS">⚠</span>}
                     </td>
-                    <td className="px-3 py-2.5 font-medium">{r.fullName}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="font-medium">{r.fullName}</div>
+                      {r.attendanceNote && (
+                        <div className="text-[11px] text-zinc-500 mt-0.5 italic" title="Ghi chú GV">
+                          📝 {r.attendanceNote}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-zinc-600">{r.className || className || "—"}</td>
                     <td className="px-3 py-2.5 text-xs text-zinc-500 tabular-nums">{fmtClock(r.checkinAt)}</td>
                     {isLmsLinked && (
@@ -351,7 +373,7 @@ export function AttendancePanel({
                           return (
                             <button
                               key={s}
-                              onClick={() => handleSetStatus(r.participantId, s)}
+                              onClick={() => handleSetStatus(r.participantId, s, r.attendanceNote)}
                               disabled={!r.participantId}
                               className={`w-7 h-7 rounded text-xs border transition-all ${
                                 isActive

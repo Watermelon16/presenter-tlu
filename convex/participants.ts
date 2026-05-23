@@ -214,11 +214,27 @@ export const setAttendanceStatus = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const participant = await ctx.db.get(args.participantId);
+    if (!participant) throw new ConvexError("Không tìm thấy SV");
+
     await ctx.db.patch(args.participantId, {
       attendanceStatus: args.status,
       attendanceManualOverride: true,
       attendanceNote: args.note,
     });
+
+    // Push status mới lên LMS nếu session có webhook config
+    const session = await ctx.db.get(participant.sessionId);
+    if (session?.attendanceWebhookUrl && session.lmsSessionId) {
+      await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+        webhookUrl: session.attendanceWebhookUrl,
+        lmsSessionId: session.lmsSessionId,
+        studentId: participant.studentCode,
+        studentName: participant.fullName,
+        attendanceStatus: args.status,
+        checkinTime: participant.checkinAt ?? participant.joinedAt,
+      });
+    }
   },
 });
 
@@ -280,6 +296,20 @@ export const setAttendanceStatusBulk = mutation({
         attendanceStatus: args.status,
         attendanceManualOverride: true,
       });
+      // Push từng SV lên LMS
+      const p = await ctx.db.get(id);
+      if (!p) continue;
+      const session = await ctx.db.get(p.sessionId);
+      if (session?.attendanceWebhookUrl && session.lmsSessionId) {
+        await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+          webhookUrl: session.attendanceWebhookUrl,
+          lmsSessionId: session.lmsSessionId,
+          studentId: p.studentCode,
+          studentName: p.fullName,
+          attendanceStatus: args.status,
+          checkinTime: p.checkinAt ?? p.joinedAt,
+        });
+      }
     }
     return { count: args.participantIds.length };
   },
