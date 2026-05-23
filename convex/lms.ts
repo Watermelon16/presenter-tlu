@@ -340,12 +340,18 @@ export const deleteSessionByLmsId = internalMutation({
       .collect();
     for (const p of participants) { await ctx.db.delete(p._id); counts.participants++; }
 
-    // 4. Activities
+    // 4. Activities (+ video storage files)
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", session._id))
       .collect();
-    for (const a of activities) { await ctx.db.delete(a._id); counts.activities++; }
+    for (const a of activities) {
+      if (a.type === "video" && a.config?.videoStorageId) {
+        try { await ctx.storage.delete(a.config.videoStorageId); counts.images++; } catch { /* ignore */ }
+      }
+      await ctx.db.delete(a._id);
+      counts.activities++;
+    }
 
     // 5. Roster cache
     const roster = await ctx.db

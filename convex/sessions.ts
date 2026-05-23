@@ -476,12 +476,20 @@ export const deleteSession = mutation({
       counts.participants++;
     }
 
-    // 4. Activities
+    // 4. Activities (+ video storage files)
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     for (const a of activities) {
+      if (a.type === "video" && a.config?.videoStorageId) {
+        try {
+          await ctx.storage.delete(a.config.videoStorageId);
+          counts.images++;
+        } catch {
+          // Ignore — file có thể đã bị xóa
+        }
+      }
       await ctx.db.delete(a._id);
       counts.activities++;
     }
