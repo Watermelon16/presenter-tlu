@@ -13,7 +13,7 @@ import { v } from "convex/values";
  */
 export const sendAttendanceToLms = internalAction({
   args: {
-    webhookUrl: v.string(),
+    webhookUrl: v.optional(v.string()),  // Optional — fallback env LMS_SYNC_URL nếu không truyền
     lmsSessionId: v.string(),
     studentId: v.string(),
     studentName: v.string(),
@@ -27,21 +27,24 @@ export const sendAttendanceToLms = internalAction({
     checkinTime: v.number(),
   },
   handler: async (_ctx, args) => {
-    const secret = process.env.LMS_SHARED_SECRET;
+    const secret = process.env.LMS_SHARED_SECRET ?? process.env.LMS_SYNC_SECRET;
     if (!secret) {
-      console.warn("[lmsSync] LMS_SHARED_SECRET chưa cấu hình — bỏ qua webhook");
+      console.warn("[lmsSync] LMS_SHARED_SECRET / LMS_SYNC_SECRET chưa cấu hình — bỏ qua webhook");
       return { sent: false, reason: "no_secret" };
     }
 
-    if (!args.webhookUrl || !args.lmsSessionId) {
-      return { sent: false, reason: "no_config" };
+    // Resolve URL: arg trước, fallback env
+    const url = args.webhookUrl || process.env.LMS_SYNC_URL;
+    if (!url || !args.lmsSessionId) {
+      console.warn("[lmsSync] Không có webhookUrl + không có env LMS_SYNC_URL — bỏ qua");
+      return { sent: false, reason: "no_url" };
     }
 
     try {
       // Map internal status → LMS status code (LMS DB dùng left_early, không phải early_leave)
       const lmsStatus = args.attendanceStatus === "early_leave" ? "left_early" : args.attendanceStatus;
 
-      const res = await fetch(args.webhookUrl, {
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

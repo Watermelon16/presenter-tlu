@@ -155,8 +155,9 @@ export const joinSession = mutation({
       checkinSource: isLmsLinked ? "presenter" : undefined,
     });
 
-    // Fire-and-forget webhook sync sang LMS (nếu đã cấu hình URL trên session)
-    if (session.attendanceWebhookUrl && session.lmsSessionId) {
+    // Fire-and-forget webhook sync sang LMS (nếu session liên thông LMS).
+    // webhookUrl ưu tiên field session, fallback env LMS_SYNC_URL (đã set).
+    if (session.lmsSessionId) {
       await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
         webhookUrl: session.attendanceWebhookUrl,
         lmsSessionId: session.lmsSessionId,
@@ -223,9 +224,9 @@ export const setAttendanceStatus = mutation({
       attendanceNote: args.note,
     });
 
-    // Push status mới lên LMS nếu session có webhook config
+    // Push status mới lên LMS nếu session liên thông LMS
     const session = await ctx.db.get(participant.sessionId);
-    if (session?.attendanceWebhookUrl && session.lmsSessionId) {
+    if (session?.lmsSessionId) {
       await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
         webhookUrl: session.attendanceWebhookUrl,
         lmsSessionId: session.lmsSessionId,
@@ -296,11 +297,11 @@ export const setAttendanceStatusBulk = mutation({
         attendanceStatus: args.status,
         attendanceManualOverride: true,
       });
-      // Push từng SV lên LMS
+      // Push từng SV lên LMS nếu session liên thông LMS
       const p = await ctx.db.get(id);
       if (!p) continue;
       const session = await ctx.db.get(p.sessionId);
-      if (session?.attendanceWebhookUrl && session.lmsSessionId) {
+      if (session?.lmsSessionId) {
         await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
           webhookUrl: session.attendanceWebhookUrl,
           lmsSessionId: session.lmsSessionId,
