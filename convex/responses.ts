@@ -35,8 +35,9 @@ export const submitResponse = mutation({
     }
 
     // Kiểm tra đã trả lời chưa (theo PHIÊN HIỆN TẠI — phiên mới SV được trả lời lại)
-    const sessionForCheck = await ctx.db.get(activity.sessionId);
-    const runForCheck = sessionForCheck?.currentRun ?? 1;
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    const runForCheck = currentRun;
     if (args.studentCode) {
       const existings = await ctx.db
         .query("responses")
@@ -86,10 +87,6 @@ export const submitResponse = mutation({
         });
       }
     }
-
-    // Lấy currentRun từ session
-    const session = await ctx.db.get(activity.sessionId);
-    const currentRun = session?.currentRun ?? 1;
 
     await ctx.db.insert("responses", {
       activityId: args.activityId,
