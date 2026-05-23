@@ -52,6 +52,19 @@ export const submitResponse = mutation({
       if (existingInCurrentRun) {
         throw new Error("Bạn đã trả lời hoạt động này rồi");
       }
+    } else if (args.deviceId && (activity.type === "poll" || activity.type === "rating")) {
+      // Dedupe anonymous: poll/rating tính 1 vote / device để không làm méo kết quả.
+      // Wordcloud/qa/board cho phép multi-submit (brainstorm/Q&A nhiều câu).
+      const allForActivity = await ctx.db
+        .query("responses")
+        .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+        .collect();
+      const dupeInRun = allForActivity.find(
+        (r) => (r.run ?? 1) === runForCheck && r.deviceId === args.deviceId
+      );
+      if (dupeInRun) {
+        throw new Error("Thiết bị này đã gửi câu trả lời rồi");
+      }
     }
 
     // Check deviceId mismatch (chống làm bài hộ)
