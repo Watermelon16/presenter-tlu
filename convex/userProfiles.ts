@@ -423,3 +423,178 @@ export const adminWipeAllSessions = mutation({
     return counts;
   },
 });
+
+/** Lấy size 1 file từ Convex _storage. Trả 0 nếu không tìm thấy. */
+async function getStorageSize(
+  ctx: { db: { system: { get: (id: Id<"_storage">) => Promise<{ size: number } | { size?: undefined } | null> } } },
+  storageId: Id<"_storage">
+): Promise<number> {
+  const meta = await ctx.db.system.get(storageId);
+  return meta && "size" in meta && typeof meta.size === "number" ? meta.size : 0;
+}
+
+/**
+ * Báo cáo dùng tài nguyên Convex (admin-only): file storage + document counts.
+ * Free tier giới hạn: file storage 1 GiB, database storage ~0.5 GiB, function
+ * call 1M/tháng, document ~100k. Query này iterate tất cả docs có storage ref
+ * + gọi ctx.db.system.get(storageId) để lấy size từng file.
+ *
+ * Chi phí: O(N_sessions + N_videoActivities + N_boardImages) reads + getMetadata
+ * calls. Với project nhỏ (<200 sessions) chạy <2s. Project lớn cần cache/paginate.
+ */
+export const getResourceUsage = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Chưa đăng nhập");
+    const me = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!me || me.role !== "admin") throw new Error("Cần quyền admin");
+
+    const sessions = await ctx.db.query("sessions").collect();
+    const activities = await ctx.db.query("activities").collect();
+    const boardPosts = await ctx.db.query("boardPosts").collect();
+    const responses = await ctx.db.query("responses").collect();
+    const participants = await ctx.db.query("participants").collect();
+    const rosters = await ctx.db.query("rosterCache").collect();
+    const pushSubs = await ctx.db.query("pushSubscriptions").collect();
+
+    let pdfBytes = 0, videoBytes = 0, imageBytes = 0;
+    let pdfCount = 0, videoCount = 0, imageCount = 0;
+    type SessBytes = { pdf: number; video: number; image: number; total: number };
+    const sessionBytes = new Map<string, SessBytes>();
+    const bump = (sid: string, key: keyof SessBytes, n: number) => {
+      const cur = sessionBytes.get(sid) ?? { pdf: 0, video: 0, image: 0, total: 0 };
+      cur[key] += n;
+      cur.total += n;
+      sessionBytes.set(sid, cur);
+    };
+
+    for (const s of sessions) {
+      if (s.pdfStorageId) {
+        const size = await getStorageSize(ctx, s.pdfStorageId);
+        if (size > 0) {
+          pdfBytes += size;
+          pdfCount++;
+          bump(s._id, "pdf", size);
+        }
+      }
+    }
+
+    for (const a of activities) {
+      if (a.type === "video" && a.config?.videoStorageId) {
+        const size = await getStorageSize(ctx, a.config.videoStorageId);
+        if (size > 0) {
+          videoBytes += size;
+          videoCount++;
+          bump(a.sessionId, "video", size);
+        }
+      }
+    }
+
+    for (const p of boardPosts) {
+      if (p.imageStorageId) {
+        const size = await getStorageSize(ctx, p.imageStorageId);
+        if (size > 0) {
+          imageBytes += size;
+          imageCount++;
+          bump(p.sessionId, "image", size);
+        }
+      }
+    }
+
+    const sessionMap = new Map(sessions.map((s) => [s._id, s]));
+    const topSessions = Array.from(sessionBytes.entries())
+      .map(([sid, b]) => {
+        const s = sessionMap.get(sid as Id<"sessions">);
+        return s
+          ? {
+              sessionId: sid as Id<"sessions">,
+              code: s.code,
+              title: s.title,
+              createdAt: s.createdAt,
+              status: s.status,
+              ...b,
+            }
+          : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    // Free tier limits
+    const FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024; // 1 GiB
+    const totalFileBytes = pdfBytes + videoBytes + imageBytes;
+
+    return {
+      computedAt: Date.now(),
+      limits: { fileStorageBytes: FREE_FILE_STORAGE_BYTES },
+      file: {
+        totalBytes: totalFileBytes,
+        pdfBytes,
+        videoBytes,
+        imageBytes,
+        pdfCount,
+        videoCount,
+        imageCount,
+        usagePercent: (totalFileBytes / FREE_FILE_STORAGE_BYTES) * 100,
+      },
+      docCounts: {
+        sessions: sessions.length,
+        activities: activities.length,
+        responses: responses.length,
+        boardPosts: boardPosts.length,
+        participants: participants.length,
+        rosterCache: rosters.length,
+        pushSubscriptions: pushSubs.length,
+        total:
+          sessions.length + activities.length + responses.length + boardPosts.length +
+          participants.length + rosters.length + pushSubs.length,
+      },
+      topSessions,
+    };
+  },
+});
+
+/**
+ * Phiên bản nhẹ: chỉ trả % để hiện warning banner cho admin trên home,
+ * không tính top sessions để query nhanh hơn.
+ */
+export const getResourceUsagePercent = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const me = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!me || me.role !== "admin") return null;
+
+    const sessions = await ctx.db.query("sessions").collect();
+    const activities = await ctx.db.query("activities").collect();
+    const boardPosts = await ctx.db.query("boardPosts").collect();
+
+    let totalBytes = 0;
+    for (const s of sessions) {
+      if (s.pdfStorageId) totalBytes += await getStorageSize(ctx, s.pdfStorageId);
+    }
+    for (const a of activities) {
+      if (a.type === "video" && a.config?.videoStorageId) {
+        totalBytes += await getStorageSize(ctx, a.config.videoStorageId);
+      }
+    }
+    for (const p of boardPosts) {
+      if (p.imageStorageId) totalBytes += await getStorageSize(ctx, p.imageStorageId);
+    }
+
+    const FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024;
+    return {
+      totalBytes,
+      limitBytes: FREE_FILE_STORAGE_BYTES,
+      usagePercent: (totalBytes / FREE_FILE_STORAGE_BYTES) * 100,
+    };
+  },
+});

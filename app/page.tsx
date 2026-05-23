@@ -23,6 +23,8 @@ export default function CreateRoomPage() {
   const mySessions = useQuery(api.sessions.listMySessions);
   const createSession = useMutation(api.sessions.createSession);
   const deleteSession = useMutation(api.sessions.deleteSession);
+  // Cảnh báo storage (admin-only — query trả null cho non-admin, không gọi vô ích)
+  const resourcePct = useQuery(api.userProfiles.getResourceUsagePercent);
 
   const [title, setTitle] = useState("");
   const [hostName, setHostName] = useState("");
@@ -225,6 +227,36 @@ export default function CreateRoomPage() {
 
       <div className="flex items-start justify-center p-6">
         <div className="w-full max-w-2xl">
+          {/* ===== Cảnh báo storage (admin only) ===== */}
+          {resourcePct && resourcePct.usagePercent >= 80 && (
+            <div className={`mb-4 rounded-2xl border-2 p-4 ${
+              resourcePct.usagePercent >= 95
+                ? "border-red-400 bg-red-50"
+                : "border-amber-400 bg-amber-50"
+            }`}>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl shrink-0">
+                  {resourcePct.usagePercent >= 95 ? "🚨" : "⚠️"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className={`font-semibold ${
+                    resourcePct.usagePercent >= 95 ? "text-red-900" : "text-amber-900"
+                  }`}>
+                    {resourcePct.usagePercent >= 95
+                      ? "Sắp hết quota file storage của Convex free tier!"
+                      : "File storage Convex đã dùng nhiều — nên dọn dẹp"}
+                  </div>
+                  <div className="text-xs text-zinc-700 mt-1">
+                    Đã dùng <strong>{(resourcePct.totalBytes / (1024 * 1024)).toFixed(1)} MB</strong> /
+                    {" "}{(resourcePct.limitBytes / (1024 * 1024 * 1024)).toFixed(0)} GiB
+                    {" "}(<strong>{resourcePct.usagePercent.toFixed(1)}%</strong>).
+                    Vào <Link href="/admin" className="underline font-semibold">trang Admin</Link> để xem chi tiết + xóa buổi tốn storage.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="text-center mb-8">
             <div className="flex justify-center mb-3">
               <Logo size="xl" showText={false} href={null} />
