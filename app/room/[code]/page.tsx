@@ -187,39 +187,29 @@ export default function ParticipantRoomPage() {
       return;
     }
 
-    // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây
-    // URL dạng (đầy đủ): /room/CODE?from_lms=1&sid=2351150001&name=Trần%20Văn%20An&class=65C
-    // Minimal: /room/CODE?sid=2351150001  — backend tự lookup roster nếu phòng LMS-linked
-    // LMS đã verify roster, attendance đã ghi sang LMS → Presenter chỉ cần auto-join
+    // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây.
+    // Bất kỳ URL nào có ?sid=<MSV> đều được coi là "đăng nhập tự động".
+    // - Phòng LMS-linked: backend lookup roster → resolve fullName/className
+    // - Phòng tự do (legacy): backend cần fullName/className → fail nếu thiếu
+    //   → fallback hiện form pre-fill MSV để SV chỉ gõ thêm 2 trường.
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const sid = params.get("sid")?.trim();
       const name = params.get("name")?.trim();
       const cls = params.get("class")?.trim();
-      const fromLms = params.get("from_lms") === "1";
-      // Auto-join khi: có sid (MSV). Name+class optional (backend resolve từ roster cho phòng LMS).
-      // Trigger qua `from_lms=1` HOẶC chỉ cần ?sid= (cho phép LMS link tối giản).
-      if (sid && (fromLms || !name)) {
-        const lmsIdentity: StudentIdentity = {
-          studentCode: sid,
-          fullName: name || sid,  // backend sẽ override fullName từ roster nếu LMS-linked
-          className: cls || "—",
-        };
+      if (sid) {
         joinSession({
           code: upperCode,
-          studentCode: lmsIdentity.studentCode,
-          // KHÔNG truyền fullName/className cho phòng LMS — để backend lookup roster.
-          // Nếu phòng tự do (legacy non-LMS) thì name + class bắt buộc → ko auto-join trừ khi đủ.
+          studentCode: sid,
           fullName: name || undefined,
           className: cls || undefined,
           deviceId: getOrCreateDeviceId(),
         })
           .then((result) => {
-            // Backend trả về fullName/className đã resolved (LMS roster hoặc giá trị legacy)
             const resolved: StudentIdentity = {
               studentCode: sid,
-              fullName: result.fullName ?? lmsIdentity.fullName,
-              className: result.className ?? lmsIdentity.className,
+              fullName: result.fullName ?? name ?? sid,
+              className: result.className ?? cls ?? "—",
             };
             localStorage.setItem(`student_${upperCode}`, JSON.stringify(resolved));
             localStorage.setItem("student_identity_global", JSON.stringify(resolved));
@@ -231,13 +221,14 @@ export default function ParticipantRoomPage() {
           })
           .catch((err: unknown) => {
             const e = err as { data?: string; message?: string };
-            const msg = e.data || e.message || "Không thể vào phòng";
-            toast.error(`Lỗi vào phòng: ${msg}`);
+            const msg = e.data || e.message || "Không thể tự động vào phòng";
+            // Fallback: pre-fill MSV vào form để SV chỉ gõ thêm họ tên + lớp (nếu phòng tự do)
+            setStudentCodeInput(sid);
+            if (name) setFullNameInput(name);
+            if (cls) setClassNameInput(cls);
+            toast.error(`Tự động vào phòng lỗi: ${msg}. Vui lòng bổ sung thông tin.`);
           });
         return;
-      }
-      if (fromLms && !sid) {
-        console.warn("[Presenter] from_lms=1 nhưng thiếu sid:", { name, cls });
       }
     }
 
