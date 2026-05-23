@@ -188,51 +188,56 @@ export default function ParticipantRoomPage() {
     }
 
     // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây
-    // URL dạng: /room/CODE?from_lms=1&sid=2351150001&name=Trần%20Văn%20An&class=65C
+    // URL dạng (đầy đủ): /room/CODE?from_lms=1&sid=2351150001&name=Trần%20Văn%20An&class=65C
+    // Minimal: /room/CODE?sid=2351150001  — backend tự lookup roster nếu phòng LMS-linked
     // LMS đã verify roster, attendance đã ghi sang LMS → Presenter chỉ cần auto-join
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("from_lms") === "1") {
-        const sid = params.get("sid")?.trim();
-        const name = params.get("name")?.trim();
-        const cls = params.get("class")?.trim();
-        // Relaxed: sid + name là tối thiểu. Class có thể thiếu (LMS đôi khi
-        // không pass) → default "—" để vẫn auto-join thay vì bắt SV nhập lại.
-        if (sid && name) {
-          const lmsIdentity: StudentIdentity = {
-            studentCode: sid,
-            fullName: name,
-            className: cls || "—",
-          };
-          joinSession({
-            code: upperCode,
-            studentCode: lmsIdentity.studentCode,
-            fullName: lmsIdentity.fullName,
-            className: lmsIdentity.className,
-            deviceId: getOrCreateDeviceId(),
+      const sid = params.get("sid")?.trim();
+      const name = params.get("name")?.trim();
+      const cls = params.get("class")?.trim();
+      const fromLms = params.get("from_lms") === "1";
+      // Auto-join khi: có sid (MSV). Name+class optional (backend resolve từ roster cho phòng LMS).
+      // Trigger qua `from_lms=1` HOẶC chỉ cần ?sid= (cho phép LMS link tối giản).
+      if (sid && (fromLms || !name)) {
+        const lmsIdentity: StudentIdentity = {
+          studentCode: sid,
+          fullName: name || sid,  // backend sẽ override fullName từ roster nếu LMS-linked
+          className: cls || "—",
+        };
+        joinSession({
+          code: upperCode,
+          studentCode: lmsIdentity.studentCode,
+          // KHÔNG truyền fullName/className cho phòng LMS — để backend lookup roster.
+          // Nếu phòng tự do (legacy non-LMS) thì name + class bắt buộc → ko auto-join trừ khi đủ.
+          fullName: name || undefined,
+          className: cls || undefined,
+          deviceId: getOrCreateDeviceId(),
+        })
+          .then((result) => {
+            // Backend trả về fullName/className đã resolved (LMS roster hoặc giá trị legacy)
+            const resolved: StudentIdentity = {
+              studentCode: sid,
+              fullName: result.fullName ?? lmsIdentity.fullName,
+              className: result.className ?? lmsIdentity.className,
+            };
+            localStorage.setItem(`student_${upperCode}`, JSON.stringify(resolved));
+            localStorage.setItem("student_identity_global", JSON.stringify(resolved));
+            localStorage.setItem("last_joined_code", upperCode);
+            setIdentity(resolved);
+            toast.success(`✓ Chào ${resolved.fullName} — đã vào phòng`, { duration: 4000 });
+            // Dọn URL để không lộ query params khi SV share screenshot
+            window.history.replaceState({}, "", window.location.pathname);
           })
-            .then(() => {
-              localStorage.setItem(`student_${upperCode}`, JSON.stringify(lmsIdentity));
-              localStorage.setItem("student_identity_global", JSON.stringify(lmsIdentity));
-              localStorage.setItem("last_joined_code", upperCode);
-              setIdentity(lmsIdentity);
-              toast.success(`✓ Chào ${lmsIdentity.fullName} — đã chuyển từ LMS`, { duration: 4000 });
-              // Dọn URL để không lộ query params khi SV share screenshot
-              window.history.replaceState({}, "", window.location.pathname);
-            })
-            .catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : "Không thể vào phòng";
-              toast.error(`Lỗi vào phòng từ LMS: ${msg}`);
-            });
-          return;
-        }
-        // Có from_lms=1 nhưng thiếu sid/name → có thể là URL bị cắt
-        // hoặc Lovable chưa pass đúng. Log + báo để debug.
-        console.warn("[Presenter] from_lms=1 nhưng thiếu params:", {
-          sid: params.get("sid"),
-          name: params.get("name"),
-          class: params.get("class"),
-        });
+          .catch((err: unknown) => {
+            const e = err as { data?: string; message?: string };
+            const msg = e.data || e.message || "Không thể vào phòng";
+            toast.error(`Lỗi vào phòng: ${msg}`);
+          });
+        return;
+      }
+      if (fromLms && !sid) {
+        console.warn("[Presenter] from_lms=1 nhưng thiếu sid:", { name, cls });
       }
     }
 
