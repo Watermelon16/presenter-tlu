@@ -140,6 +140,7 @@ http.route({
         lmsSessionId,
         openAt,
         lateCutoffMinutes: body.late_cutoff_minutes ? Number(body.late_cutoff_minutes) : undefined,
+        absentAfterMinutes: body.absent_after_minutes ? Number(body.absent_after_minutes) : undefined,
       });
       return jsonResp({ ok: true, ...result });
     } catch (e) {

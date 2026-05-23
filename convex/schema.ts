@@ -81,7 +81,8 @@ export default defineSchema({
 
     // Backward-compat: fields từ nhánh main LMS integration (sẽ merge logic trong Phase 2)
     attendanceOpenAt: v.optional(v.number()),
-    lateCutoffMinutes: v.optional(v.number()),
+    lateCutoffMinutes: v.optional(v.number()),   // 10 — sau ngưỡng này = late
+    absentAfterMinutes: v.optional(v.number()),  // 50 — sau ngưỡng này = absent
     attendanceFinalizedAt: v.optional(v.number()),
     className: v.optional(v.string()),
     hostEmail: v.optional(v.string()),

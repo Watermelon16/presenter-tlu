@@ -26,8 +26,9 @@ export function LmsAttendancePanel({ code }: { code: string }) {
 
   if (!state || !state.isLmsLinked) return null;
 
-  const { counts, rows, rosterCount, className, attendanceOpenAt, lateCutoffMinutes, attendanceFinalizedAt } = state;
+  const { counts, rows, rosterCount, className, attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt } = state;
   const lateCutoffAt = attendanceOpenAt ? attendanceOpenAt + lateCutoffMinutes * 60_000 : null;
+  const absentCutoffAt = attendanceOpenAt ? attendanceOpenAt + absentAfterMinutes * 60_000 : null;
 
   return (
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 px-4 py-3">
@@ -51,6 +52,9 @@ export function LmsAttendancePanel({ code }: { code: string }) {
           {lateCutoffAt && !attendanceFinalizedAt && (
             <span className="text-[10px] text-zinc-500">
               Muộn sau {formatTime(lateCutoffAt)}
+              {absentCutoffAt && (
+                <> · Vắng sau {formatTime(absentCutoffAt)}</>
+              )}
             </span>
           )}
         </div>

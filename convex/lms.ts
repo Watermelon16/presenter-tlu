@@ -27,7 +27,33 @@ export function toLmsStatus(internal: InternalStatus): LmsStatus {
 }
 
 const DEFAULT_LATE_CUTOFF_MINUTES = 10;
+const DEFAULT_ABSENT_AFTER_MINUTES = 50;
 
+// Tính trạng thái điểm danh dựa vào lúc check-in:
+//   0..lateCutoff phút       → present
+//   lateCutoff..absentAfter  → late
+//   > absentAfter            → absent (auto; GV có thể chỉnh excused/late sau)
+export function computeAttendanceFromCheckin(
+  checkinAt: number,
+  openAt: number | undefined,
+  fallbackStartAt: number | undefined,
+  lateCutoffMinutes: number | undefined,
+  fallbackThresholdMinutes: number | undefined,
+  absentAfterMinutes: number | undefined
+): "present" | "late" | "absent" {
+  // Ưu tiên attendanceOpenAt (LMS-driven); fallback officialStartAt (auto từ SV đầu)
+  const t0 = openAt ?? fallbackStartAt;
+  if (!t0) return "present";
+  const lateMin = lateCutoffMinutes ?? fallbackThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES;
+  const absMin = absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES;
+  const lateCutoff = t0 + lateMin * 60_000;
+  const absentCutoff = t0 + absMin * 60_000;
+  if (checkinAt > absentCutoff) return "absent";
+  if (checkinAt > lateCutoff) return "late";
+  return "present";
+}
+
+// Backward-compat alias — giữ tên cũ trong khi đang dùng ở nơi khác
 export function computePresentOrLate(
   checkinAt: number,
   openAt: number | undefined,
@@ -35,12 +61,12 @@ export function computePresentOrLate(
   cutoffMinutes: number | undefined,
   fallbackThresholdMinutes: number | undefined
 ): "present" | "late" {
-  // Ưu tiên attendanceOpenAt (LMS-driven); fallback officialStartAt (auto từ SV đầu)
-  const t0 = openAt ?? fallbackStartAt;
-  if (!t0) return "present";
-  const cutoffMin = cutoffMinutes ?? fallbackThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES;
-  const cutoff = t0 + cutoffMin * 60_000;
-  return checkinAt > cutoff ? "late" : "present";
+  const r = computeAttendanceFromCheckin(
+    checkinAt, openAt, fallbackStartAt,
+    cutoffMinutes, fallbackThresholdMinutes,
+    undefined  // không enforce absent cutoff khi gọi qua alias cũ
+  );
+  return r === "absent" ? "late" : r;
 }
 
 // ─── Internal: LMS gọi "Bắt đầu buổi" ──────────────────────────────────────
@@ -49,6 +75,7 @@ export const setAttendanceOpenAt = internalMutation({
     lmsSessionId: v.string(),
     openAt: v.number(),
     lateCutoffMinutes: v.optional(v.number()),
+    absentAfterMinutes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const session = await ctx.db
@@ -59,6 +86,7 @@ export const setAttendanceOpenAt = internalMutation({
     await ctx.db.patch(session._id, {
       attendanceOpenAt: args.openAt,
       lateCutoffMinutes: args.lateCutoffMinutes ?? session.lateCutoffMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
+      absentAfterMinutes: args.absentAfterMinutes ?? session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
     });
     return { sessionId: session._id, code: session.code };
   },
@@ -99,15 +127,16 @@ export const upsertParticipantFromLms = internalMutation({
 
     const currentRun = session.currentRun ?? 1;
 
-    // Status: nếu LMS gửi explicit thì tôn trọng, không thì tự tính
+    // Status: nếu LMS gửi explicit thì tôn trọng, không thì tự tính 3 trạng thái
     const status: InternalStatus = args.statusFromLms
       ? toInternalStatus(args.statusFromLms)
-      : computePresentOrLate(
+      : computeAttendanceFromCheckin(
           args.checkinAt,
           session.attendanceOpenAt,
           session.officialStartAt,
           session.lateCutoffMinutes,
-          session.lateThresholdMinutes
+          session.lateThresholdMinutes,
+          session.absentAfterMinutes
         );
 
     const existing = await ctx.db
@@ -236,6 +265,7 @@ export const getAttendanceState = query({
         isLmsLinked: false as const,
         attendanceOpenAt: null,
         lateCutoffMinutes: DEFAULT_LATE_CUTOFF_MINUTES,
+        absentAfterMinutes: DEFAULT_ABSENT_AFTER_MINUTES,
         attendanceFinalizedAt: null,
         className: null,
         rosterCount: 0,
@@ -299,6 +329,7 @@ export const getAttendanceState = query({
       isLmsLinked: true as const,
       attendanceOpenAt: session.attendanceOpenAt ?? session.officialStartAt ?? null,
       lateCutoffMinutes: session.lateCutoffMinutes ?? session.lateThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
+      absentAfterMinutes: session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
       attendanceFinalizedAt: session.attendanceFinalizedAt ?? null,
       className: session.className ?? null,
       rosterCount: roster.length,

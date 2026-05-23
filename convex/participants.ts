@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
-import { computePresentOrLate } from "./lms";
+import { computeAttendanceFromCheckin } from "./lms";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
 //
@@ -130,12 +130,14 @@ export const joinSession = mutation({
     }
 
     // Compute attendance: ưu tiên attendanceOpenAt (LMS), fallback officialStartAt
-    const attendanceStatus = computePresentOrLate(
+    // 3 trạng thái: 0..10p=present, 10..50p=late, >50p=absent (cấu hình per session)
+    const attendanceStatus = computeAttendanceFromCheckin(
       joinedAt,
       session.attendanceOpenAt,
       officialStartAt,
       session.lateCutoffMinutes,
-      session.lateThresholdMinutes
+      session.lateThresholdMinutes,
+      session.absentAfterMinutes
     );
 
     const participantId = await ctx.db.insert("participants", {
