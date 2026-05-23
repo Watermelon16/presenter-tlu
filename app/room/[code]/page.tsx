@@ -194,14 +194,20 @@ export default function ParticipantRoomPage() {
   useEffect(() => {
     if (!upperCode) return;
 
-    // GATE: nếu user đã login Convex (GV) thì KHÔNG auto-join SV identity
-    // — sẽ tự redirect sang /presenter/CODE ở effect khác. Chỉ chạy auto-join
-    // khi me query đã load và xác nhận KHÔNG phải GV approved.
-    // me === undefined = đang load, !me?.user = không login (= SV thực sự)
-    if (me === undefined) return; // đợi me load
-    if (me?.user && me?.profile?.status === "approved") {
-      // GV đã login → skip toàn bộ auto-join SV
-      return;
+    // Nếu URL có ?sid= (LMS deep link) → BYPASS me-gate, auto-join NGAY.
+    // Tránh case me query treo lâu → splash kẹt.
+    const hasSidParam = typeof window !== "undefined" &&
+      !!new URLSearchParams(window.location.search).get("sid")?.trim();
+
+    if (!hasSidParam) {
+      // GATE: nếu user đã login Convex (GV) thì KHÔNG auto-join SV identity
+      // — sẽ tự redirect sang /presenter/CODE ở effect khác. Chỉ chạy auto-join
+      // khi me query đã load và xác nhận KHÔNG phải GV approved.
+      if (me === undefined) return; // đợi me load
+      if (me?.user && me?.profile?.status === "approved") {
+        // GV đã login → skip toàn bộ auto-join SV
+        return;
+      }
     }
 
     // 0. LMS DEEP LINK: SV vừa điểm danh xong ở LMS rồi redirect sang đây.
