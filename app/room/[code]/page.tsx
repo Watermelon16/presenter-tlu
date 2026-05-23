@@ -215,6 +215,13 @@ export default function ParticipantRoomPage() {
       const name = params.get("name")?.trim();
       const cls = params.get("class")?.trim();
       if (sid) {
+        // Timeout 10s — nếu joinSession hang (network/cache issue) → bỏ splash
+        // để SV có thể nhập thủ công thay vì kẹt mãi.
+        const timeoutId = setTimeout(() => {
+          setAutoJoining(false);
+          toast.error("Tự động vào phòng chậm. Bạn có thể bấm 'Đăng ký tham gia' bên dưới.");
+        }, 10_000);
+
         joinSession({
           code: upperCode,
           studentCode: sid,
@@ -232,7 +239,6 @@ export default function ParticipantRoomPage() {
             localStorage.setItem("student_identity_global", JSON.stringify(resolved));
             localStorage.setItem("last_joined_code", upperCode);
             setIdentity(resolved);
-            setAutoJoining(false);
             toast.success(`✓ Chào ${resolved.fullName} — đã vào phòng`, { duration: 4000 });
             // Dọn URL để không lộ query params khi SV share screenshot
             window.history.replaceState({}, "", window.location.pathname);
@@ -240,8 +246,12 @@ export default function ParticipantRoomPage() {
           .catch((err: unknown) => {
             const e = err as { data?: string; message?: string };
             const msg = e.data || e.message || "Không thể tự động vào phòng";
+            console.error("[auto-join] joinSession failed:", err);
+            toast.error(`Tự động vào phòng lỗi: ${msg}. Bạn có thể nhập thủ công.`);
+          })
+          .finally(() => {
+            clearTimeout(timeoutId);
             setAutoJoining(false);
-            toast.error(`Tự động vào phòng lỗi: ${msg}. Vui lòng kiểm tra thông tin.`);
           });
         return;
       }
@@ -992,6 +1002,12 @@ export default function ParticipantRoomPage() {
             <div className="text-sm text-zinc-500">
               Đăng nhập tự động từ LMS · MSV {studentCodeInput || "..."}
             </div>
+            <button
+              onClick={() => setAutoJoining(false)}
+              className="mt-4 text-sm text-emerald-700 hover:text-emerald-900 underline underline-offset-4"
+            >
+              Bỏ qua, nhập thủ công →
+            </button>
           </div>
         )}
 
