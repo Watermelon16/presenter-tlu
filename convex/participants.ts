@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { computePresentOrLate } from "./lms";
 
@@ -30,16 +30,16 @@ export const joinSession = mutation({
       .first();
 
     if (!session) {
-      throw new Error("Không tìm thấy phòng với mã này");
+      throw new ConvexError("Không tìm thấy phòng với mã này");
     }
 
     if (session.status !== "active") {
-      throw new Error("Phòng đã kết thúc");
+      throw new ConvexError("Phòng đã kết thúc");
     }
 
     const studentCode = args.studentCode.trim();
     if (!studentCode) {
-      throw new Error("Vui lòng nhập mã sinh viên");
+      throw new ConvexError("Vui lòng nhập mã sinh viên");
     }
     const deviceId = args.deviceId?.trim() || undefined;
     const isLmsLinked = !!session.lmsSessionId;
@@ -55,7 +55,7 @@ export const joinSession = mutation({
         )
         .first();
       if (!rosterRow) {
-        throw new Error("Mã sinh viên không có trong danh sách lớp. Liên hệ giảng viên để kiểm tra.");
+        throw new ConvexError("Mã sinh viên không có trong danh sách lớp. Liên hệ giảng viên để kiểm tra.");
       }
       fullName = rosterRow.fullName;
       className = session.className ?? "";
@@ -63,7 +63,7 @@ export const joinSession = mutation({
       fullName = (args.fullName ?? "").trim();
       className = (args.className ?? "").trim();
       if (!fullName || !className) {
-        throw new Error("Vui lòng nhập đầy đủ Họ tên và Lớp");
+        throw new ConvexError("Vui lòng nhập đầy đủ Họ tên và Lớp");
       }
     }
 
@@ -77,7 +77,7 @@ export const joinSession = mutation({
         .first();
 
       if (sameDevice && sameDevice.studentCode !== studentCode) {
-        throw new Error(
+        throw new ConvexError(
           `Thiết bị này đã đăng ký SV "${sameDevice.studentCode}" (${sameDevice.fullName}) trong buổi. Mỗi thiết bị chỉ dùng cho 1 SV.`
         );
       }

@@ -128,7 +128,11 @@ function JoinRoomForm() {
         router.replace(`/room/${qrCode}`);
       } catch (err: unknown) {
         setAutoJoinPhase("failed");
-        const msg = err instanceof Error ? err.message : "Không thể tự động vào phòng. Vui lòng kiểm tra mã.";
+        const e = err as { data?: string; message?: string };
+        const msg =
+          (typeof e.data === "string" && e.data) ||
+          (e.message && !e.message.includes("Server Error") ? e.message : null) ||
+          "Không thể tự động vào phòng. Vui lòng kiểm tra mã.";
         setError(msg);
       }
     })();
@@ -163,7 +167,11 @@ function JoinRoomForm() {
 
       router.push(`/room/${upperCode}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Không thể tham gia phòng. Vui lòng kiểm tra lại mã.";
+      const e = err as { data?: string; message?: string };
+      const msg =
+        (typeof e.data === "string" && e.data) ||
+        (e.message && !e.message.includes("Server Error") ? e.message : null) ||
+        "Không thể tham gia phòng. Vui lòng kiểm tra lại mã.";
       setError(msg);
     } finally {
       setIsLoading(false);

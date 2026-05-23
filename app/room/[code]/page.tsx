@@ -45,6 +45,13 @@ export default function ParticipantRoomPage() {
     upperCode ? { code: upperCode } : "skip"
   );
 
+  // Ngữ cảnh phòng: có liên thông LMS không?
+  const joinCtx = useQuery(
+    api.lms.peekJoinContext,
+    upperCode ? { code: upperCode } : "skip"
+  );
+  const isLmsLinked = joinCtx?.isLmsLinked ?? false;
+
   // Check current user — nếu là GV đã login + sở hữu session (hoặc admin)
   // thì auto-redirect sang /presenter/CODE (host view). SV không login → ở lại /room/.
   // Trừ khi URL có ?from_lms=1 (SV vừa checkin LMS xong → luôn vào /room dù có cookie)
@@ -496,26 +503,32 @@ export default function ParticipantRoomPage() {
 
   // Lưu danh tính
   const saveIdentity = async () => {
-    if (!upperCode || !studentCodeInput.trim() || !fullNameInput.trim() || !classNameInput.trim()) {
+    if (!upperCode || !studentCodeInput.trim()) {
+      toast.error("Vui lòng nhập mã sinh viên");
+      return;
+    }
+    if (!isLmsLinked && (!fullNameInput.trim() || !classNameInput.trim())) {
       toast.error("Vui lòng điền đầy đủ thông tin");
       return;
     }
 
-    const newIdentity: StudentIdentity = {
-      studentCode: studentCodeInput.trim(),
-      fullName: fullNameInput.trim(),
-      className: classNameInput.trim(),
-    };
-
     try {
       // Gọi join để tạo participant + auto-compute attendance status
+      // Phòng LMS-linked: backend sẽ tự lookup họ tên/lớp từ roster
       const result = await joinSession({
         code: upperCode,
-        studentCode: newIdentity.studentCode,
-        fullName: newIdentity.fullName,
-        className: newIdentity.className,
+        studentCode: studentCodeInput.trim(),
+        fullName: isLmsLinked ? undefined : fullNameInput.trim(),
+        className: isLmsLinked ? undefined : classNameInput.trim(),
         deviceId: getOrCreateDeviceId(),
       });
+
+      // Backend trả fullName/className (đã resolve từ roster nếu LMS-linked)
+      const newIdentity: StudentIdentity = {
+        studentCode: studentCodeInput.trim(),
+        fullName: result.fullName ?? fullNameInput.trim(),
+        className: result.className ?? classNameInput.trim(),
+      };
 
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(newIdentity));
       // Lưu global để nhớ qua các phòng khác
@@ -542,7 +555,12 @@ export default function ParticipantRoomPage() {
         toast.success("Đã ghi nhận thông tin.", { duration: 4000 });
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Không thể lưu thông tin. Vui lòng thử lại.";
+      // ConvexError: message thật nằm ở `data`. Raw Error: ở `message`.
+      const errObj = err as { data?: string; message?: string };
+      const msg =
+        (typeof errObj.data === "string" && errObj.data) ||
+        (errObj.message && !errObj.message.includes("Server Error") ? errObj.message : null) ||
+        "Không thể lưu thông tin. Vui lòng thử lại.";
       toast.error(msg);
     }
   };
@@ -948,7 +966,9 @@ export default function ParticipantRoomPage() {
               <div>
                 <div className="font-semibold text-zinc-900">Chào mừng đến với buổi giảng</div>
                 <p className="text-sm text-zinc-600 mt-0.5">
-                  Vui lòng đăng ký thông tin để tham gia hoạt động khi giảng viên bắt đầu.
+                  {isLmsLinked
+                    ? `Buổi liên thông LMS${joinCtx?.className ? ` · Lớp ${joinCtx.className}` : ""}. Chỉ cần nhập mã sinh viên.`
+                    : "Vui lòng đăng ký thông tin để tham gia hoạt động khi giảng viên bắt đầu."}
                 </p>
               </div>
             </div>
@@ -961,31 +981,39 @@ export default function ParticipantRoomPage() {
                 onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white font-mono"
               />
-              <VnInput
-                type="text"
-                placeholder="Họ và tên (VD: Trần Văn An)"
-                value={fullNameInput}
-                onValueChange={setFullNameInput}
-                className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
-              />
-              <VnInput
-                type="text"
-                placeholder="Lớp (VD: 65C)"
-                value={classNameInput}
-                onValueChange={setClassNameInput}
-                className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
-              />
+              {!isLmsLinked && (
+                <>
+                  <VnInput
+                    type="text"
+                    placeholder="Họ và tên (VD: Trần Văn An)"
+                    value={fullNameInput}
+                    onValueChange={setFullNameInput}
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
+                  />
+                  <VnInput
+                    type="text"
+                    placeholder="Lớp (VD: 65C)"
+                    value={classNameInput}
+                    onValueChange={setClassNameInput}
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
+                  />
+                </>
+              )}
               <button
                 onClick={saveIdentity}
                 disabled={
                   !studentCodeInput.trim() ||
-                  !fullNameInput.trim() ||
-                  !classNameInput.trim()
+                  (!isLmsLinked && (!fullNameInput.trim() || !classNameInput.trim()))
                 }
                 className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50"
               >
                 Đăng ký tham gia
               </button>
+              {isLmsLinked && (
+                <p className="text-[11px] text-center text-zinc-500">
+                  Họ tên và lớp lấy tự động từ danh sách LMS
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -1065,20 +1093,24 @@ export default function ParticipantRoomPage() {
                       onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white font-mono"
                     />
-                    <VnInput
-                      type="text"
-                      placeholder="Họ và tên (VD: Trần Văn An)"
-                      value={fullNameInput}
-                      onValueChange={setFullNameInput}
-                      className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
-                    />
-                    <VnInput
-                      type="text"
-                      placeholder="Lớp (VD: 65C)"
-                      value={classNameInput}
-                      onValueChange={setClassNameInput}
-                      className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
-                    />
+                    {!isLmsLinked && (
+                      <>
+                        <VnInput
+                          type="text"
+                          placeholder="Họ và tên (VD: Trần Văn An)"
+                          value={fullNameInput}
+                          onValueChange={setFullNameInput}
+                          className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
+                        />
+                        <VnInput
+                          type="text"
+                          placeholder="Lớp (VD: 65C)"
+                          value={classNameInput}
+                          onValueChange={setClassNameInput}
+                          className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"
+                        />
+                      </>
+                    )}
                     <div className="flex gap-3 pt-1">
                       <button
                         onClick={() => setShowIdentityForm(false)}
