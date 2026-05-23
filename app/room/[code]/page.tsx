@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -36,6 +36,7 @@ function getOrCreateDeviceId(): string {
 
 export default function ParticipantRoomPage() {
   const { code } = useParams<{ code: string }>();
+  const router = useRouter();
   const upperCode = code?.toUpperCase();
 
   // Lấy thông tin buổi
@@ -43,6 +44,29 @@ export default function ParticipantRoomPage() {
     api.sessions.getSessionByCode,
     upperCode ? { code: upperCode } : "skip"
   );
+
+  // Check current user — nếu là GV đã login + sở hữu session (hoặc admin)
+  // thì auto-redirect sang /presenter/CODE (host view). SV không login → ở lại /room/.
+  // Trừ khi URL có ?from_lms=1 (SV vừa checkin LMS xong → luôn vào /room dù có cookie)
+  const me = useQuery(api.userProfiles.me);
+  useEffect(() => {
+    if (!upperCode || !session || !me?.user || !me?.profile) return;
+    if (me.profile.status !== "approved") return;
+
+    // Nếu SV đang chuyển từ LMS → đừng redirect
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("from_lms") === "1") return;
+      if (params.get("as_student") === "1") return; // GV test SV view
+    }
+
+    const isOwner = session.ownerUserId === me.user._id;
+    const isAdmin = me.profile.role === "admin";
+    if (isOwner || isAdmin) {
+      router.replace(`/presenter/${upperCode}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?._id, me?.user?._id, me?.profile?.status, me?.profile?.role, upperCode]);
 
   // Lấy hoạt động đang active
   const activeActivity = useQuery(
