@@ -317,6 +317,49 @@ export const setAttendanceStatusBulk = mutation({
 });
 
 /**
+ * Đồng bộ lại TẤT CẢ participants trong run hiện tại lên LMS.
+ * Dùng khi GV phát hiện LMS panel lệch trạng thái với Presenter — bấm 1 phát
+ * push hết status hiện tại sang LMS để 2 bên match. Fire-and-forget từng SV.
+ */
+export const pushAllParticipantsToLms = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Không tìm thấy buổi giảng");
+    if (!session.lmsSessionId) {
+      throw new ConvexError("Buổi giảng này không liên thông LMS");
+    }
+
+    const currentRun = session.currentRun ?? 1;
+    const participants = await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    let queued = 0;
+    let skipped = 0;
+    for (const p of participants) {
+      if ((p.run ?? 1) !== currentRun) continue;
+      if (!p.attendanceStatus) {
+        skipped++;
+        continue;
+      }
+      await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+        webhookUrl: session.attendanceWebhookUrl,
+        lmsSessionId: session.lmsSessionId,
+        studentId: p.studentCode,
+        studentName: p.fullName,
+        attendanceStatus: p.attendanceStatus,
+        checkinTime: p.checkinAt ?? p.joinedAt,
+      });
+      queued++;
+    }
+
+    return { queued, skipped };
+  },
+});
+
+/**
  * GV chỉnh setting điểm danh của session: ngưỡng đi muộn, T0, webhook URL.
  */
 export const updateAttendanceSettings = mutation({

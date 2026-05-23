@@ -57,6 +57,8 @@ export function AttendancePanel({
   const setStatus = useMutation(api.participants.setAttendanceStatus);
   const setStatusBulk = useMutation(api.participants.setAttendanceStatusBulk);
   const updateSettings = useMutation(api.participants.updateAttendanceSettings);
+  const pushAllToLms = useMutation(api.participants.pushAllParticipantsToLms);
+  const [isPushingLms, setIsPushingLms] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
   const [lateThreshold, setLateThreshold] = useState(10);
@@ -148,6 +150,24 @@ export function AttendancePanel({
     } catch (e: unknown) {
       const err = e as { data?: string; message?: string };
       toast.error(err.data || err.message || "Lỗi");
+    }
+  };
+
+  const handlePushAllToLms = async () => {
+    if (isPushingLms) return;
+    setIsPushingLms(true);
+    try {
+      const r = await pushAllToLms({ sessionId });
+      if (r.queued === 0) {
+        toast.message("Không có SV nào để đồng bộ");
+      } else {
+        toast.success(`Đã đẩy ${r.queued} SV lên LMS${r.skipped ? ` (bỏ qua ${r.skipped} chưa điểm danh)` : ""}. LMS sẽ cập nhật trong vài giây.`);
+      }
+    } catch (e: unknown) {
+      const err = e as { data?: string; message?: string };
+      toast.error(err.data || err.message || "Lỗi đồng bộ LMS");
+    } finally {
+      setIsPushingLms(false);
     }
   };
 
@@ -261,6 +281,16 @@ export function AttendancePanel({
             </div>
           ))}
           <div className="ml-auto flex items-center gap-1.5">
+            {isLmsLinked && (
+              <button
+                onClick={handlePushAllToLms}
+                disabled={isPushingLms}
+                className="px-3 py-1.5 text-xs rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-medium disabled:opacity-60"
+                title="Đẩy trạng thái hiện tại của TẤT CẢ SV lên LMS — fix khi 2 bên lệch nhau"
+              >
+                {isPushingLms ? "Đang đẩy..." : "🔄 Đồng bộ lại với LMS"}
+              </button>
+            )}
             <button onClick={() => setShowSettings((v) => !v)} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 font-medium">
               ⚙️ Cài đặt
             </button>

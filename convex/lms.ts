@@ -172,6 +172,8 @@ export const upsertParticipantFromLms = internalMutation({
       )
       .first();
 
+    let participantId;
+    let created;
     if (existing && (existing.run ?? 1) === currentRun) {
       // Nếu GV đã override tay → không đè
       if (existing.attendanceManualOverride) {
@@ -185,23 +187,42 @@ export const upsertParticipantFromLms = internalMutation({
         className: session.className ?? existing.className,
         syncedToLmsAt: Date.now(),
       });
-      return { participantId: existing._id, created: false };
+      participantId = existing._id;
+      created = false;
+    } else {
+      participantId = await ctx.db.insert("participants", {
+        sessionId: session._id,
+        studentCode: args.studentCode,
+        fullName: args.fullName,
+        className: session.className ?? "",
+        joinedAt: args.checkinAt,
+        run: currentRun,
+        attendanceStatus: status,
+        attendanceManualOverride: false,
+        checkinAt: args.checkinAt,
+        checkinSource: "lms",
+        syncedToLmsAt: Date.now(),
+      });
+      created = true;
     }
 
-    const id = await ctx.db.insert("participants", {
-      sessionId: session._id,
-      studentCode: args.studentCode,
-      fullName: args.fullName,
-      className: session.className ?? "",
-      joinedAt: args.checkinAt,
-      run: currentRun,
-      attendanceStatus: status,
-      attendanceManualOverride: false,
-      checkinAt: args.checkinAt,
-      checkinSource: "lms",
-      syncedToLmsAt: Date.now(),
-    });
-    return { participantId: id, created: true };
+    // Echo về LMS khi Presenter compute status KHÁC với cái LMS gửi sang.
+    // Lý do: LMS có thể chưa biết T0 hoặc dùng logic late khác → Presenter là
+    // source of truth cho present/late/absent (compute từ checkinAt + T0 + cutoffs).
+    // Không gây loop vì LMS không tự push lại khi nhận status update.
+    const lmsSaid = toInternalStatus(args.statusFromLms ?? null);
+    if (status !== lmsSaid) {
+      await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+        webhookUrl: session.attendanceWebhookUrl,
+        lmsSessionId: args.lmsSessionId,
+        studentId: args.studentCode,
+        studentName: args.fullName,
+        attendanceStatus: status,
+        checkinTime: args.checkinAt,
+      });
+    }
+
+    return { participantId, created };
   },
 });
 
