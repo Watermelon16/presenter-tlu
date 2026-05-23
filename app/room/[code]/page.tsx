@@ -179,11 +179,13 @@ export default function ParticipantRoomPage() {
         const sid = params.get("sid")?.trim();
         const name = params.get("name")?.trim();
         const cls = params.get("class")?.trim();
-        if (sid && name && cls) {
+        // Relaxed: sid + name là tối thiểu. Class có thể thiếu (LMS đôi khi
+        // không pass) → default "—" để vẫn auto-join thay vì bắt SV nhập lại.
+        if (sid && name) {
           const lmsIdentity: StudentIdentity = {
             studentCode: sid,
             fullName: name,
-            className: cls,
+            className: cls || "—",
           };
           joinSession({
             code: upperCode,
@@ -207,6 +209,13 @@ export default function ParticipantRoomPage() {
             });
           return;
         }
+        // Có from_lms=1 nhưng thiếu sid/name → có thể là URL bị cắt
+        // hoặc Lovable chưa pass đúng. Log + báo để debug.
+        console.warn("[Presenter] from_lms=1 nhưng thiếu params:", {
+          sid: params.get("sid"),
+          name: params.get("name"),
+          class: params.get("class"),
+        });
       }
     }
 
