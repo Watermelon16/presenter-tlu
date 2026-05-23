@@ -41,6 +41,12 @@ export default function RootLayout({
         lang="vi"
         className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
       >
+        <head>
+          {/* Preconnect tới Convex để giảm latency lần đầu — WebSocket cloud + HTTP site */}
+          <link rel="preconnect" href="https://chatty-hornet-671.convex.cloud" crossOrigin="" />
+          <link rel="preconnect" href="https://chatty-hornet-671.convex.site" crossOrigin="" />
+          <link rel="dns-prefetch" href="https://chatty-hornet-671.convex.cloud" />
+        </head>
         <body className="min-h-full flex flex-col">
           <ConvexClientProvider>
             <div className="flex-1">{children}</div>

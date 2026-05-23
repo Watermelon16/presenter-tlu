@@ -677,10 +677,57 @@ export default function ParticipantRoomPage() {
 
   // ==================== RENDER ====================
 
-  if (!session) {
+  // Splash hiển thị tên SV ngay từ URL params (LMS deep link) để user
+  // biết hệ thống đang xử lý — KHÔNG đợi Convex load.
+  if (session === undefined) {
+    let lmsName: string | null = null;
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("from_lms") === "1") {
+        lmsName = params.get("name");
+      }
+    }
     return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <div className="text-zinc-500">Đang tải phòng...</div>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-zinc-50 to-zinc-50 flex items-center justify-center p-6">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+            PT
+          </div>
+          {lmsName && (
+            <div className="text-2xl font-semibold text-zinc-800">
+              👋 Chào {lmsName}
+            </div>
+          )}
+          <div className="flex items-center justify-center gap-2 text-zinc-500">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-sm">Đang kết nối phòng giảng...</span>
+          </div>
+          <div className="text-xs text-zinc-400 font-mono">
+            Phòng: {upperCode}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (session === null) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+        <div className="text-center space-y-3 max-w-md">
+          <div className="text-4xl">😕</div>
+          <div className="text-lg font-medium text-zinc-800">
+            Không tìm thấy phòng <span className="font-mono">{upperCode}</span>
+          </div>
+          <div className="text-sm text-zinc-500">
+            Mã phòng có thể đã kết thúc hoặc bạn nhập sai. Vui lòng kiểm tra lại với giảng viên.
+          </div>
+          <Link
+            href="/join"
+            className="inline-block mt-4 px-5 py-2 rounded-xl bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800"
+          >
+            Nhập mã khác
+          </Link>
+        </div>
       </div>
     );
   }
