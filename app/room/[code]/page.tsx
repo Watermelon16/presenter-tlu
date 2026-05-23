@@ -894,26 +894,22 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
-        {/* THÀNH TÍCH CÁ NHÂN — rank, score, speed + top 3 mini */}
-        {identity && myRankData && (
+        {/* THÀNH TÍCH CÁ NHÂN — chỉ hiện khi SV đã có điểm (đã tham gia ≥1 hoạt động) */}
+        {identity && myRankData && myRank >= 0 && myScore > 0 && (
           <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-emerald-50 to-amber-50 px-5 py-4 border-b border-zinc-200">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-xs text-emerald-700 font-semibold tracking-wider">🏆 THÀNH TÍCH CỦA BẠN</div>
-                  {myRank >= 0 ? (
-                    <div className="flex items-baseline gap-3 mt-1">
-                      <div className="text-4xl font-bold text-zinc-900">#{myRank + 1}</div>
-                      <div className="text-sm text-zinc-600">
-                        <span className="font-semibold text-emerald-700">{myScore} điểm</span>
-                        {myAvgMs !== null && (
-                          <span className="ml-2 text-zinc-500">⚡ {formatTimeMs(myAvgMs)}</span>
-                        )}
-                      </div>
+                  <div className="flex items-baseline gap-3 mt-1">
+                    <div className="text-4xl font-bold text-zinc-900">#{myRank + 1}</div>
+                    <div className="text-sm text-zinc-600">
+                      <span className="font-semibold text-emerald-700">{myScore} điểm</span>
+                      {myAvgMs !== null && (
+                        <span className="ml-2 text-zinc-500">⚡ {formatTimeMs(myAvgMs)}</span>
+                      )}
                     </div>
-                  ) : (
-                    <div className="text-sm text-zinc-600 mt-1">Chưa có điểm. Hãy tham gia hoạt động!</div>
-                  )}
+                  </div>
                 </div>
                 {myRank === 0 && <div className="text-4xl">🥇</div>}
                 {myRank === 1 && <div className="text-4xl">🥈</div>}

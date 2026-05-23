@@ -182,18 +182,22 @@ function StudentHistoryView() {
                 label="Lượt trả lời"
                 value={history.aggregate.answeredTotal.toString()}
               />
-              <StatCard
-                label="Top 10"
-                value={history.aggregate.topTenCount.toString()}
-                hint={
-                  history.aggregate.goldCount +
-                    history.aggregate.silverCount +
-                    history.aggregate.bronzeCount >
-                  0
-                    ? `🥇${history.aggregate.goldCount} 🥈${history.aggregate.silverCount} 🥉${history.aggregate.bronzeCount}`
-                    : undefined
-                }
-              />
+              {history.aggregate.answeredTotal > 0 ? (
+                <StatCard
+                  label="Top 10"
+                  value={history.aggregate.topTenCount.toString()}
+                  hint={
+                    history.aggregate.goldCount +
+                      history.aggregate.silverCount +
+                      history.aggregate.bronzeCount >
+                    0
+                      ? `🥇${history.aggregate.goldCount} 🥈${history.aggregate.silverCount} 🥉${history.aggregate.bronzeCount}`
+                      : undefined
+                  }
+                />
+              ) : (
+                <StatCard label="Top 10" value="—" hint="Chưa tham gia hoạt động nào" />
+              )}
             </div>
 
             <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
@@ -274,13 +278,21 @@ function StudentHistoryView() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-lg font-bold text-emerald-700 tabular-nums">
-                            {s.score} đ
-                          </div>
-                          <div className="text-xs text-zinc-500 tabular-nums">
-                            {medal && <span className="mr-1">{medal}</span>}#
-                            {s.rank}/{s.totalParticipants}
-                          </div>
+                          {s.answeredCount > 0 ? (
+                            <>
+                              <div className="text-lg font-bold text-emerald-700 tabular-nums">
+                                {s.score} đ
+                              </div>
+                              <div className="text-xs text-zinc-500 tabular-nums">
+                                {medal && <span className="mr-1">{medal}</span>}#
+                                {s.rank}/{s.totalParticipants}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-xs text-zinc-400 italic">
+                              Có mặt · không tham gia hoạt động
+                            </div>
+                          )}
                         </div>
                       </div>
                     </li>

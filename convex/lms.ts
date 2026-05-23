@@ -7,6 +7,7 @@
 
 import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Doc } from "./_generated/dataModel";
 import { replaceRoster } from "./lmsProvisioning";
 
@@ -204,7 +205,7 @@ export const upsertParticipantFromLms = internalMutation({
   },
 });
 
-// ─── Internal: LMS đóng buổi → mark absent cho roster chưa join ────────────
+// ─── Internal: LMS đóng buổi → mark absent cho roster chưa join + push lên LMS ─
 export const finalizeAttendance = internalMutation({
   args: { lmsSessionId: v.string(), closedAt: v.number() },
   handler: async (ctx, args) => {
@@ -229,6 +230,7 @@ export const finalizeAttendance = internalMutation({
     );
 
     let inserted = 0;
+    const absentSvs: Array<{ studentCode: string; fullName: string }> = [];
     for (const r of roster) {
       if (checkedInCodes.has(r.studentCode)) continue;
       await ctx.db.insert("participants", {
@@ -245,9 +247,25 @@ export const finalizeAttendance = internalMutation({
         syncedToLmsAt: Date.now(),
       });
       inserted++;
+      absentSvs.push({ studentCode: r.studentCode, fullName: r.fullName });
     }
 
     await ctx.db.patch(session._id, { attendanceFinalizedAt: args.closedAt });
+
+    // Push từng SV absent về LMS (best-effort, scheduler ngoài tx).
+    // Note: nếu LMS đóng buổi cũng thường tự mark absent trên DB của họ —
+    // đẩy này là defensive sync để cả 2 bên chắc chắn match.
+    for (const sv of absentSvs) {
+      await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
+        webhookUrl: session.attendanceWebhookUrl,
+        lmsSessionId: args.lmsSessionId,
+        studentId: sv.studentCode,
+        studentName: sv.fullName,
+        attendanceStatus: "absent",
+        checkinTime: args.closedAt,
+      });
+    }
+
     return { absentCount: inserted };
   },
 });
