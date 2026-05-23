@@ -416,11 +416,7 @@ export default function CreateRoomPage() {
             </div>
           )}
 
-          <div className="text-center text-[11px] text-zinc-500 mt-8">
-            Phát triển bởi <span className="font-medium text-zinc-700">TS. Lê Hồng Phương</span>
-            <span className="text-zinc-400"> · </span>
-            Bộ môn Thủy công · ĐH Thủy lợi
-          </div>
+          {/* Footer chung đã render trong app/layout.tsx — không lặp lại ở đây */}
         </div>
       </div>
     </div>

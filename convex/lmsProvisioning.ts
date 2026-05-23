@@ -42,6 +42,24 @@ export const createSessionFromLms = internalMutation({
       const patch: Record<string, unknown> = {};
       if (args.className !== undefined) patch.className = args.className;
       if (args.lmsClassId !== undefined) patch.lmsClassId = args.lmsClassId;
+      // Backfill ownerUserId nếu thiếu (session tạo từ code cũ trước khi có owner)
+      if (!existing.ownerUserId) {
+        const emailLower = args.hostEmail.trim().toLowerCase();
+        let profile = await ctx.db
+          .query("userProfiles")
+          .withIndex("by_email", (q) => q.eq("email", emailLower))
+          .first();
+        if (!profile) {
+          profile = await ctx.db
+            .query("userProfiles")
+            .withIndex("by_lms_email", (q) => q.eq("lmsEmail", emailLower))
+            .first();
+        }
+        if (profile) {
+          patch.ownerUserId = profile.userId;
+          if (!existing.hostEmail) patch.hostEmail = emailLower;
+        }
+      }
       if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
 
       return {
@@ -117,6 +135,43 @@ export const createSessionFromLms = internalMutation({
       created: true,
       rosterCount: args.roster?.length ?? 0,
     };
+  },
+});
+
+/**
+ * Migration 1-lần: backfill ownerUserId cho các session LMS-linked được tạo
+ * từ code cũ (chưa set ownerUserId). Match qua hostEmail → userProfiles.
+ *
+ * Chạy: npx convex run --prod lmsProvisioning:backfillOwnerUserId
+ */
+export const backfillOwnerUserId = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allSessions = await ctx.db.query("sessions").collect();
+    const orphans = allSessions.filter((s) => !!s.lmsSessionId && !s.ownerUserId && !!s.hostEmail);
+
+    let fixed = 0;
+    const unmatched: Array<{ code: string; hostEmail: string }> = [];
+    for (const s of orphans) {
+      const email = (s.hostEmail ?? "").toLowerCase().trim();
+      let profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .first();
+      if (!profile) {
+        profile = await ctx.db
+          .query("userProfiles")
+          .withIndex("by_lms_email", (q) => q.eq("lmsEmail", email))
+          .first();
+      }
+      if (!profile) {
+        unmatched.push({ code: s.code, hostEmail: email });
+        continue;
+      }
+      await ctx.db.patch(s._id, { ownerUserId: profile.userId });
+      fixed++;
+    }
+    return { totalOrphans: orphans.length, fixed, unmatched };
   },
 });
 
