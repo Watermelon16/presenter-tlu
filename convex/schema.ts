@@ -78,10 +78,19 @@ export default defineSchema({
     attendanceWebhookUrl: v.optional(v.string()),
     // LMS session ID (UUID Supabase) — pass vào webhook body để LMS biết upsert vào session nào.
     lmsSessionId: v.optional(v.string()),
+
+    // Backward-compat: fields từ nhánh main LMS integration (sẽ merge logic trong Phase 2)
+    attendanceOpenAt: v.optional(v.number()),
+    lateCutoffMinutes: v.optional(v.number()),
+    attendanceFinalizedAt: v.optional(v.number()),
+    className: v.optional(v.string()),
+    hostEmail: v.optional(v.string()),
+    lmsClassId: v.optional(v.string()),
   })
     .index("by_code", ["code"])
     .index("by_created", ["createdAt"])
-    .index("by_owner", ["ownerUserId"]),
+    .index("by_owner", ["ownerUserId"])
+    .index("by_lms_session", ["lmsSessionId"]),
 
   // Sinh viên tham gia phòng (danh tính)
   participants: defineTable({
@@ -114,6 +123,11 @@ export default defineSchema({
     attendanceManualOverride: v.optional(v.boolean()),
     // Ghi chú (vd lý do vắng có phép)
     attendanceNote: v.optional(v.string()),
+
+    // Backward-compat: field từ nhánh main LMS integration (sẽ merge khi Phase 2)
+    checkinAt: v.optional(v.number()),
+    checkinSource: v.optional(v.union(v.literal("lms"), v.literal("presenter"))),
+    syncedToLmsAt: v.optional(v.number()),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])
