@@ -270,6 +270,77 @@ export const finalizeAttendance = internalMutation({
   },
 });
 
+// ─── Internal: LMS xóa attendance_session → cascade delete phòng Presenter ─
+// Đồng bộ với deleteSession trong sessions.ts (giống logic + cùng counts trả về).
+export const deleteSessionByLmsId = internalMutation({
+  args: { lmsSessionId: v.string() },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_lms_session", (q) => q.eq("lmsSessionId", args.lmsSessionId))
+      .first();
+    if (!session) return { ok: true, notFound: true, counts: null };
+
+    const counts = {
+      activities: 0, responses: 0, participants: 0, boardPosts: 0,
+      images: 0, rosterCache: 0,
+    };
+
+    // 1. Board posts
+    const boardPosts = await ctx.db
+      .query("boardPosts")
+      .filter((q) => q.eq(q.field("sessionId"), session._id))
+      .collect();
+    for (const p of boardPosts) { await ctx.db.delete(p._id); counts.boardPosts++; }
+
+    // 2. Responses
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_session_and_student", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const r of responses) { await ctx.db.delete(r._id); counts.responses++; }
+
+    // 3. Participants
+    const participants = await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const p of participants) { await ctx.db.delete(p._id); counts.participants++; }
+
+    // 4. Activities
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const a of activities) { await ctx.db.delete(a._id); counts.activities++; }
+
+    // 5. Roster cache
+    const roster = await ctx.db
+      .query("rosterCache")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const r of roster) { await ctx.db.delete(r._id); counts.rosterCache++; }
+
+    // 5b. Push subscriptions
+    const pushSubs = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const s of pushSubs) { await ctx.db.delete(s._id); }
+
+    // 6. PDF storage
+    if (session.pdfStorageId) {
+      try { await ctx.storage.delete(session.pdfStorageId); counts.images++; } catch { /* ignore */ }
+    }
+
+    // 7. Session itself
+    const code = session.code;
+    await ctx.db.delete(session._id);
+
+    return { ok: true, notFound: false, code, counts };
+  },
+});
+
 // ─── Internal query: dùng cho HTTP action /lms/student-checkin ─────────────
 export const getSessionByLmsId = internalQuery({
   args: { lmsSessionId: v.string() },

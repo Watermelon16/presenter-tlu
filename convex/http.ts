@@ -231,6 +231,32 @@ http.route({
   }),
 });
 
+// ─── /lms/session-deleted ─────────────────────────────────────────────────
+// LMS gọi khi GV xóa attendance_session → Presenter cascade delete toàn bộ data.
+http.route({
+  path: "/lms/session-deleted",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+http.route({
+  path: "/lms/session-deleted",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const auth = checkSecret(req);
+    if (!auth.ok) return auth.res;
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      const lmsSessionId = String(body.lms_session_id ?? "").trim();
+      if (!lmsSessionId) return jsonResp({ error: "Thiếu lms_session_id" }, 400);
+      const result = await ctx.runMutation(internal.lms.deleteSessionByLmsId, { lmsSessionId });
+      return jsonResp(result);
+    } catch (e) {
+      const { msg, status } = errorResponse(e);
+      return jsonResp({ error: msg }, status);
+    }
+  }),
+});
+
 // ─── /lms/session-closed ───────────────────────────────────────────────────
 http.route({
   path: "/lms/session-closed",
