@@ -141,9 +141,26 @@ export default function ParticipantRoomPage() {
   );
 
   // Form nhập danh tính
-  const [studentCodeInput, setStudentCodeInput] = useState("");
-  const [fullNameInput, setFullNameInput] = useState("");
-  const [classNameInput, setClassNameInput] = useState("");
+  // Pre-fill MSV/họ tên/lớp từ URL params NGAY (synchronous) — kể cả khi auto-join
+  // chưa chạy / fail. SV không phải retype.
+  const [studentCodeInput, setStudentCodeInput] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("sid")?.trim() || "";
+  });
+  const [fullNameInput, setFullNameInput] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("name")?.trim() || "";
+  });
+  const [classNameInput, setClassNameInput] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("class")?.trim() || "";
+  });
+
+  // Cờ "đang auto-join từ LMS link" — hiện loading splash thay vì form
+  const [autoJoining, setAutoJoining] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!new URLSearchParams(window.location.search).get("sid")?.trim();
+  });
 
   // Trạng thái vote (Poll)
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
@@ -215,6 +232,7 @@ export default function ParticipantRoomPage() {
             localStorage.setItem("student_identity_global", JSON.stringify(resolved));
             localStorage.setItem("last_joined_code", upperCode);
             setIdentity(resolved);
+            setAutoJoining(false);
             toast.success(`✓ Chào ${resolved.fullName} — đã vào phòng`, { duration: 4000 });
             // Dọn URL để không lộ query params khi SV share screenshot
             window.history.replaceState({}, "", window.location.pathname);
@@ -222,14 +240,15 @@ export default function ParticipantRoomPage() {
           .catch((err: unknown) => {
             const e = err as { data?: string; message?: string };
             const msg = e.data || e.message || "Không thể tự động vào phòng";
-            // Fallback: pre-fill MSV vào form để SV chỉ gõ thêm họ tên + lớp (nếu phòng tự do)
-            setStudentCodeInput(sid);
-            if (name) setFullNameInput(name);
-            if (cls) setClassNameInput(cls);
-            toast.error(`Tự động vào phòng lỗi: ${msg}. Vui lòng bổ sung thông tin.`);
+            setAutoJoining(false);
+            toast.error(`Tự động vào phòng lỗi: ${msg}. Vui lòng kiểm tra thông tin.`);
           });
         return;
       }
+      // Không có sid trong URL → tắt autoJoining (đã init true nhầm)
+      setAutoJoining(false);
+    } else {
+      setAutoJoining(false);
     }
 
     // 1. Per-room (lưu sau khi SV join phòng này)
@@ -965,8 +984,19 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
+        {/* Auto-join splash khi vào từ LMS deep link — ẩn form, hiện loading */}
+        {!identity && autoJoining && (
+          <div className="bg-white border border-emerald-200 rounded-2xl p-8 text-center space-y-3">
+            <div className="text-5xl animate-pulse">📡</div>
+            <div className="font-semibold text-zinc-900">Đang vào phòng...</div>
+            <div className="text-sm text-zinc-500">
+              Đăng nhập tự động từ LMS · MSV {studentCodeInput || "..."}
+            </div>
+          </div>
+        )}
+
         {/* Chưa có hoạt động — nếu chưa đăng ký identity, cho SV đăng ký trước */}
-        {!activeActivity && !identity && (
+        {!activeActivity && !identity && !autoJoining && (
           <div className="bg-white border border-zinc-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-start gap-3">
               <div className="text-3xl">👋</div>
