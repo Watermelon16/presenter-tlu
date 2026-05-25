@@ -45,7 +45,7 @@ export function HelpModal({ onClose }: Props) {
                 <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
                   <li><Btn>A</Btn> kích hoạt hoạt động · <Btn>X</Btn> đóng · <Btn>R</Btn> xem kết quả · <Btn>⇧R</Btn> chạy lại</li>
                   <li><Btn>C</Btn> ẩn QR sidebar · <Btn>K</Btn> QR mini widget (cho SV vào muộn) · <Btn>B</Btn> blank đen</li>
-                  <li><Btn>L</Btn> laser · <Btn>P</Btn> bút · <Btn>Y</Btn> highlight · <Btn>W</Btn> bảng trắng · <Btn>Z</Btn> undo · <Btn>⇧D</Btn> xoá hết</li>
+                  <li><Btn>L</Btn> laser · <Btn>P</Btn> bút · <Btn>Y</Btn> highlight · <Btn>G</Btn> gôm tẩy · <Btn>W</Btn> bảng trắng · <Btn>Z</Btn> undo</li>
                   <li><Btn>M</Btn> bảng điểm danh · <Btn>I</Btn> Smart Insights · <Btn>E</Btn> Excel</li>
                   <li>Bấm <Btn>H</Btn> bất cứ lúc nào để hiện bảng phím tắt floating</li>
                 </ul>
@@ -119,6 +119,7 @@ export function HelpModal({ onClose }: Props) {
                   <KbdRow keys={["L"]} label="Laser pointer (dot đỏ phát sáng)" />
                   <KbdRow keys={["P"]} label="Bút vẽ tự do" />
                   <KbdRow keys={["Y"]} label="Highlight (bút dạ)" />
+                  <KbdRow keys={["G"]} label="Gôm tẩy — xoá từng nét (drag để xoá liên tục)" />
                   <KbdRow keys={["W"]} label="Bật/tắt bảng trắng vẽ tự do" />
                   <KbdRow keys={["Z"]} label="Hoàn tác nét vẽ cuối" />
                   <KbdRow keys={["Shift", "D"]} label="Xoá hết nét vẽ slide/bảng hiện tại" />

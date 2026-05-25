@@ -33,6 +33,7 @@ const ROWS: Row[] = [
   { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)", group: "Vẽ trên slide" },
   { keys: ["P"], label: "Bút vẽ tự do" },
   { keys: ["Y"], label: "Highlight (bút dạ vàng/màu)" },
+  { keys: ["G"], label: "Gôm tẩy — xoá từng nét vẽ (drag để xoá liên tục)" },
   { keys: ["W"], label: "Bật/tắt bảng trắng (vẽ tự do trên nền trắng)" },
   { keys: ["Z"], label: "Hoàn tác nét vẽ cuối" },
   { keys: ["⇧", "D"], label: "Xoá hết nét vẽ trên slide/bảng hiện tại" },

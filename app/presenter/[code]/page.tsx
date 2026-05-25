@@ -428,6 +428,12 @@ function PresenterPage() {
     });
   const clearStrokes = () =>
     setStrokesBySurface((prev) => ({ ...prev, [drawSurface]: [] }));
+  const removeStrokeAt = (idx: number) =>
+    setStrokesBySurface((prev) => {
+      const arr = prev[drawSurface] ?? [];
+      if (idx < 0 || idx >= arr.length) return prev;
+      return { ...prev, [drawSurface]: arr.filter((_, i) => i !== idx) };
+    });
   const toggleWhiteboard = () => setWhiteboardMode((v) => !v);
   // Toggle bật/tắt tính năng Nhịp lớp — persist trong localStorage để GV khống chế việc auto-update.
   // Mặc định BẬT để giữ behavior cũ; khi TẮT thì không render nút topbar query + không subscribe Convex.
@@ -1059,6 +1065,11 @@ function PresenterPage() {
         if (e.key === "y" || e.key === "Y") {
           e.preventDefault();
           setDrawTool((t) => (t === "highlighter" ? "none" : "highlighter"));
+        }
+        // G = Gôm tẩy (eraser) — xoá từng nét
+        if (e.key === "g" || e.key === "G") {
+          e.preventDefault();
+          setDrawTool((t) => (t === "eraser" ? "none" : "eraser"));
         }
         // W = whiteboard toggle
         if (e.key === "w" || e.key === "W") {
@@ -4703,6 +4714,7 @@ function PresenterPage() {
                   setColor={setDrawColor}
                   strokes={currentStrokes}
                   onAddStroke={addStroke}
+                  onRemoveStrokeAt={removeStrokeAt}
                   onClear={clearStrokes}
                   onUndo={undoStroke}
                   whiteboardActive={whiteboardMode}
