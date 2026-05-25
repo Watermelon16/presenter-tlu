@@ -119,20 +119,118 @@ export function ActivityAiReviewCard({ activity }: Props) {
   if (activity.status !== "closed") return null;
 
   const review = activity.aiReview;
-
-  // Không show gì nếu chưa có review + không có data + không lỗi
+  const snapshotLoading = snapshot === undefined;
   const hasNoData = snapshot !== undefined && snapshot !== null && !snapshotHasData(snapshot);
-  if (!review && stage === "idle" && hasNoData) return null;
+
+  // Không hiện gì nếu hoạt động đóng nhưng chưa ai trả lời (board: chưa ai post)
+  if (!review && hasNoData && stage !== "error") return null;
 
   return (
-    <div className="mx-auto max-w-5xl mt-6 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-5 py-4 text-left">
-      {/* Loading state — chỉ 1 dòng nhỏ */}
+    <div className="mx-auto max-w-5xl mt-6 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-5 py-4 text-left relative">
+      {/* Menu nhỏ ở góc phải — LUÔN hiện khi card hiện */}
+      <div className="absolute top-2 right-2 z-30">
+        <button
+          onClick={() => setShowMenu((v) => !v)}
+          className="px-1.5 py-0.5 text-zinc-500 hover:text-zinc-200 text-sm leading-none"
+          title="Tuỳ chọn"
+        >
+          ⋯
+        </button>
+        {showMenu && (
+          <div
+            className="absolute right-0 top-7 w-64 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-2 text-xs"
+            onMouseLeave={() => setShowMenu(false)}
+          >
+            <label className="flex items-center justify-between px-3 py-1.5 hover:bg-zinc-800 cursor-pointer">
+              <span className="text-zinc-300">Tự động khi đóng hoạt động</span>
+              <input
+                type="checkbox"
+                checked={autoEnabled}
+                onChange={(e) => {
+                  setAutoEnabled(e.target.checked);
+                  try {
+                    localStorage.setItem(AUTO_KEY, e.target.checked ? "true" : "false");
+                  } catch {}
+                }}
+                className="accent-emerald-500"
+              />
+            </label>
+            <div className="px-3 py-1.5 border-t border-zinc-800">
+              <div className="text-zinc-500 mb-1">Model</div>
+              <select
+                value={selectedModelId}
+                onChange={(e) => {
+                  setSelectedModelId(e.target.value);
+                  try {
+                    localStorage.setItem(MODEL_KEY, e.target.value);
+                  } catch {}
+                }}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none"
+              >
+                {MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <div className="text-zinc-500 mt-1 text-[10px]">
+                Provider: <span className="text-zinc-400">{provider}</span>
+                {!currentKey && <span className="text-rose-400"> · thiếu key</span>}
+              </div>
+            </div>
+            {review && (
+              <button
+                onClick={async () => {
+                  setShowMenu(false);
+                  await clearReview({ activityId: activity._id });
+                  triggeredRef.current = "";
+                }}
+                className="w-full text-left px-3 py-1.5 border-t border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+              >
+                🔄 Sinh lại
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Snapshot đang load */}
+      {snapshotLoading && !review && (
+        <div className="text-sm text-zinc-500">Đang tải kết quả...</div>
+      )}
+
+      {/* Chưa có API key */}
+      {!snapshotLoading && !review && !currentKey && stage === "idle" && (
+        <div className="text-sm text-zinc-400">
+          Chưa có API key {provider}. Mở <strong className="text-zinc-200">⚙️ Cài đặt → 🔑 API key AI</strong> để bật nhận xét tự động.
+        </div>
+      )}
+
+      {/* Có key + chưa chạy (auto tắt hoặc snapshot vừa load) */}
+      {!snapshotLoading && !review && currentKey && stage === "idle" && !hasNoData && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm text-zinc-400">
+            {autoEnabled ? "Đang chuẩn bị nhận xét..." : "Tự động đang tắt."}
+          </div>
+          <button
+            onClick={() => {
+              triggeredRef.current = "";
+              runReview();
+            }}
+            className="text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-200"
+          >
+            ▶ Sinh nhận xét
+          </button>
+        </div>
+      )}
+
+      {/* Loading state — pulse dots */}
       {stage === "running" && !review && (
         <div className="flex items-center gap-2 text-zinc-400 text-sm">
           <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-pulse" />
           <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
           <div className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
-          <span>Đang chuẩn bị nhận xét...</span>
+          <span>Đang phân tích kết quả...</span>
         </div>
       )}
 
@@ -154,68 +252,7 @@ export function ActivityAiReviewCard({ activity }: Props) {
 
       {/* Result */}
       {review && (
-        <div className="space-y-2.5 relative">
-          {/* Menu nhỏ ở góc phải */}
-          <div className="absolute -top-1 -right-1">
-            <button
-              onClick={() => setShowMenu((v) => !v)}
-              className="px-1.5 py-0.5 text-zinc-500 hover:text-zinc-200 text-sm leading-none"
-              title="Tuỳ chọn"
-            >
-              ⋯
-            </button>
-            {showMenu && (
-              <div
-                className="absolute right-0 top-7 z-30 w-64 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-2 text-xs"
-                onMouseLeave={() => setShowMenu(false)}
-              >
-                <label className="flex items-center justify-between px-3 py-1.5 hover:bg-zinc-800 cursor-pointer">
-                  <span className="text-zinc-300">Tự động khi đóng hoạt động</span>
-                  <input
-                    type="checkbox"
-                    checked={autoEnabled}
-                    onChange={(e) => {
-                      setAutoEnabled(e.target.checked);
-                      try {
-                        localStorage.setItem(AUTO_KEY, e.target.checked ? "true" : "false");
-                      } catch {}
-                    }}
-                    className="accent-emerald-500"
-                  />
-                </label>
-                <div className="px-3 py-1.5 border-t border-zinc-800">
-                  <div className="text-zinc-500 mb-1">Model</div>
-                  <select
-                    value={selectedModelId}
-                    onChange={(e) => {
-                      setSelectedModelId(e.target.value);
-                      try {
-                        localStorage.setItem(MODEL_KEY, e.target.value);
-                      } catch {}
-                    }}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none"
-                  >
-                    {MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={async () => {
-                    setShowMenu(false);
-                    await clearReview({ activityId: activity._id });
-                    triggeredRef.current = "";
-                  }}
-                  className="w-full text-left px-3 py-1.5 border-t border-zinc-800 text-zinc-300 hover:bg-zinc-800"
-                >
-                  🔄 Sinh lại nhận xét
-                </button>
-              </div>
-            )}
-          </div>
-
+        <div className="space-y-2.5">
           {/* Summary — dòng đầu hơi nổi bật */}
           <div className="text-base md:text-lg text-zinc-100 leading-snug font-medium pr-8">
             {review.summary}
