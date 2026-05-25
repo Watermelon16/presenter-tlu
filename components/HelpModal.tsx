@@ -44,7 +44,7 @@ export function HelpModal({ onClose }: Props) {
                 phím tắt tiện ngay tại đó:
                 <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
                   <li><Btn>A</Btn> kích hoạt hoạt động · <Btn>X</Btn> đóng · <Btn>R</Btn> xem kết quả · <Btn>⇧R</Btn> chạy lại</li>
-                  <li><Btn>C</Btn> ẩn QR sidebar (mở rộng slide) · <Btn>B</Btn> blank đen tạm dừng</li>
+                  <li><Btn>C</Btn> ẩn QR sidebar · <Btn>K</Btn> QR mini widget (cho SV vào muộn) · <Btn>B</Btn> blank đen</li>
                   <li><Btn>M</Btn> bảng điểm danh · <Btn>I</Btn> Smart Insights · <Btn>E</Btn> Excel</li>
                   <li>Bấm <Btn>H</Btn> bất cứ lúc nào để hiện bảng phím tắt floating</li>
                 </ul>
@@ -101,8 +101,9 @@ export function HelpModal({ onClose }: Props) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
                   <KbdRow keys={["S"]} label="Mở/đóng chiếu slide PDF fullscreen" />
                   <KbdRow keys={["Q"]} label="Chiếu QR + mã phòng fullscreen" />
+                  <KbdRow keys={["K"]} label="Hiện/ẩn QR mini widget góc trái — cho SV đến muộn quét nhanh" />
                   <KbdRow keys={["B"]} label="Blank đen — tạm dừng slide" />
-                  <KbdRow keys={["C"]} label="Ẩn/hiện QR sidebar (mở rộng slide)" />
+                  <KbdRow keys={["C"]} label="Ẩn/hiện QR sidebar trong slide overlay" />
                   <KbdRow keys={["←", "→"]} label="Slide trước / sau" />
                   <KbdRow keys={["Space"]} label="Slide kế / bước script tiếp" />
                   <KbdRow keys={["Home"]} label="Slide đầu" />

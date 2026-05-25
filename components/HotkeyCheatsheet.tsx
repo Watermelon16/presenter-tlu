@@ -20,6 +20,7 @@ const ROWS: Row[] = [
   // === CHIẾU SLIDE ===
   { keys: ["S"], label: "Mở/đóng chiếu slide PDF", group: "Chiếu slide" },
   { keys: ["Q"], label: "Chiếu QR + mã phòng fullscreen" },
+  { keys: ["K"], label: "Hiện/ẩn QR mini widget (góc trái) — cho SV vào muộn" },
   { keys: ["B"], label: "Blank đen — tạm dừng slide" },
   { keys: ["C"], label: "Ẩn/hiện QR sidebar trong slide overlay" },
   { keys: ["←", "→"], label: "Slide trước / sau" },

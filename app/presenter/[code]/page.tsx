@@ -402,6 +402,10 @@ function PresenterPage() {
 
   // Floating cheatsheet phím tắt (H hoặc ?)
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+
+  // Floating mini QR widget (K) — hiện ở bất cứ đâu để cho SV vào muộn quét nhanh.
+  // Khác với Q (QR fullscreen) và C (sidebar trong slide overlay).
+  const [showQrWidget, setShowQrWidget] = useState(false);
   // Toggle bật/tắt tính năng Nhịp lớp — persist trong localStorage để GV khống chế việc auto-update.
   // Mặc định BẬT để giữ behavior cũ; khi TẮT thì không render nút topbar query + không subscribe Convex.
   const [heatmapEnabled, setHeatmapEnabled] = useState(true);
@@ -998,6 +1002,12 @@ function PresenterPage() {
       if ((e.key === "n" || e.key === "N") && heatmapEnabled) {
         e.preventDefault();
         setShowHeatmapModal(true);
+      }
+
+      // === K = Hiện/ẩn mini QR widget (cho SV vào muộn quét nhanh) ===
+      if (e.key === "k" || e.key === "K") {
+        e.preventDefault();
+        setShowQrWidget((v) => !v);
       }
     };
     window.addEventListener("keydown", handler);
@@ -4909,6 +4919,33 @@ function PresenterPage() {
 
       {/* Floating cheatsheet phím tắt — bật bằng H hoặc ? */}
       {showCheatsheet && <HotkeyCheatsheet onClose={() => setShowCheatsheet(false)} />}
+
+      {/* Floating mini QR widget — bật bằng K, hiện ở bất cứ đâu để SV đến muộn quét nhanh */}
+      {showQrWidget && qrDataUrl && (
+        <div className="fixed bottom-5 left-5 z-[150] bg-white rounded-2xl shadow-2xl border border-zinc-200 p-3 w-44">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[9px] text-zinc-500 tracking-[3px] font-semibold">MÃ PHÒNG</div>
+            <button
+              onClick={() => setShowQrWidget(false)}
+              className="text-zinc-400 hover:text-zinc-700 text-xs leading-none"
+              title="Đóng (K)"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="font-mono font-bold tracking-[4px] text-xl text-center text-zinc-900 mb-1.5 leading-none">
+            {upperCode}
+          </div>
+          <img
+            src={qrDataUrl}
+            alt="QR mã phòng"
+            className="w-full aspect-square rounded-lg bg-white"
+          />
+          <div className="mt-1.5 text-center text-[10px] text-zinc-500">
+            Quét QR · Phím <kbd className="px-1 rounded bg-zinc-100 border border-zinc-300 font-mono">K</kbd> để ẩn
+          </div>
+        </div>
+      )}
 
       {/* AI Tools floating FAB — quick access mọi AI tool */}
       <FloatingAiTools
