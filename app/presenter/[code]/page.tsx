@@ -1050,6 +1050,16 @@ function PresenterPage() {
     await startActivity({ activityId: activityId as any });
   }, [startActivity]);
 
+  // Xem lại kết quả + nhận xét của hoạt động cũ (đã đóng) — KHÔNG kích hoạt lại
+  const handleViewResult = useCallback((activityId: string) => {
+    setRevealActivityId(activityId);
+    setFullscreenOverlay((cur) => {
+      if (cur === "slides") setOverlayReturnTo("slides");
+      return "result";
+    });
+    setResultTab("result");
+  }, []);
+
   const handleMoveUp = useCallback((activityId: string) => {
     moveActivityUp({ activityId: activityId as any });
   }, [moveActivityUp]);
@@ -2166,13 +2176,22 @@ function PresenterPage() {
             </button>
           )}
           {(activity.status === "closed" || activity.status === "expired") && (
-            <button
-              onClick={onRestart}
-              className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
-              title="Mở lại hoạt động này — xóa câu trả lời cũ, SV trả lời lại từ đầu"
-            >
-              🔄 Chạy lại
-            </button>
+            <>
+              <button
+                onClick={() => handleViewResult(activity._id)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-zinc-700 font-medium transition-colors"
+                title="Xem lại kết quả + nhận xét"
+              >
+                👁 Xem
+              </button>
+              <button
+                onClick={onRestart}
+                className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
+                title="Mở lại hoạt động này — xóa câu trả lời cũ, SV trả lời lại từ đầu"
+              >
+                🔄 Chạy lại
+              </button>
+            </>
           )}
 
           {/* AI chấm opentext — hiện cho mọi opentext closed/expired.

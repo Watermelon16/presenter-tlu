@@ -305,11 +305,12 @@ export const restartAllActivities = mutation({
         }
       }
 
-      // Reset về draft
+      // Reset về draft + clear nhận xét cũ
       await ctx.db.patch(activity._id, {
         status: "draft",
         startedAt: undefined,
         closedAt: undefined,
+        aiReview: undefined,
       });
       resetCount++;
     }
@@ -366,6 +367,7 @@ export const restartActivity = mutation({
       status: "active",
       startedAt: now,
       closedAt: undefined,
+      aiReview: undefined, // clear nhận xét cũ — kết quả mới sẽ gen lại khi đóng
     });
 
     // Re-schedule expire nếu có timeLimit
