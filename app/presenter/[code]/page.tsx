@@ -24,6 +24,7 @@ import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { FloatingAiTools } from "@/components/FloatingAiTools";
 import { ActivityAiReviewCard } from "@/components/ActivityAiReviewCard";
+import { HotkeyCheatsheet } from "@/components/HotkeyCheatsheet";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -375,6 +376,32 @@ function PresenterPage() {
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
+
+  // Slide overlay: ẩn/hiện QR sidebar — GV muốn mở rộng vùng slide khi đang giảng,
+  // hiện lại khi cần cho SV vào muộn. Persist localStorage.
+  const [slideSidebarCollapsed, setSlideSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("tkbg-slide-sidebar-collapsed") === "1") {
+        setSlideSidebarCollapsed(true);
+      }
+    } catch {}
+  }, []);
+  const toggleSlideSidebar = useCallback(() => {
+    setSlideSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("tkbg-slide-sidebar-collapsed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Blank screen (B) — đè màn đen lên slide
+  const [blankScreen, setBlankScreen] = useState(false);
+
+  // Floating cheatsheet phím tắt (H hoặc ?)
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
   // Toggle bật/tắt tính năng Nhịp lớp — persist trong localStorage để GV khống chế việc auto-update.
   // Mặc định BẬT để giữ behavior cũ; khi TẮT thì không render nút topbar query + không subscribe Convex.
   const [heatmapEnabled, setHeatmapEnabled] = useState(true);
@@ -917,6 +944,60 @@ function PresenterPage() {
             toast.message("Chưa có hoạt động nào để xem kết quả");
           }
         }
+      }
+
+      // === H hoặc ? = Hiện/ẩn cheatsheet phím tắt ===
+      if (e.key === "h" || e.key === "H" || e.key === "?") {
+        e.preventDefault();
+        setShowCheatsheet((v) => !v);
+      }
+
+      // === B = Blank/đen màn hình (chỉ khi đang chiếu slide) ===
+      if ((e.key === "b" || e.key === "B") && fullscreenOverlay === "slides") {
+        e.preventDefault();
+        setBlankScreen((v) => !v);
+      }
+
+      // === C = Collapse/expand QR sidebar trong slide overlay ===
+      if ((e.key === "c" || e.key === "C") && fullscreenOverlay === "slides") {
+        e.preventDefault();
+        toggleSlideSidebar();
+      }
+
+      // === , = Bước trước trong script, . = Bước sau (chỉ khi script mode) ===
+      if (e.key === "," && isScriptMode) {
+        e.preventDefault();
+        goToPrevInScript();
+      }
+      if (e.key === "." && isScriptMode) {
+        e.preventDefault();
+        goToNextInScript();
+      }
+
+      // === E = Xuất Excel phiên hiện tại ===
+      if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        if (isExporting) return;
+        if (!confirm(`Xuất Excel phiên #${session?.currentRun ?? 1}?`)) return;
+        handleExportExcel();
+      }
+
+      // === I = Mở Smart Insights ===
+      if (e.key === "i" || e.key === "I") {
+        e.preventDefault();
+        setShowInsightsModal(true);
+      }
+
+      // === M = Mở modal bảng điểm danh ===
+      if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        setShowAttendanceModal(true);
+      }
+
+      // === N = Mở modal nhịp lớp (heatmap) ===
+      if ((e.key === "n" || e.key === "N") && heatmapEnabled) {
+        e.preventDefault();
+        setShowHeatmapModal(true);
       }
     };
     window.addEventListener("keydown", handler);
@@ -4495,6 +4576,16 @@ function PresenterPage() {
                 />
               )}
 
+              {/* Blank screen overlay — đè màn đen lên slide để chuyển tiếp / tạm dừng */}
+              {blankScreen && (
+                <div
+                  className="absolute inset-0 z-20 bg-black flex items-center justify-center cursor-pointer"
+                  onClick={() => setBlankScreen(false)}
+                  title="Bấm để hiện lại slide (hoặc B)"
+                >
+                  <div className="text-zinc-700 text-sm">Bấm để hiện lại (B)</div>
+                </div>
+              )}
               {hasPdf && pdfUrl ? (
                 <PdfSlideViewer
                   fileUrl={pdfUrl}
@@ -4517,9 +4608,35 @@ function PresenterPage() {
               )}
             </div>
 
-            {/* Sidebar dành riêng cho QR + Activity control — slide KHÔNG bao giờ bị che */}
-            {hasPdf && (
-              <aside className="w-72 shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col gap-3 p-4 overflow-y-auto">
+            {/* Sidebar dành riêng cho QR + Activity control — slide KHÔNG bao giờ bị che.
+                Collapsible: GV có thể ẩn để mở rộng slide, hiện lại khi cần cho SV vào muộn. */}
+            {hasPdf && slideSidebarCollapsed && (
+              <button
+                onClick={toggleSlideSidebar}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-30 bg-zinc-900/90 hover:bg-zinc-800 text-white rounded-l-lg shadow-lg border-l border-t border-b border-zinc-700 px-2 py-4 flex flex-col items-center gap-1.5"
+                title="Hiện lại QR + điều khiển (C)"
+              >
+                <span className="text-base">◀</span>
+                {qrDataUrl && (
+                  <img
+                    src={qrDataUrl}
+                    alt="QR"
+                    className="w-8 h-8 rounded bg-white p-0.5"
+                  />
+                )}
+                <span className="text-[9px] text-zinc-400 tracking-wider font-semibold">QR</span>
+              </button>
+            )}
+            {hasPdf && !slideSidebarCollapsed && (
+              <aside className="w-72 shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col gap-3 p-4 overflow-y-auto relative">
+                {/* Nút collapse — góc trên trái sidebar */}
+                <button
+                  onClick={toggleSlideSidebar}
+                  className="absolute top-2 right-2 z-10 w-7 h-7 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center text-xs"
+                  title="Ẩn sidebar QR + điều khiển — mở rộng slide (C)"
+                >
+                  ▶
+                </button>
                 {/* Session info card — tên buổi + GV */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-white">
                   <div className="text-[10px] text-zinc-400 tracking-[3px] font-semibold mb-1">BUỔI GIẢNG</div>
@@ -4697,7 +4814,16 @@ function PresenterPage() {
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">R</kbd> kết quả</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">⇧R</kbd> chạy lại</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">X</kbd> đóng</span>
-              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> QR</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">B</kbd> blank</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">C</kbd> sidebar</span>
+              <button
+                onClick={() => setShowCheatsheet((v) => !v)}
+                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 transition-colors"
+                title="Mở/đóng bảng phím tắt (H)"
+              >
+                <kbd className="px-1 py-0.5 rounded bg-amber-500/30 border border-amber-500/50 text-[10px]">H</kbd>
+                <span className="text-[10px]">tất cả phím tắt</span>
+              </button>
             </div>
           </div>
         </div>
@@ -4780,6 +4906,9 @@ function PresenterPage() {
           onClose={() => setShowSingleAiModal(false)}
         />
       )}
+
+      {/* Floating cheatsheet phím tắt — bật bằng H hoặc ? */}
+      {showCheatsheet && <HotkeyCheatsheet onClose={() => setShowCheatsheet(false)} />}
 
       {/* AI Tools floating FAB — quick access mọi AI tool */}
       <FloatingAiTools

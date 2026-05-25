@@ -31,25 +31,31 @@ export function HelpModal({ onClose }: Props) {
           <Section title="🚀 Bắt đầu nhanh">
             <ol className="text-sm space-y-2 list-decimal pl-5 text-zinc-700">
               <li>
-                <strong>Tạo hoạt động</strong>: bấm <Btn>+ Tạo hoạt động</Btn> → chọn loại
-                (poll, quiz, wordcloud, rating, opentext, qa, board)
+                <strong>Chuẩn bị hoạt động</strong>: bấm <Btn>+ Tạo hoạt động</Btn> chọn loại, hoặc
+                FAB <Btn tone="violet">✨</Btn> góc phải dưới để AI gen nhanh
+                (1 hoạt động / từ PDF / khảo sát).
               </li>
               <li>
-                <strong>Hoặc dùng AI</strong> để gen nhanh: dropdown <Btn tone="violet">🤖 AI</Btn> →
+                <strong>Đính Mốc slide</strong> cho mỗi hoạt động (vd: <code>5</code>) — khi chiếu
+                slide 5, sidebar tự nhận diện & cho phép kích hoạt / xem kết quả nhanh.
+              </li>
+              <li>
+                <strong>Khi thuyết trình</strong>: bấm <Btn>S</Btn> chiếu slide PDF fullscreen → các
+                phím tắt tiện ngay tại đó:
                 <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
-                  <li><strong>Từ slide PDF</strong>: upload PDF → gen 5-10 hoạt động bám sát slide</li>
-                  <li><strong>Khảo sát từ chủ đề</strong>: nhập topic → gen survey (rating + opentext + poll)</li>
+                  <li><Btn>A</Btn> kích hoạt hoạt động · <Btn>X</Btn> đóng · <Btn>R</Btn> xem kết quả · <Btn>⇧R</Btn> chạy lại</li>
+                  <li><Btn>C</Btn> ẩn QR sidebar (mở rộng slide) · <Btn>B</Btn> blank đen tạm dừng</li>
+                  <li><Btn>M</Btn> bảng điểm danh · <Btn>I</Btn> Smart Insights · <Btn>E</Btn> Excel</li>
+                  <li>Bấm <Btn>H</Btn> bất cứ lúc nào để hiện bảng phím tắt floating</li>
                 </ul>
               </li>
               <li>
-                Bấm <Btn tone="emerald">▶ Bắt đầu</Btn> trên hoạt động → SV trả lời được
+                Opentext có đáp án mẫu → sau khi đóng có nút <Btn tone="violet">🤖 Chấm AI</Btn>.
+                Mỗi hoạt động đóng đều có nhận xét AI tự sinh ngay phía trên kết quả.
               </li>
               <li>
-                Bấm <Btn tone="red">⏹ Đóng</Btn> khi xong. Cho opentext có đáp án mẫu → bấm{" "}
-                <Btn tone="violet">🤖 Chấm AI</Btn>
-              </li>
-              <li>
-                Cuối buổi: <Btn tone="violet">🤖 AI → Smart insights</Btn> để phân tích tổng thể buổi
+                Cuối buổi: bấm <Btn>I</Btn> để mở Smart Insights tổng thể, hoặc xuất Excel
+                bằng <Btn>E</Btn>.
               </li>
             </ol>
           </Section>
@@ -73,21 +79,57 @@ export function HelpModal({ onClose }: Props) {
           </Section>
 
           {/* ========== Section 3: Keyboard shortcuts ========== */}
-          <Section title="⌨ Phím tắt">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <KbdRow keys={["Q"]} label="Chiếu QR + mã phòng fullscreen" />
-              <KbdRow keys={["S"]} label="Chiếu slide PDF fullscreen" />
-              <KbdRow keys={["A"]} label="Kích hoạt hoạt động kế tiếp" />
-              <KbdRow keys={["X"]} label="Đóng hoạt động đang chạy" />
-              <KbdRow keys={["R"]} label="Xem kết quả + công bố đáp án (cũng work với hoạt động đã đóng gắn slide hiện tại)" />
-              <KbdRow keys={["Shift", "R"]} label="🔄 Chạy lại hoạt động đang focus — xoá câu trả lời, mở lại" />
-              <KbdRow keys={["T"]} label="Đổi tab Kết quả ↔ Bảng thành tích" />
-              <KbdRow keys={["Esc"]} label="Thoát overlay (auto về lại slide nếu vừa xem kết quả)" />
-              <KbdRow keys={["←", "→"]} label="Chuyển slide (trong overlay slide)" />
-              <KbdRow keys={["Space"]} label="Slide kế / bước tiếp script" />
-              <KbdRow keys={["Home"]} label="Về slide đầu" />
-              <KbdRow keys={["End"]} label="Slide cuối" />
-              <KbdRow keys={["0-9", "↵"]} label="Nhảy đến slide cụ thể (gõ số + Enter)" />
+          <Section title="⌨ Phím tắt khi thuyết trình">
+            <p className="text-xs text-zinc-600 mb-3">
+              💡 Bấm <Btn>H</Btn> bất cứ lúc nào để hiện bảng phím tắt floating ngay trên màn hình.
+            </p>
+            <div className="space-y-3">
+              {/* Hoạt động */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Hoạt động</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <KbdRow keys={["A"]} label="Kích hoạt hoạt động kế tiếp" />
+                  <KbdRow keys={["X"]} label="Đóng hoạt động đang chạy" />
+                  <KbdRow keys={["R"]} label="Xem kết quả + công bố đáp án" />
+                  <KbdRow keys={["Shift", "R"]} label="🔄 Chạy lại hoạt động đang focus" />
+                  <KbdRow keys={["T"]} label="Đổi tab Kết quả ↔ Bảng thành tích" />
+                </div>
+              </div>
+              {/* Chiếu slide */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Chiếu slide</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <KbdRow keys={["S"]} label="Mở/đóng chiếu slide PDF fullscreen" />
+                  <KbdRow keys={["Q"]} label="Chiếu QR + mã phòng fullscreen" />
+                  <KbdRow keys={["B"]} label="Blank đen — tạm dừng slide" />
+                  <KbdRow keys={["C"]} label="Ẩn/hiện QR sidebar (mở rộng slide)" />
+                  <KbdRow keys={["←", "→"]} label="Slide trước / sau" />
+                  <KbdRow keys={["Space"]} label="Slide kế / bước script tiếp" />
+                  <KbdRow keys={["Home"]} label="Slide đầu" />
+                  <KbdRow keys={["End"]} label="Slide cuối" />
+                  <KbdRow keys={["0-9", "↵"]} label="Nhảy đến slide cụ thể" />
+                </div>
+              </div>
+              {/* Script + Menu */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Menu nhanh + Script</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <KbdRow keys={[","]} label="Bước trước trong script" />
+                  <KbdRow keys={["."]} label="Bước sau trong script" />
+                  <KbdRow keys={["M"]} label="Mở bảng điểm danh" />
+                  <KbdRow keys={["N"]} label="Mở Nhịp lớp (heatmap)" />
+                  <KbdRow keys={["I"]} label="Mở Smart Insights AI" />
+                  <KbdRow keys={["E"]} label="Xuất Excel phiên hiện tại" />
+                </div>
+              </div>
+              {/* Khác */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Khác</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <KbdRow keys={["H"]} label="Hiện/ẩn bảng phím tắt floating" />
+                  <KbdRow keys={["Esc"]} label="Thoát overlay (auto về slide nếu vừa xem kết quả)" />
+                </div>
+              </div>
             </div>
           </Section>
 
