@@ -25,6 +25,7 @@ import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { FloatingAiTools } from "@/components/FloatingAiTools";
 import { ActivityAiReviewCard } from "@/components/ActivityAiReviewCard";
 import { HotkeyCheatsheet } from "@/components/HotkeyCheatsheet";
+import { SlideDrawingLayer, type DrawTool, type Stroke } from "@/components/SlideDrawingLayer";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -406,6 +407,28 @@ function PresenterPage() {
   // Floating mini QR widget (K) — hiện ở bất cứ đâu để cho SV vào muộn quét nhanh.
   // Khác với Q (QR fullscreen) và C (sidebar trong slide overlay).
   const [showQrWidget, setShowQrWidget] = useState(false);
+
+  // === Slide annotation tools (PowerPoint-like): laser / pen / highlighter / whiteboard ===
+  const [drawTool, setDrawTool] = useState<DrawTool>("none");
+  const [drawColor, setDrawColor] = useState("#ef4444");
+  const [whiteboardMode, setWhiteboardMode] = useState(false);
+  // Strokes lưu theo surface key ("slide:N" hoặc "whiteboard"). Reset khi đổi surface.
+  const [strokesBySurface, setStrokesBySurface] = useState<Record<string, Stroke[]>>({});
+  const _curPage = session?.pdfCurrentPage ?? 1;
+  const drawSurface = whiteboardMode ? "whiteboard" : `slide:${_curPage}`;
+  const drawSurfaceLabel = whiteboardMode ? "Bảng trắng" : `Slide ${_curPage}`;
+  const currentStrokes = strokesBySurface[drawSurface] ?? [];
+  const addStroke = (s: Stroke) =>
+    setStrokesBySurface((prev) => ({ ...prev, [drawSurface]: [...(prev[drawSurface] ?? []), s] }));
+  const undoStroke = () =>
+    setStrokesBySurface((prev) => {
+      const arr = prev[drawSurface] ?? [];
+      if (arr.length === 0) return prev;
+      return { ...prev, [drawSurface]: arr.slice(0, -1) };
+    });
+  const clearStrokes = () =>
+    setStrokesBySurface((prev) => ({ ...prev, [drawSurface]: [] }));
+  const toggleWhiteboard = () => setWhiteboardMode((v) => !v);
   // Toggle bật/tắt tính năng Nhịp lớp — persist trong localStorage để GV khống chế việc auto-update.
   // Mặc định BẬT để giữ behavior cũ; khi TẮT thì không render nút topbar query + không subscribe Convex.
   const [heatmapEnabled, setHeatmapEnabled] = useState(true);
@@ -750,6 +773,16 @@ function PresenterPage() {
           resetSlideJumpBuffer(false);
           return;
         }
+        // Nếu đang dùng công cụ vẽ → Esc thoát công cụ, không đóng overlay
+        if (fullscreenOverlay === "slides" && drawTool !== "none") {
+          setDrawTool("none");
+          return;
+        }
+        // Nếu đang bật bảng trắng → Esc tắt bảng trắng, không đóng overlay
+        if (fullscreenOverlay === "slides" && whiteboardMode) {
+          setWhiteboardMode(false);
+          return;
+        }
         closeOverlay();
         return;
       }
@@ -1008,6 +1041,44 @@ function PresenterPage() {
       if (e.key === "k" || e.key === "K") {
         e.preventDefault();
         setShowQrWidget((v) => !v);
+      }
+
+      // === Slide annotation tools — chỉ khi đang trong slide overlay ===
+      if (fullscreenOverlay === "slides") {
+        // L = laser pointer
+        if (e.key === "l" || e.key === "L") {
+          e.preventDefault();
+          setDrawTool((t) => (t === "laser" ? "none" : "laser"));
+        }
+        // P = pen
+        if (e.key === "p" || e.key === "P") {
+          e.preventDefault();
+          setDrawTool((t) => (t === "pen" ? "none" : "pen"));
+        }
+        // Y = highlighter (Yellow)
+        if (e.key === "y" || e.key === "Y") {
+          e.preventDefault();
+          setDrawTool((t) => (t === "highlighter" ? "none" : "highlighter"));
+        }
+        // W = whiteboard toggle
+        if (e.key === "w" || e.key === "W") {
+          e.preventDefault();
+          setWhiteboardMode((v) => !v);
+        }
+        // Z = undo last stroke (Ctrl/Cmd+Z cũng work)
+        if ((e.key === "z" || e.key === "Z") && !e.shiftKey) {
+          if (currentStrokes.length === 0) return;
+          e.preventDefault();
+          undoStroke();
+        }
+        // Shift+D = clear all strokes của surface hiện tại
+        if (e.shiftKey && (e.key === "D" || e.key === "d")) {
+          if (currentStrokes.length === 0) return;
+          e.preventDefault();
+          if (confirm(`Xoá toàn bộ ${currentStrokes.length} nét vẽ trên ${drawSurfaceLabel}?`)) {
+            clearStrokes();
+          }
+        }
       }
     };
     window.addEventListener("keydown", handler);
@@ -4596,6 +4667,10 @@ function PresenterPage() {
                   <div className="text-zinc-700 text-sm">Bấm để hiện lại (B)</div>
                 </div>
               )}
+              {/* Whiteboard mode — nền trắng đè lên slide để vẽ tự do */}
+              {whiteboardMode && (
+                <div className="absolute inset-0 z-10 bg-white" />
+              )}
               {hasPdf && pdfUrl ? (
                 <PdfSlideViewer
                   fileUrl={pdfUrl}
@@ -4615,6 +4690,25 @@ function PresenterPage() {
                     </button>
                   </div>
                 </div>
+              )}
+
+              {/* === Lớp vẽ + toolbar (laser/pen/highlighter/whiteboard) ===
+                  Đè absolute lên slide area. Render khi có tool active HOẶC
+                  whiteboard mode HOẶC có sẵn strokes (xem lại nét đã vẽ) */}
+              {(drawTool !== "none" || whiteboardMode || currentStrokes.length > 0) && (
+                <SlideDrawingLayer
+                  tool={drawTool}
+                  setTool={setDrawTool}
+                  color={drawColor}
+                  setColor={setDrawColor}
+                  strokes={currentStrokes}
+                  onAddStroke={addStroke}
+                  onClear={clearStrokes}
+                  onUndo={undoStroke}
+                  whiteboardActive={whiteboardMode}
+                  onToggleWhiteboard={toggleWhiteboard}
+                  surfaceLabel={drawSurfaceLabel}
+                />
               )}
             </div>
 

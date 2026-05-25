@@ -29,6 +29,14 @@ const ROWS: Row[] = [
   { keys: ["End"], label: "Slide cuối" },
   { keys: ["0-9", "↵"], label: "Nhảy đến slide cụ thể (gõ số + Enter)" },
 
+  // === VẼ TRÊN SLIDE / BẢNG TRẮNG ===
+  { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)", group: "Vẽ trên slide" },
+  { keys: ["P"], label: "Bút vẽ tự do" },
+  { keys: ["Y"], label: "Highlight (bút dạ vàng/màu)" },
+  { keys: ["W"], label: "Bật/tắt bảng trắng (vẽ tự do trên nền trắng)" },
+  { keys: ["Z"], label: "Hoàn tác nét vẽ cuối" },
+  { keys: ["⇧", "D"], label: "Xoá hết nét vẽ trên slide/bảng hiện tại" },
+
   // === SCRIPT ===
   { keys: [","], label: "Bước trước trong script", group: "Script" },
   { keys: ["."], label: "Bước sau trong script" },
