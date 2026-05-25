@@ -8,15 +8,66 @@ import type { Id } from "@/convex/_generated/dataModel";
 
 type Provider = "gemini" | "deepseek" | "openrouter";
 
-const KEY_STORAGE_PREFIX = "ai_gen_apikey_";
-const MODEL_STORAGE_KEY = "ai_gen_model_v1";
-const PROVIDER_STORAGE_KEY = "ai_gen_provider_v1";
-
-const MODEL_DEFAULTS: Record<Provider, string> = {
-  gemini: "gemini-2.5-flash",
-  deepseek: "deepseek-chat",
-  openrouter: "deepseek/deepseek-v4-flash:free",
+type ModelDef = {
+  id: string;
+  provider: Provider;
+  label: string;
+  hint: string;
 };
+
+// Whitelist phải khớp ALLOWED_MODELS_BY_PROVIDER trong convex/ai.ts
+const MODELS: ModelDef[] = [
+  // Gemini
+  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash", hint: "Cân bằng · cần key Gemini" },
+  { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite", hint: "Nhanh · quota cao" },
+  { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro", hint: "Thông minh nhất · quota thấp" },
+  { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Auto-route" },
+  { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Phiên bản cũ" },
+  // DeepSeek
+  { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat", hint: "Cần nạp ≥ $2" },
+  { id: "deepseek-reasoner", provider: "deepseek", label: "DeepSeek Reasoner", hint: "Reasoning · cần balance" },
+  // OpenRouter (free)
+  { id: "deepseek/deepseek-v4-flash:free", provider: "openrouter", label: "DeepSeek V4 Flash (free)", hint: "Context 1M · mạnh nhất nhóm free" },
+  { id: "meta-llama/llama-3.3-70b-instruct:free", provider: "openrouter", label: "Llama 3.3 70B (free)", hint: "Meta · ổn định" },
+  { id: "qwen/qwen3-next-80b-a3b-instruct:free", provider: "openrouter", label: "Qwen3 Next 80B (free)", hint: "Alibaba · context 256K" },
+  { id: "qwen/qwen3-coder:free", provider: "openrouter", label: "Qwen3 Coder 480B (free)", hint: "Alibaba · context 1M" },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free", provider: "openrouter", label: "Nemotron 3 Super 120B (free)", hint: "NVIDIA · context 1M" },
+  { id: "google/gemma-4-31b-it:free", provider: "openrouter", label: "Gemma 4 31B (free)", hint: "Google · open weights" },
+  { id: "google/gemma-4-26b-a4b-it:free", provider: "openrouter", label: "Gemma 4 26B A4B (free)", hint: "Google · MoE" },
+  { id: "openai/gpt-oss-120b:free", provider: "openrouter", label: "GPT-OSS 120B (free)", hint: "OpenAI open source" },
+  { id: "z-ai/glm-4.5-air:free", provider: "openrouter", label: "GLM 4.5 Air (free)", hint: "Zhipu AI" },
+];
+
+const PROVIDER_INFO: Record<Provider, { label: string }> = {
+  gemini: { label: "Google Gemini" },
+  deepseek: { label: "DeepSeek" },
+  openrouter: { label: "OpenRouter" },
+};
+
+// Dùng chung key storage với AiGenFromPdfModal — 1 key dùng cho mọi feature AI
+const KEY_STORAGE_PREFIX = "ai_gen_apikey_";
+// Riêng cho summary để GV có thể chọn model khác cho summary mà không ảnh hưởng AI gen
+const SUMMARY_MODEL_KEY = "ai_summary_model_v1";
+
+function loadSavedKey(provider: Provider): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(KEY_STORAGE_PREFIX + provider) || "";
+  } catch {
+    return "";
+  }
+}
+
+function loadSavedModelId(): string {
+  if (typeof window === "undefined") return MODELS[0].id;
+  try {
+    const saved = localStorage.getItem(SUMMARY_MODEL_KEY);
+    if (saved && MODELS.some((m) => m.id === saved)) return saved;
+  } catch {
+    /* ignore */
+  }
+  return MODELS[0].id;
+}
 
 type Summary = {
   overview: string;
@@ -36,9 +87,20 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const provider = (typeof window !== "undefined" ? (localStorage.getItem(PROVIDER_STORAGE_KEY) as Provider) : null) || "gemini";
-  const apiKey = typeof window !== "undefined" ? localStorage.getItem(KEY_STORAGE_PREFIX + provider) || "" : "";
-  const model = (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) || MODEL_DEFAULTS[provider];
+  const [selectedModelId, setSelectedModelId] = useState<string>(() => loadSavedModelId());
+  const selectedModel = MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
+  const currentProvider = selectedModel.provider;
+  const currentKey = loadSavedKey(currentProvider);
+  const hasKey = !!currentKey;
+
+  const handleSelectModel = (id: string) => {
+    setSelectedModelId(id);
+    try {
+      localStorage.setItem(SUMMARY_MODEL_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const handleRun = async () => {
     setLoading(true);
@@ -47,9 +109,9 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
     try {
       const result = await summarize({
         sessionId,
-        provider,
-        model,
-        apiKey: apiKey || undefined,
+        provider: currentProvider,
+        model: selectedModel.id,
+        apiKey: currentKey || undefined,
       });
       setSummary(result);
     } catch (e: unknown) {
@@ -71,14 +133,40 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
             <h2 className="text-lg font-semibold flex items-center gap-2">🤖 Tóm tắt buổi giảng (AI)</h2>
             <p className="text-xs text-zinc-500 mt-1">
               AI đọc toàn bộ câu trả lời, Q&A và board → rút insight để cải thiện chất lượng dạy.
-              {apiKey ? (
-                <span className="ml-1 text-emerald-700">Dùng <strong>{provider}</strong> / <code className="text-[10px]">{model}</code></span>
-              ) : (
-                <span className="ml-1 text-rose-700">⚠ Chưa có API key — vào ⚙️ Cài đặt → 🔑 API key trước</span>
-              )}
             </p>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none shrink-0">×</button>
+        </div>
+
+        {/* Model selector — luôn hiện, kể cả khi đã có summary để GV chạy lại với model khác */}
+        <div className="px-6 py-3 border-b border-zinc-100 bg-zinc-50 space-y-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <label className="text-xs font-medium text-zinc-700 shrink-0">Model AI:</label>
+            <select
+              value={selectedModelId}
+              onChange={(e) => handleSelectModel(e.target.value)}
+              className="flex-1 min-w-0 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
+            >
+              {(["gemini", "deepseek", "openrouter"] as Provider[]).map((p) => (
+                <optgroup key={p} label={PROVIDER_INFO[p].label}>
+                  {MODELS.filter((m) => m.provider === p).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} — {m.hint}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          {!hasKey ? (
+            <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1.5">
+              ⚠ Chưa có API key <strong>{PROVIDER_INFO[currentProvider].label}</strong>. Vào ⚙️ Cài đặt → 🔑 API key để paste key (lưu 1 lần dùng cho mọi tính năng AI).
+            </div>
+          ) : (
+            <p className="text-[11px] text-zinc-500">
+              Dùng key <strong>{PROVIDER_INFO[currentProvider].label}</strong> đã lưu. Hết quota → đổi model khác trong list.
+            </p>
+          )}
         </div>
 
         {/* Body */}
@@ -93,14 +181,11 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
               </div>
               <button
                 onClick={handleRun}
-                disabled={!apiKey}
+                disabled={!hasKey}
                 className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 🤖 Bắt đầu phân tích
               </button>
-              {!apiKey && (
-                <p className="text-xs text-rose-600 mt-3">Mở menu ⚙️ Cài đặt → 🔑 API key AI để nhập key trước.</p>
-              )}
             </div>
           )}
 
@@ -108,22 +193,24 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
             <div className="text-center py-12">
               <div className="text-4xl mb-3 animate-pulse">🤖</div>
               <div className="text-sm text-zinc-700">AI đang đọc dữ liệu buổi giảng...</div>
-              <div className="text-xs text-zinc-500 mt-1">Có thể mất 5-15 giây</div>
+              <div className="text-xs text-zinc-500 mt-1">
+                {selectedModel.label} · có thể mất 5-15 giây
+              </div>
             </div>
           )}
 
           {error && !loading && (
             <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800">
               ⚠ {error}
-              <div className="mt-3">
+              <div className="mt-3 flex items-center gap-2">
                 <button onClick={handleRun} className="text-xs underline">Thử lại</button>
+                <span className="text-xs text-rose-500">· hoặc đổi model AI ở trên</span>
               </div>
             </div>
           )}
 
           {summary && (
             <div className="space-y-5">
-              {/* Overview */}
               <section>
                 <h3 className="text-sm font-semibold text-zinc-900 mb-2 flex items-center gap-1.5">📋 Tóm tắt</h3>
                 <p className="text-sm text-zinc-700 bg-zinc-50 px-4 py-3 rounded-xl border border-zinc-200 leading-relaxed">
@@ -134,7 +221,6 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
                 </div>
               </section>
 
-              {/* Understandings */}
               {summary.understandings.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-emerald-800 mb-2 flex items-center gap-1.5">✅ SV hiểu rõ</h3>
@@ -149,7 +235,6 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
                 </section>
               )}
 
-              {/* Confusions */}
               {summary.confusions.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-1.5">⚠️ Còn nhầm / lúng túng</h3>
@@ -164,7 +249,6 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
                 </section>
               )}
 
-              {/* Notable questions */}
               {summary.notableQuestions.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-sky-800 mb-2 flex items-center gap-1.5">❓ Câu hỏi đáng chú ý</h3>
@@ -179,7 +263,6 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
                 </section>
               )}
 
-              {/* Next session suggestions */}
               {summary.nextSuggestions.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-violet-800 mb-2 flex items-center gap-1.5">🎯 Gợi ý cho buổi sau</h3>
@@ -195,8 +278,8 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
               )}
 
               <div className="pt-3 border-t border-zinc-200 flex items-center justify-between text-xs text-zinc-500">
-                <span>Có thể chạy lại để có góc nhìn mới</span>
-                <button onClick={handleRun} className="px-3 py-1 rounded-md border border-zinc-300 hover:bg-zinc-50">🔄 Chạy lại</button>
+                <span>Đổi model rồi chạy lại để so sánh nhiều góc nhìn</span>
+                <button onClick={handleRun} disabled={!hasKey} className="px-3 py-1 rounded-md border border-zinc-300 hover:bg-zinc-50 disabled:opacity-50">🔄 Chạy lại</button>
               </div>
             </div>
           )}
@@ -205,7 +288,7 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
         {/* Footer */}
         <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between shrink-0">
           <div className="text-xs text-zinc-500">
-            AI có thể nhầm — hãy đối chiếu với cảm nhận thực tế.
+            AI có thể nhầm — đối chiếu với cảm nhận thực tế khi giảng.
           </div>
           <button onClick={onClose} className="px-4 py-1.5 text-sm rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 font-medium">
             Đóng
