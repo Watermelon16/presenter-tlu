@@ -25,7 +25,14 @@ import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { FloatingAiTools } from "@/components/FloatingAiTools";
 import { ActivityAiReviewCard } from "@/components/ActivityAiReviewCard";
 import { HotkeyCheatsheet } from "@/components/HotkeyCheatsheet";
-import { SlideDrawingLayer, type DrawTool, type Stroke } from "@/components/SlideDrawingLayer";
+import {
+  SlideDrawingLayer,
+  PEN_SIZES,
+  HIGHLIGHTER_SIZES,
+  ERASER_SIZES,
+  type DrawTool,
+  type Stroke,
+} from "@/components/SlideDrawingLayer";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -408,10 +415,36 @@ function PresenterPage() {
   // Khác với Q (QR fullscreen) và C (sidebar trong slide overlay).
   const [showQrWidget, setShowQrWidget] = useState(false);
 
-  // === Slide annotation tools (PowerPoint-like): laser / pen / highlighter / whiteboard ===
+  // === Slide annotation tools (PowerPoint-like): laser / pen / highlighter / eraser / whiteboard ===
   const [drawTool, setDrawTool] = useState<DrawTool>("none");
   const [drawColor, setDrawColor] = useState("#ef4444");
   const [whiteboardMode, setWhiteboardMode] = useState(false);
+  // Kích thước nét — persist localStorage
+  const [penWidth, _setPenWidth] = useState<number>(PEN_SIZES[1]);
+  const [highlighterWidth, _setHighlighterWidth] = useState<number>(HIGHLIGHTER_SIZES[1]);
+  const [eraserRadius, _setEraserRadius] = useState<number>(ERASER_SIZES[1]);
+  useEffect(() => {
+    try {
+      const p = Number(localStorage.getItem("tkbg-pen-width"));
+      if (p && PEN_SIZES.includes(p as typeof PEN_SIZES[number])) _setPenWidth(p);
+      const h = Number(localStorage.getItem("tkbg-highlighter-width"));
+      if (h && HIGHLIGHTER_SIZES.includes(h as typeof HIGHLIGHTER_SIZES[number])) _setHighlighterWidth(h);
+      const e = Number(localStorage.getItem("tkbg-eraser-radius"));
+      if (e && ERASER_SIZES.includes(e as typeof ERASER_SIZES[number])) _setEraserRadius(e);
+    } catch {}
+  }, []);
+  const setPenWidth = (n: number) => {
+    _setPenWidth(n);
+    try { localStorage.setItem("tkbg-pen-width", String(n)); } catch {}
+  };
+  const setHighlighterWidth = (n: number) => {
+    _setHighlighterWidth(n);
+    try { localStorage.setItem("tkbg-highlighter-width", String(n)); } catch {}
+  };
+  const setEraserRadius = (n: number) => {
+    _setEraserRadius(n);
+    try { localStorage.setItem("tkbg-eraser-radius", String(n)); } catch {}
+  };
   // Strokes lưu theo surface key ("slide:N" hoặc "whiteboard"). Reset khi đổi surface.
   const [strokesBySurface, setStrokesBySurface] = useState<Record<string, Stroke[]>>({});
   const _curPage = session?.pdfCurrentPage ?? 1;
@@ -4712,6 +4745,12 @@ function PresenterPage() {
                   setTool={setDrawTool}
                   color={drawColor}
                   setColor={setDrawColor}
+                  penWidth={penWidth}
+                  setPenWidth={setPenWidth}
+                  highlighterWidth={highlighterWidth}
+                  setHighlighterWidth={setHighlighterWidth}
+                  eraserRadius={eraserRadius}
+                  setEraserRadius={setEraserRadius}
                   strokes={currentStrokes}
                   onAddStroke={addStroke}
                   onRemoveStrokeAt={removeStrokeAt}

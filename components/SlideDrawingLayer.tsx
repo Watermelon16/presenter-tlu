@@ -19,13 +19,23 @@ export type Stroke = {
 };
 
 const COLORS = ["#ef4444", "#facc15", "#22c55e", "#3b82f6", "#ffffff", "#000000"];
-const ERASER_RADIUS_PX = 24;
+
+// Preset kích thước cho từng tool (px)
+export const PEN_SIZES = [2, 4, 8, 14] as const;
+export const HIGHLIGHTER_SIZES = [10, 18, 28, 40] as const;
+export const ERASER_SIZES = [14, 24, 40, 60] as const;
 
 type Props = {
   tool: DrawTool;
   setTool: (t: DrawTool) => void;
   color: string;
   setColor: (c: string) => void;
+  penWidth: number;
+  setPenWidth: (n: number) => void;
+  highlighterWidth: number;
+  setHighlighterWidth: (n: number) => void;
+  eraserRadius: number;
+  setEraserRadius: (n: number) => void;
   strokes: Stroke[];
   onAddStroke: (s: Stroke) => void;
   onRemoveStrokeAt: (idx: number) => void;
@@ -85,6 +95,8 @@ function strokeNearPoint(
 
 export function SlideDrawingLayer({
   tool, setTool, color, setColor,
+  penWidth, setPenWidth, highlighterWidth, setHighlighterWidth,
+  eraserRadius, setEraserRadius,
   strokes, onAddStroke, onRemoveStrokeAt, onClear, onUndo,
   whiteboardActive, onToggleWhiteboard, surfaceLabel,
 }: Props) {
@@ -94,9 +106,10 @@ export function SlideDrawingLayer({
   const [laserPos, setLaserPos] = useState<[number, number] | null>(null);
   const [eraserPos, setEraserPos] = useState<[number, number] | null>(null);
 
-  // UI: collapse toolbar + color popout
+  // UI: collapse toolbar + color/size popouts
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showSizePicker, setShowSizePicker] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -131,7 +144,7 @@ export function SlideDrawingLayer({
     if (size.w === 0) return;
     // Tìm stroke đầu tiên giao với eraser → xoá. Lặp pointer move sẽ xoá tiếp.
     for (let i = strokes.length - 1; i >= 0; i--) {
-      if (strokeNearPoint(strokes[i], p, ERASER_RADIUS_PX, size.w, size.h)) {
+      if (strokeNearPoint(strokes[i], p, eraserRadius, size.w, size.h)) {
         onRemoveStrokeAt(i);
         return;
       }
@@ -174,7 +187,7 @@ export function SlideDrawingLayer({
 
   const finish = () => {
     if (current.length > 1 && (tool === "pen" || tool === "highlighter")) {
-      const width = tool === "highlighter" ? 18 : 4;
+      const width = tool === "highlighter" ? highlighterWidth : penWidth;
       onAddStroke({ tool, color, width, points: current });
     }
     setCurrent([]);
@@ -228,7 +241,7 @@ export function SlideDrawingLayer({
               <path
                 d={pathFor(current)}
                 stroke={color}
-                strokeWidth={tool === "highlighter" ? 18 : 4}
+                strokeWidth={tool === "highlighter" ? highlighterWidth : penWidth}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -255,10 +268,10 @@ export function SlideDrawingLayer({
           <div
             className="absolute pointer-events-none border-2 border-white rounded-full"
             style={{
-              left: eraserPos[0] * size.w - ERASER_RADIUS_PX,
-              top: eraserPos[1] * size.h - ERASER_RADIUS_PX,
-              width: ERASER_RADIUS_PX * 2,
-              height: ERASER_RADIUS_PX * 2,
+              left: eraserPos[0] * size.w - eraserRadius,
+              top: eraserPos[1] * size.h - eraserRadius,
+              width: eraserRadius * 2,
+              height: eraserRadius * 2,
               background: "rgba(255,255,255,0.15)",
               boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
             }}
@@ -288,8 +301,9 @@ export function SlideDrawingLayer({
           {(tool === "pen" || tool === "highlighter") && (
             <>
               <Sep />
+              {/* Color picker */}
               <button
-                onClick={() => setShowColorPicker((v) => !v)}
+                onClick={() => { setShowColorPicker((v) => !v); setShowSizePicker(false); }}
                 className="relative w-9 h-9 mx-auto rounded-md border-2 border-zinc-600 hover:border-zinc-400 transition flex items-center justify-center"
                 style={{ backgroundColor: color }}
                 title="Đổi màu"
@@ -302,11 +316,7 @@ export function SlideDrawingLayer({
                     {COLORS.map((c) => (
                       <div
                         key={c}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setColor(c);
-                          setShowColorPicker(false);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setColor(c); setShowColorPicker(false); }}
                         className={`w-7 h-7 rounded-md border-2 cursor-pointer transition ${
                           color === c ? "border-white scale-110" : "border-zinc-600 hover:border-zinc-400"
                         }`}
@@ -314,6 +324,109 @@ export function SlideDrawingLayer({
                         title={c}
                       />
                     ))}
+                  </div>
+                )}
+              </button>
+
+              {/* Size picker — preview chấm bằng kích thước hiện tại */}
+              <button
+                onClick={() => { setShowSizePicker((v) => !v); setShowColorPicker(false); }}
+                className="relative w-9 h-9 mx-auto rounded-md hover:bg-zinc-700 transition flex items-center justify-center"
+                title={`Kích thước nét (${tool === "highlighter" ? highlighterWidth : penWidth}px)`}
+              >
+                <div
+                  className="rounded-full"
+                  style={{
+                    width: Math.min(24, tool === "highlighter" ? highlighterWidth : penWidth),
+                    height: Math.min(24, tool === "highlighter" ? highlighterWidth : penWidth),
+                    background: color,
+                    opacity: tool === "highlighter" ? 0.5 : 1,
+                  }}
+                />
+                {showSizePicker && (
+                  <div
+                    className="absolute left-full ml-2 top-0 z-50 flex flex-col gap-1 bg-zinc-900 border border-zinc-700 rounded-lg p-1.5 shadow-2xl"
+                    onMouseLeave={() => setShowSizePicker(false)}
+                  >
+                    {(tool === "highlighter" ? HIGHLIGHTER_SIZES : PEN_SIZES).map((sz) => {
+                      const active = (tool === "highlighter" ? highlighterWidth : penWidth) === sz;
+                      return (
+                        <div
+                          key={sz}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (tool === "highlighter") setHighlighterWidth(sz);
+                            else setPenWidth(sz);
+                            setShowSizePicker(false);
+                          }}
+                          className={`w-9 h-9 rounded-md cursor-pointer flex items-center justify-center transition ${
+                            active ? "bg-amber-500" : "hover:bg-zinc-700"
+                          }`}
+                          title={`${sz}px`}
+                        >
+                          <div
+                            className="rounded-full"
+                            style={{
+                              width: Math.min(28, sz),
+                              height: Math.min(28, sz),
+                              background: active ? "#000" : color,
+                              opacity: tool === "highlighter" ? 0.7 : 1,
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </button>
+            </>
+          )}
+
+          {tool === "eraser" && (
+            <>
+              <Sep />
+              {/* Eraser size — vòng tròn preview */}
+              <button
+                onClick={() => { setShowSizePicker((v) => !v); setShowColorPicker(false); }}
+                className="relative w-9 h-9 mx-auto rounded-md hover:bg-zinc-700 transition flex items-center justify-center"
+                title={`Vùng tẩy (${eraserRadius}px)`}
+              >
+                <div
+                  className="rounded-full border border-zinc-300"
+                  style={{
+                    width: Math.min(24, eraserRadius * 0.8),
+                    height: Math.min(24, eraserRadius * 0.8),
+                    background: "rgba(255,255,255,0.2)",
+                  }}
+                />
+                {showSizePicker && (
+                  <div
+                    className="absolute left-full ml-2 top-0 z-50 flex flex-col gap-1 bg-zinc-900 border border-zinc-700 rounded-lg p-1.5 shadow-2xl"
+                    onMouseLeave={() => setShowSizePicker(false)}
+                  >
+                    {ERASER_SIZES.map((sz) => {
+                      const active = eraserRadius === sz;
+                      return (
+                        <div
+                          key={sz}
+                          onClick={(e) => { e.stopPropagation(); setEraserRadius(sz); setShowSizePicker(false); }}
+                          className={`w-9 h-9 rounded-md cursor-pointer flex items-center justify-center transition ${
+                            active ? "bg-amber-500" : "hover:bg-zinc-700"
+                          }`}
+                          title={`${sz}px`}
+                        >
+                          <div
+                            className="rounded-full border-2"
+                            style={{
+                              width: Math.min(30, sz * 0.7),
+                              height: Math.min(30, sz * 0.7),
+                              borderColor: active ? "#000" : "#fff",
+                              background: "rgba(255,255,255,0.15)",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </button>
