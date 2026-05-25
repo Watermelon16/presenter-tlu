@@ -22,6 +22,7 @@ import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
+import { FloatingAiTools } from "@/components/FloatingAiTools";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -4663,6 +4664,17 @@ function PresenterPage() {
           onClose={() => setShowSingleAiModal(false)}
         />
       )}
+
+      {/* AI Tools floating FAB — quick access mọi AI tool */}
+      <FloatingAiTools
+        hasPdf={hasPdf}
+        onOpenSingleActivity={() => setShowSingleAiModal(true)}
+        onOpenPdfGen={() => setShowAiGenModal(true)}
+        onOpenSurvey={() => setShowSurveyModal(true)}
+        onOpenSummary={() => setShowSummaryModal(true)}
+        onOpenInsights={() => setShowInsightsModal(true)}
+        onOpenApiKeys={() => setShowApiKeysModal(true)}
+      />
 
       {/* AI grading opentext modal */}
       {gradingActivityId && (

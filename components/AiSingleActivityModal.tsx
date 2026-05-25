@@ -10,13 +10,15 @@ import { callAiJson, AiClientError } from "@/lib/aiClient";
 
 const MODEL_STORAGE_KEY = "ai_single_activity_model_v1";
 
-type ActivityType = "poll" | "wordcloud" | "rating" | "opentext";
+type ActivityType = "poll" | "wordcloud" | "rating" | "opentext" | "board" | "qa";
 
 const TYPE_INFO: Record<ActivityType, { icon: string; label: string; desc: string }> = {
-  poll: { icon: "📊", label: "Trắc nghiệm", desc: "AI sinh câu hỏi + 4 lựa chọn + đáp án đúng + nhiễu" },
-  wordcloud: { icon: "💬", label: "Word Cloud", desc: "AI gợi ý câu hỏi mở để SV trả lời 1-3 từ" },
-  rating: { icon: "⭐", label: "Đánh giá thang điểm", desc: "AI gợi ý câu hỏi rating 1-5" },
-  opentext: { icon: "📝", label: "Tự luận ngắn", desc: "AI gợi ý câu hỏi yêu cầu trả lời 1-2 câu" },
+  poll: { icon: "📊", label: "Trắc nghiệm", desc: "Câu hỏi + 4 lựa chọn + đáp án đúng + nhiễu" },
+  wordcloud: { icon: "💬", label: "Word Cloud", desc: "Câu hỏi mở để SV trả lời 1-3 từ" },
+  rating: { icon: "⭐", label: "Đánh giá", desc: "Câu hỏi rating 1-5 + nhãn min/max" },
+  opentext: { icon: "📝", label: "Tự luận ngắn", desc: "Câu hỏi yêu cầu trả lời 1-2 câu" },
+  board: { icon: "📌", label: "Bảng cộng tác", desc: "Câu hỏi mở + 3-4 cột phân loại bài SV đăng" },
+  qa: { icon: "❓", label: "Q&A", desc: "Gợi ý chủ đề để SV tự đặt câu hỏi" },
 };
 
 // JSON schema cho từng loại — gửi cho Gemini structured output
@@ -47,8 +49,29 @@ function geminiSchemaForType(type: ActivityType): object {
         },
         required: ["title"],
       };
+    case "board":
+      return {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          columns: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                title: { type: "STRING" },
+                description: { type: "STRING" },
+              },
+              required: ["title"],
+            },
+          },
+          reasoning: { type: "STRING" },
+        },
+        required: ["title", "columns"],
+      };
     case "wordcloud":
     case "opentext":
+    case "qa":
     default:
       return {
         type: "OBJECT",
@@ -73,6 +96,8 @@ function buildPrompt(args: {
     wordcloud: "word cloud (SV trả lời 1-3 từ)",
     rating: "đánh giá thang điểm 1-5 (rating)",
     opentext: "tự luận ngắn (SV trả lời 1-2 câu)",
+    board: "bảng cộng tác Padlet-style (SV đăng bài text/ảnh vào các cột phân loại)",
+    qa: "Q&A (gợi ý chủ đề để SV tự đặt câu hỏi)",
   }[args.type];
 
   const focusLine = args.focus.trim()
@@ -111,6 +136,19 @@ function buildPrompt(args: {
   "title": "<câu hỏi yêu cầu SV trả lời 1-2 câu ngắn>",
   "reasoning": "<1 câu giải thích>"
 }`,
+    board: `Schema JSON:
+{
+  "title": "<câu hỏi/chủ đề chính để SV đăng bài lên board>",
+  "columns": [
+    { "title": "<tên cột phân loại, vd 'Đã hiểu rõ'>", "description": "<1 câu mô tả ngắn ý nghĩa cột>" }
+  ],
+  "reasoning": "<1 câu giải thích lựa chọn cột>"
+}`,
+    qa: `Schema JSON:
+{
+  "title": "<chủ đề / gợi ý để SV đặt câu hỏi>",
+  "reasoning": "<1 câu giải thích>"
+}`,
   }[args.type];
 
   return `Bạn là trợ lý giảng viên đại học Việt Nam. Hãy sinh 1 hoạt động ${typeLine} cho buổi giảng.
@@ -119,7 +157,14 @@ Chủ đề / yêu cầu của GV: "${args.topic.trim()}"${focusLine}${contextLi
 
 YÊU CẦU:
 - Tiếng Việt học thuật, ngắn gọn, rõ ràng.
-- ${args.type === "poll" ? `Lựa chọn cụ thể, KHÔNG trùng nghĩa, KHÔNG quá dễ. Nhiễu (đáp án sai) phải hợp lý — dựa trên nhầm lẫn thường gặp của SV.${args.asQuiz ? " Đáp án đúng phải rõ ràng, không gây tranh cãi." : ""}` : args.type === "rating" ? "Câu hỏi đo cảm nhận / mức độ hiểu của SV về 1 khái niệm cụ thể." : args.type === "wordcloud" ? "Câu hỏi gợi mở để SV tự liên tưởng từ khoá liên quan đến nội dung." : "Câu hỏi yêu cầu SV giải thích / so sánh / vận dụng ngắn gọn."}
+- ${
+    args.type === "poll" ? `Lựa chọn cụ thể, KHÔNG trùng nghĩa, KHÔNG quá dễ. Nhiễu (đáp án sai) phải hợp lý — dựa trên nhầm lẫn thường gặp của SV.${args.asQuiz ? " Đáp án đúng phải rõ ràng, không gây tranh cãi." : ""}` :
+    args.type === "rating" ? "Câu hỏi đo cảm nhận / mức độ hiểu của SV về 1 khái niệm cụ thể." :
+    args.type === "wordcloud" ? "Câu hỏi gợi mở để SV tự liên tưởng từ khoá liên quan đến nội dung." :
+    args.type === "board" ? "Câu hỏi mở để SV đăng nhiều bài text/ảnh. Đề xuất 3-4 cột phân loại có nghĩa — KHÔNG dùng cột generic (vd 'Khác'); cột phải dẫn dắt SV phản hồi đa chiều (vd 'Ưu điểm', 'Hạn chế', 'Đề xuất cải tiến')." :
+    args.type === "qa" ? "Gợi ý chủ đề cụ thể để SV biết hướng đặt câu hỏi (vd 'Hỏi về phần X bạn còn chưa rõ')." :
+    "Câu hỏi yêu cầu SV giải thích / so sánh / vận dụng ngắn gọn."
+  }
 - Bám sát chủ đề + phạm vi đã chỉ định, KHÔNG mở rộng sang topic khác.
 
 ${schemaLines}
@@ -136,6 +181,7 @@ type AiResult = {
   ratingMax?: number;
   ratingMinLabel?: string;
   ratingMaxLabel?: string;
+  columns?: Array<{ title: string; description?: string }>;
   reasoning?: string;
 };
 
@@ -254,6 +300,21 @@ export function AiSingleActivityModal({
         config = { maxLength: 30 };
       } else if (activityType === "opentext") {
         config = { maxLength: 500 };
+      } else if (activityType === "board") {
+        const cols = (result.columns ?? []).filter((c) => !!c.title?.trim());
+        if (cols.length < 2) {
+          toast.error("AI trả về thiếu cột. Hãy gen lại.");
+          return;
+        }
+        config = {
+          columns: cols.map((c, i) => ({
+            id: `col_${i}_${Math.random().toString(36).slice(2, 6)}`,
+            title: c.title.trim(),
+            description: c.description?.trim() || undefined,
+          })),
+        };
+      } else if (activityType === "qa") {
+        config = { allowAnonymous: true };
       }
       await createActivity({
         sessionId,
@@ -455,6 +516,16 @@ export function AiSingleActivityModal({
                 {activityType === "rating" && (
                   <div className="text-xs text-zinc-600">
                     Thang {result.ratingMin ?? 1}-{result.ratingMax ?? 5}: {result.ratingMinLabel ?? "—"} → {result.ratingMaxLabel ?? "—"}
+                  </div>
+                )}
+                {activityType === "board" && result.columns && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                    {result.columns.map((c, i) => (
+                      <div key={i} className="text-xs bg-purple-50 border border-purple-200 rounded-lg px-2 py-1.5">
+                        <div className="font-medium text-purple-900">📌 {c.title}</div>
+                        {c.description && <div className="text-purple-700 text-[11px] mt-0.5">{c.description}</div>}
+                      </div>
+                    ))}
                   </div>
                 )}
                 {result.reasoning && (
