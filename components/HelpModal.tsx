@@ -89,18 +89,32 @@ export function HelpModal({ onClose }: Props) {
           </Section>
 
           {/* ========== Section 4: Phiên dạy ========== */}
-          <Section title="🔄 Phiên dạy nhiều lớp">
-            <p className="text-sm text-zinc-700 mb-2">
-              1 buổi giảng có thể dạy cho nhiều lớp khác nhau (cùng nội dung). Mỗi lần là 1 <strong>phiên</strong>:
+          <Section title="🔄 Phiên dạy & Chạy lại">
+            <p className="text-sm text-zinc-700 mb-3">
+              Trên topbar có cụm 2 nút <strong>Phiên mới</strong> + <strong>Chạy lại phiên</strong> — dùng khác nhau:
             </p>
-            <ul className="text-sm space-y-1.5 list-disc pl-5 text-zinc-700">
-              <li>
-                Sau buổi đầu, bấm <Btn tone="blue">🔄 Phiên mới</Btn> ở topbar (cạnh badge PHIÊN #N)
-              </li>
-              <li>Hỏi có xuất Excel phiên cũ không → reset activities về NHÁP để dạy lại</li>
-              <li>SV cũ tự đăng ký lại khi reload (cùng mã phòng)</li>
-              <li>Lịch sử các phiên cũ vẫn lưu — xuất Excel tất cả phiên sau cùng</li>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                <div className="font-semibold text-blue-700 text-sm mb-1.5">🔄 Phiên mới</div>
+                <div className="text-xs text-zinc-700 leading-relaxed">
+                  Dạy <strong>lớp khác</strong> cùng nội dung. Hỏi xuất Excel phiên cũ → tạo phiên #N+1, giữ lịch sử cũ. SV cũ tự đăng ký lại khi reload (cùng mã phòng).
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                <div className="font-semibold text-amber-700 text-sm mb-1.5">🔁 Chạy lại phiên</div>
+                <div className="text-xs text-zinc-700 leading-relaxed">
+                  Reset hoạt động về NHÁP <strong>cùng phiên</strong> (không đổi lớp). Xoá câu trả lời + board posts của phiên hiện tại. Dùng khi muốn chạy lại từ đầu mà chưa muốn tách phiên mới.
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-700 mb-1.5">Ngoài ra với từng hoạt động đã đóng:</p>
+            <ul className="text-sm space-y-1 list-disc pl-5 text-zinc-700">
+              <li><Btn>👁 Xem</Btn> mở lại overlay xem kết quả + nhận xét cũ (không reset gì)</li>
+              <li><Btn tone="blue">🔄 Chạy lại</Btn> reset 1 hoạt động: xoá câu trả lời + nhận xét cũ, mở lại để SV làm lần nữa</li>
             </ul>
+            <p className="text-xs text-zinc-500 mt-2">
+              Lịch sử các phiên cũ luôn được lưu — xuất Excel "tất cả phiên" để tổng hợp về sau.
+            </p>
           </Section>
 
           {/* ========== Section 5: AI key ========== */}

@@ -2363,14 +2363,55 @@ function PresenterPage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={handleNewRun}
-              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium shrink-0 transition-colors"
-              title="Đóng phiên hiện tại + bắt đầu phiên mới cho lớp khác (giữ activities)"
-            >
-              <span>🔄</span>
-              <span>Phiên mới</span>
-            </button>
+            <div className="hidden md:flex items-stretch shrink-0 rounded-lg overflow-hidden border border-blue-300">
+              <button
+                onClick={handleNewRun}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium transition-colors"
+                title="Sang phiên mới cho lớp khác — giữ lịch sử phiên cũ + reset activities về NHÁP"
+              >
+                <span>🔄</span>
+                <span>Phiên mới</span>
+              </button>
+              <div className="w-px bg-blue-200" />
+              <button
+                onClick={async () => {
+                  if (!session?._id) return;
+                  const closedCount = sortedActivities.filter(
+                    (a) => a.status === "closed" || a.status === "expired"
+                  ).length;
+                  if (closedCount === 0) {
+                    toast.message("Chưa có hoạt động nào đã chạy để reset");
+                    return;
+                  }
+                  if (
+                    !confirm(
+                      `Reset ${closedCount} hoạt động đã chạy về NHÁP?\n\n` +
+                        "• Toàn bộ câu trả lời + board posts của PHIÊN HIỆN TẠI sẽ bị XOÁ\n" +
+                        "• Activity về 'Nháp', sẵn sàng chạy lại\n" +
+                        "• KHÔNG đổi phiên — vẫn cùng lớp hiện tại\n\n" +
+                        "Khác với 'Phiên mới': phiên mới giữ lịch sử + sang lớp khác."
+                    )
+                  )
+                    return;
+                  try {
+                    const result = await restartAllActivities({
+                      sessionId: session._id,
+                    });
+                    toast.success(
+                      `Đã reset ${result.resetCount} hoạt động. Xoá ${result.responseCount} câu trả lời${result.postCount > 0 ? ` + ${result.postCount} board posts` : ""}.`
+                    );
+                  } catch (e: unknown) {
+                    toast.error(e instanceof Error ? e.message : "Reset thất bại");
+                  }
+                }}
+                disabled={sortedActivities.length === 0}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-white hover:bg-amber-50 text-amber-700 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Reset tất cả hoạt động về NHÁP (cùng phiên, xoá câu trả lời) — KHÔNG đổi phiên"
+              >
+                <span>🔁</span>
+                <span>Chạy lại phiên</span>
+              </button>
+            </div>
           </div>
 
           {/* RIGHT: SV count + Dropdowns */}
@@ -2765,53 +2806,6 @@ function PresenterPage() {
                         <div>
                           <div className="font-medium">Mẫu đã lưu</div>
                           <div className="text-[11px] text-zinc-500 mt-0.5">Áp dụng mẫu cũ vào buổi này (thay activities hiện tại)</div>
-                        </div>
-                      </button>
-
-                      <div className="my-1 border-t border-zinc-100" />
-
-                      <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
-                        Chạy lại
-                      </div>
-                      <button
-                        onClick={async () => {
-                          setShowScriptMenu(false);
-                          if (!session?._id) return;
-                          const closedCount = sortedActivities.filter(
-                            (a) => a.status === "closed" || a.status === "expired"
-                          ).length;
-                          if (closedCount === 0) {
-                            toast.message("Chưa có hoạt động nào đã chạy để reset");
-                            return;
-                          }
-                          if (
-                            !confirm(
-                              `Reset ${closedCount} hoạt động đã chạy về NHÁP?\n\n` +
-                                "• Tất cả câu trả lời + board posts của phiên hiện tại sẽ bị XOÁ\n" +
-                                "• Activity về trạng thái 'Nháp', sẵn sàng chạy lại\n" +
-                                "• Khác 'Phiên mới': cùng phiên, KHÔNG giữ lịch sử"
-                            )
-                          )
-                            return;
-                          try {
-                            const result = await restartAllActivities({
-                              sessionId: session._id,
-                            });
-                            toast.success(
-                              `Đã reset ${result.resetCount} hoạt động. Xoá ${result.responseCount} câu trả lời${result.postCount > 0 ? ` + ${result.postCount} board posts` : ""}.`
-                            );
-                          } catch (e: unknown) {
-                            toast.error(e instanceof Error ? e.message : "Reset thất bại");
-                          }
-                        }}
-                        disabled={sortedActivities.length === 0}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 flex items-start gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                        title="Reset tất cả activities về NHÁP để chạy lại cùng phiên (xoá câu trả lời)"
-                      >
-                        <span className="text-lg shrink-0">🔁</span>
-                        <div>
-                          <div className="font-medium text-amber-700">Chạy lại phiên</div>
-                          <div className="text-[11px] text-zinc-500 mt-0.5">Reset tất cả hoạt động về NHÁP, xoá câu trả lời phiên hiện tại</div>
                         </div>
                       </button>
 
