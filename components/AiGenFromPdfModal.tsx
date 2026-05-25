@@ -111,6 +111,11 @@ export function AiGenFromPdfModal({
   // Default OFF — SV đã nhập danh tính khi vào phòng, không cần ép từng activity.
   // Lecturer bật tay nếu muốn tính điểm cho hoạt động cụ thể.
   const [requiresStudentCode, setRequiresStudentCode] = useState(false);
+  // Focus range: chỉ trích xuất + gửi cho AI các slide trong khoảng này.
+  // Default: cả PDF. GV chỉnh để ép AI tập trung 1 phần (vd chương 2: slide 8-20).
+  const [pageFrom, setPageFrom] = useState<number>(1);
+  const [pageTo, setPageTo] = useState<number>(numPages);
+  const [focusHint, setFocusHint] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     if (typeof window === "undefined") return MODELS[0].id;
     try {
@@ -146,9 +151,13 @@ export function AiGenFromPdfModal({
     const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
     const pdfDoc = await loadingTask.promise;
 
+    // Clamp page range theo PDF thật
+    const startPage = Math.max(1, Math.min(pageFrom, pdfDoc.numPages));
+    const endPage = Math.max(startPage, Math.min(pageTo, pdfDoc.numPages));
+
     const pages: { pageNumber: number; text: string }[] = [];
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      setProgress(`Đang trích xuất text trang ${i}/${pdfDoc.numPages}...`);
+    for (let i = startPage; i <= endPage; i++) {
+      setProgress(`Đang trích xuất text trang ${i}/${endPage} (trong khoảng ${startPage}–${endPage})...`);
       const page = await pdfDoc.getPage(i);
       const content = await page.getTextContent();
       const text = content.items
@@ -172,6 +181,7 @@ export function AiGenFromPdfModal({
         provider: currentProvider,
         model: selectedModel,
         apiKey: currentKey || undefined,
+        focusHint: focusHint.trim() || undefined,
       });
 
       const editable: EditableSuggestion[] = result.suggestions.map((s, idx) => ({
@@ -424,7 +434,66 @@ export function AiGenFromPdfModal({
                 onChange={(e) => setMaxSuggestions(Number(e.target.value) || 8)}
                 className="w-32"
               />
-              <p className="text-xs text-zinc-500">AI sẽ phân bổ các hoạt động qua các trang slide.</p>
+              <p className="text-xs text-zinc-500">AI sẽ phân bổ các hoạt động qua các trang slide đã chọn.</p>
+            </div>
+
+            {/* 🎯 Trọng tâm — page range + focus hint để AI không dàn đều */}
+            <div className="space-y-2 border border-violet-200 bg-violet-50/40 rounded-xl p-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-violet-900">🎯 Trọng tâm cần tập trung</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-200 text-violet-800 font-medium">TUỲ CHỌN</span>
+              </div>
+              <p className="text-[11px] text-zinc-600 -mt-1">
+                Ép AI bám hẹp 1 phần bài giảng (vd chương 2), tránh sinh câu cho slide phụ.
+              </p>
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="text-xs font-medium text-zinc-700 block mb-1">Slide từ</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={numPages}
+                    value={pageFrom}
+                    onChange={(e) => setPageFrom(Math.max(1, Math.min(numPages, Number(e.target.value) || 1)))}
+                  />
+                </div>
+                <span className="text-zinc-400 pb-2.5">→</span>
+                <div className="flex-1">
+                  <label className="text-xs font-medium text-zinc-700 block mb-1">đến slide</label>
+                  <Input
+                    type="number"
+                    min={pageFrom}
+                    max={numPages}
+                    value={pageTo}
+                    onChange={(e) => setPageTo(Math.max(pageFrom, Math.min(numPages, Number(e.target.value) || numPages)))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setPageFrom(1); setPageTo(numPages); }}
+                  className="text-[11px] underline text-zinc-500 hover:text-zinc-700 pb-2.5 shrink-0"
+                  title="Toàn bộ PDF"
+                >
+                  Tất cả
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                PDF có {numPages} slide. Đang lấy slide <strong>{pageFrom}–{pageTo}</strong> ({pageTo - pageFrom + 1} slide).
+              </p>
+
+              <div>
+                <label className="text-xs font-medium text-zinc-700 block mb-1">Chủ đề trọng tâm (tuỳ chọn)</label>
+                <Input
+                  type="text"
+                  value={focusHint}
+                  onChange={(e) => setFocusHint(e.target.value)}
+                  placeholder='VD: "Chương 2 — Phân loại đập đất, KHÔNG đề cập tính toán"'
+                />
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Mô tả ngắn giúp AI hiểu phần nào là trọng tâm. AI sẽ skip phần phụ kể cả khi có trong slide.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">

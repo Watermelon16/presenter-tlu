@@ -142,9 +142,13 @@ function buildPrompt(args: {
   slidesText: string;
   maxSuggestions: number;
   sessionTitle?: string;
+  focusHint?: string;
 }): string {
   const titleHint = args.sessionTitle ? `Buổi giảng: "${args.sessionTitle}".` : "";
-  return `Bạn là trợ lý giảng viên đại học Việt Nam. ${titleHint} Dưới đây là text trích xuất từ slide PDF. Hãy đề xuất ${args.maxSuggestions} hoạt động tương tác cho sinh viên, gắn với từng trang slide cụ thể.
+  const focusLine = args.focusHint?.trim()
+    ? `\n🎯 QUAN TRỌNG — TRỌNG TÂM CỦA BUỔI: "${args.focusHint.trim()}".\nGV chỉ định ${args.maxSuggestions} hoạt động PHẢI tập trung vào trọng tâm này. KHÔNG sinh câu cho nội dung ngoài trọng tâm dù slide có chứa. Nếu trọng tâm là 1 phần con của slide, chỉ chọn ý liên quan.`
+    : "";
+  return `Bạn là trợ lý giảng viên đại học Việt Nam. ${titleHint} Dưới đây là text trích xuất từ slide PDF. Hãy đề xuất ${args.maxSuggestions} hoạt động tương tác cho sinh viên.${focusLine}
 
 NỘI DUNG SLIDE:
 ${args.slidesText}
@@ -152,10 +156,10 @@ ${args.slidesText}
 YÊU CẦU:
 - Tiếng Việt học thuật, ngắn gọn, rõ ràng.
 - Đa dạng loại: poll trắc nghiệm (có đáp án đúng), wordcloud (1-3 từ), opentext (câu ngắn).
-- Mỗi suggestion gắn với 1 slidePage cụ thể.
-- Poll: 3-5 options. Nếu là quiz → isQuiz=true + correctOptionIndexes (0-based).
+- Mỗi suggestion gắn với 1 slidePage cụ thể trong khoảng đã cho.
+- Poll: 3-5 options. Nếu là quiz → isQuiz=true + correctOptionIndexes (0-based). Nhiễu phải hợp lý dựa trên nhầm lẫn thường gặp.
 - Tránh câu hỏi quá dễ hoặc quá khó.
-- suggestedTimeLimit (phút): 1-3 cho poll/wordcloud, 2-5 cho opentext.
+- suggestedTimeLimit (phút): 1-3 cho poll/wordcloud, 2-5 cho opentext.${args.focusHint?.trim() ? "\n- BÁM SÁT trọng tâm GV chỉ định, không dàn trải lan man." : ""}
 
 ${SUGGESTION_SCHEMA_DESCRIPTION}`;
 }
@@ -409,9 +413,10 @@ export const generateActivitiesFromPdf = action({
     ),
     maxSuggestions: v.optional(v.number()),
     sessionTitle: v.optional(v.string()),
-    provider: v.optional(v.string()),     // "gemini" | "deepseek" | "openrouter"
+    provider: v.optional(v.string()),
     model: v.optional(v.string()),
-    apiKey: v.optional(v.string()),       // user-provided key (ưu tiên hơn env)
+    apiKey: v.optional(v.string()),
+    focusHint: v.optional(v.string()),  // GV chỉ ra phần cần tập trung, AI bám hẹp
   },
   handler: async (_ctx, args): Promise<{
     suggestions: Array<{
@@ -485,6 +490,7 @@ export const generateActivitiesFromPdf = action({
       slidesText: pieces.join("\n\n"),
       maxSuggestions,
       sessionTitle: args.sessionTitle,
+      focusHint: args.focusHint,
     });
 
     // Call provider
