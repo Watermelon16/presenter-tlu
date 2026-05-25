@@ -2484,7 +2484,7 @@ function PresenterPage() {
                   <DropdownItem
                     icon="✨"
                     label="1 hoạt động từ chủ đề"
-                    hint="Nêu chủ đề + phần cần tập trung → AI sinh câu hỏi + lựa chọn + đáp án + nhiễu"
+                    hint="Nêu chủ đề + phần cần tập trung. Sinh câu hỏi + lựa chọn + đáp án + nhiễu"
                     onClick={() => {
                       setShowSingleAiModal(true);
                       close();

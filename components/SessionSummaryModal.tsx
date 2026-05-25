@@ -182,7 +182,7 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
           <div>
             <h2 className="text-lg font-semibold flex items-center gap-2">🤖 Tóm tắt buổi giảng (AI)</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              AI đọc toàn bộ câu trả lời, Q&A và board → rút insight để cải thiện chất lượng dạy.
+              Phân tích câu trả lời, Q&A và board để rút insight cho buổi sau.
             </p>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none shrink-0">×</button>
@@ -225,7 +225,7 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
             <div className="text-center py-12">
               <div className="text-4xl mb-3">🤖</div>
               <div className="text-sm text-zinc-700 mb-4">
-                Bấm nút dưới để AI phân tích toàn bộ hoạt động trong buổi.
+                Bấm nút dưới để phân tích toàn bộ hoạt động trong buổi.
                 <br />
                 <span className="text-xs text-zinc-500">Mất khoảng 5-15 giây tuỳ model.</span>
               </div>

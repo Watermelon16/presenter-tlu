@@ -86,7 +86,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
       const tokens = usage?.totalTokenCount ?? usage?.total_tokens;
       setModelInfo([result.modelUsed, tokens ? `${tokens} tokens` : ""].filter(Boolean).join(" · "));
       setStage("done");
-      toast.success("AI đã phân tích xong");
+      toast.success("Đã phân tích xong");
     } catch (e: unknown) {
       let msg = "Lỗi khi gọi AI";
       if (e instanceof ConvexError) {
@@ -133,7 +133,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
         {stage === "idle" && (
           <div className="p-6 space-y-4">
             <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm text-violet-900">
-              AI sẽ đọc toàn bộ kết quả buổi giảng (poll, quiz, wordcloud, opentext, qa, board) và đưa ra:
+              Phân tích toàn bộ kết quả buổi giảng (poll, quiz, wordcloud, opentext, qa, board) để đưa ra:
               <ul className="list-disc list-inside mt-2 space-y-0.5 text-xs">
                 <li>Top câu hỏi SV sai nhiều → khuyến nghị ôn lại slide nào</li>
                 <li>Hoạt động engagement thấp → lý do + cách cải thiện</li>
@@ -179,7 +179,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
         {stage === "generating" && (
           <div className="p-10 text-center space-y-3">
             <div className="text-4xl animate-pulse">🧠</div>
-            <div className="text-sm text-zinc-700">AI đang phân tích kết quả buổi giảng...</div>
+            <div className="text-sm text-zinc-700">Đang phân tích kết quả buổi giảng...</div>
             <div className="text-xs text-zinc-500">Có thể mất 15-40 giây tùy lượng data.</div>
           </div>
         )}

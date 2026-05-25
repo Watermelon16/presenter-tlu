@@ -37,8 +37,8 @@ export function HelpModal({ onClose }: Props) {
               <li>
                 <strong>Hoặc dùng AI</strong> để gen nhanh: dropdown <Btn tone="violet">🤖 AI</Btn> →
                 <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
-                  <li><strong>Từ slide PDF</strong>: upload PDF → AI gen 5-10 hoạt động bám sát slide</li>
-                  <li><strong>Khảo sát từ chủ đề</strong>: nhập topic → AI gen survey (rating + opentext + poll)</li>
+                  <li><strong>Từ slide PDF</strong>: upload PDF → gen 5-10 hoạt động bám sát slide</li>
+                  <li><strong>Khảo sát từ chủ đề</strong>: nhập topic → gen survey (rating + opentext + poll)</li>
                 </ul>
               </li>
               <li>
@@ -49,7 +49,7 @@ export function HelpModal({ onClose }: Props) {
                 <Btn tone="violet">🤖 Chấm AI</Btn>
               </li>
               <li>
-                Cuối buổi: <Btn tone="violet">🤖 AI → Smart insights</Btn> để AI phân tích tổng thể buổi
+                Cuối buổi: <Btn tone="violet">🤖 AI → Smart insights</Btn> để phân tích tổng thể buổi
               </li>
             </ol>
           </Section>

@@ -174,10 +174,10 @@ export function SurveyAiGenModal({
 
       setStage("review");
       if (editable.length === 0) {
-        toast.warning("AI không tạo được câu hỏi nào — thử lại với chủ đề rõ ràng hơn.");
+        toast.warning("Không tạo được câu hỏi nào — thử lại với chủ đề rõ ràng hơn.");
         setStage("idle");
       } else {
-        toast.success(`AI gen ${editable.length} câu khảo sát`);
+        toast.success(`Đã gen ${editable.length} câu khảo sát`);
       }
     } catch (e: unknown) {
       let msg = "Lỗi khi gọi AI";
@@ -309,9 +309,9 @@ export function SurveyAiGenModal({
       >
         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-semibold">🗳 Khảo sát từ chủ đề (AI gen)</h2>
+            <h2 className="text-lg font-semibold">🗳 Khảo sát từ chủ đề</h2>
             <p className="text-xs text-zinc-500">
-              Nhập chủ đề → AI tạo 5-15 câu khảo sát (rating + opentext + poll)
+              Nhập chủ đề. Sinh 5-15 câu khảo sát (rating + opentext + poll)
             </p>
           </div>
           <button
@@ -454,7 +454,7 @@ export function SurveyAiGenModal({
         {stage === "generating" && (
           <div className="p-10 text-center space-y-3">
             <div className="text-4xl animate-pulse">🗳</div>
-            <div className="text-sm text-zinc-700">AI đang soạn câu khảo sát...</div>
+            <div className="text-sm text-zinc-700">Đang soạn câu khảo sát...</div>
             <div className="text-xs text-zinc-500">10-30 giây.</div>
           </div>
         )}

@@ -434,17 +434,17 @@ export function AiGenFromPdfModal({
                 onChange={(e) => setMaxSuggestions(Number(e.target.value) || 8)}
                 className="w-32"
               />
-              <p className="text-xs text-zinc-500">AI sẽ phân bổ các hoạt động qua các trang slide đã chọn.</p>
+              <p className="text-xs text-zinc-500">Phân bổ qua các slide trong khoảng đã chọn.</p>
             </div>
 
-            {/* 🎯 Trọng tâm — page range + focus hint để AI không dàn đều */}
+            {/* Trọng tâm — page range + focus hint */}
             <div className="space-y-2 border border-violet-200 bg-violet-50/40 rounded-xl p-4">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-violet-900">🎯 Trọng tâm cần tập trung</span>
+                <span className="text-sm font-medium text-violet-900">🎯 Trọng tâm</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-200 text-violet-800 font-medium">TUỲ CHỌN</span>
               </div>
               <p className="text-[11px] text-zinc-600 -mt-1">
-                Ép AI bám hẹp 1 phần bài giảng (vd chương 2), tránh sinh câu cho slide phụ.
+                Giới hạn vào 1 phần bài giảng (vd chương 2). Bỏ trống để dùng cả PDF.
               </p>
 
               <div className="flex items-end gap-2">
@@ -491,7 +491,7 @@ export function AiGenFromPdfModal({
                   placeholder='VD: "Chương 2 — Phân loại đập đất, KHÔNG đề cập tính toán"'
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  Mô tả ngắn giúp AI hiểu phần nào là trọng tâm. AI sẽ skip phần phụ kể cả khi có trong slide.
+                  Mô tả ngắn chủ đề. Phần phụ trong slide sẽ được bỏ qua.
                 </p>
               </div>
             </div>
@@ -538,7 +538,7 @@ export function AiGenFromPdfModal({
               <span>
                 <span className="font-medium">Tính điểm cho các hoạt động này</span>
                 <span className="block text-xs text-zinc-500 mt-0.5">
-                  Mặc định TẮT — bật nếu muốn hoạt động AI gen ghi nhận điểm cho từng SV.
+                  Mặc định TẮT — bật nếu muốn các hoạt động này ghi nhận điểm cho từng SV.
                   SV đã nhập danh tính lúc vào phòng nên không bị hỏi lại.
                 </span>
                 {!collectStudentCode && (

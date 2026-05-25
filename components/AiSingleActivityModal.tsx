@@ -340,9 +340,9 @@ export function AiSingleActivityModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-200 flex items-start justify-between gap-3 shrink-0">
           <div>
-            <h2 className="text-lg font-semibold">✨ AI tạo hoạt động (1 hoạt động)</h2>
+            <h2 className="text-lg font-semibold">✨ Tạo nhanh 1 hoạt động</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Nêu chủ đề + phần cần tập trung → AI sinh câu hỏi, lựa chọn, đáp án đúng + nhiễu. Bạn review rồi thêm vào kịch bản.
+              Nêu chủ đề + phần cần tập trung. Review kết quả trước khi thêm vào kịch bản.
             </p>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-2xl leading-none shrink-0">×</button>
@@ -389,7 +389,7 @@ export function AiSingleActivityModal({
             />
           </div>
 
-          {/* Focus — tránh dàn trải */}
+          {/* Focus */}
           <div>
             <label className="text-xs font-medium text-zinc-700 block mb-1">
               Tập trung vào phần cụ thể <span className="text-zinc-400">(tuỳ chọn)</span>
@@ -402,7 +402,7 @@ export function AiSingleActivityModal({
               className="w-full h-10 px-3 rounded-md border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
             />
             <p className="text-[11px] text-zinc-500 mt-1">
-              Ép AI chỉ tập trung vào phần thầy muốn, tránh sinh câu lan man.
+              Mô tả phần cụ thể trong bài giảng. Nội dung ngoài phạm vi này sẽ được bỏ qua.
             </p>
           </div>
 
