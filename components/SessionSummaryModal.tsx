@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MODELS, PROVIDER_INFO, PROVIDER_ORDER, type Provider } from "@/lib/aiModels";
+import { callAiJson, AiClientError } from "@/lib/aiClient";
 
 // Riêng cho summary để GV có thể chọn model khác cho summary mà không ảnh hưởng AI gen
 const SUMMARY_MODEL_KEY = "ai_summary_model_v1";
@@ -21,6 +22,72 @@ function loadSavedModelId(): string {
   return MODELS[0].id;
 }
 
+// Prompt builder (client-side, mirror prompt cũ ở convex/ai.ts)
+type Snapshot = {
+  sessionTitle: string;
+  className: string | null;
+  participantCount: number;
+  attendanceCounts: { present: number; late: number; absent: number; excused: number };
+  activities: Array<{
+    type: string;
+    title: string;
+    slideCue: string | null;
+    responseCount: number;
+    detail: Record<string, unknown>;
+  }>;
+  board: Array<{ content: string; column: string; likes: number }>;
+};
+
+function buildSummaryPrompt(snapshot: Snapshot): string {
+  const activitiesText = snapshot.activities
+    .map((a, i) => {
+      const detailLines: string[] = [];
+      const d = a.detail as Record<string, unknown>;
+      if (a.type === "poll" && Array.isArray(d.options)) {
+        const opts = d.options as Array<{ text: string; count: number; isCorrect: boolean }>;
+        const total = opts.reduce((s, o) => s + o.count, 0) || 1;
+        detailLines.push(...opts.map((o) => `      - ${o.text}: ${o.count}/${total} (${Math.round((o.count / total) * 100)}%)${o.isCorrect ? " ✓ ĐÁP ÁN ĐÚNG" : ""}`));
+      } else if ((a.type === "wordcloud" || a.type === "opentext") && Array.isArray(d.answers)) {
+        const answers = d.answers as string[];
+        detailLines.push(...answers.slice(0, 20).map((s) => `      - ${s.slice(0, 200)}`));
+      } else if (a.type === "rating") {
+        detailLines.push(`      Avg ${d.average}/${d.max} (n=${d.count})`);
+      } else if (a.type === "qa" && Array.isArray(d.questions)) {
+        const qs = d.questions as Array<{ question: string; upvotes?: number; isAnswered?: boolean }>;
+        detailLines.push(...qs.slice(0, 15).map((q) => `      - "${q.question}" (${q.upvotes ?? 0} 👍${q.isAnswered ? ", đã trả lời" : ""})`));
+      }
+      return `${i + 1}. [${a.type}] "${a.title}"${a.slideCue ? ` @${a.slideCue}` : ""} — ${a.responseCount} câu trả lời\n${detailLines.join("\n")}`;
+    })
+    .join("\n\n");
+
+  const boardText = snapshot.board.length > 0
+    ? snapshot.board.slice(0, 30).map((b) => `   - ${b.content.slice(0, 200)} (👍${b.likes})`).join("\n")
+    : "(không có)";
+
+  return `Bạn là trợ lý giảng viên ĐH Việt Nam. Hãy tóm tắt buổi giảng dưới đây và đưa ra insight để cải thiện chất lượng dạy. Trả lời bằng tiếng Việt, ngắn gọn, thực tế.
+
+THÔNG TIN BUỔI:
+- Tên: ${snapshot.sessionTitle}
+- Lớp: ${snapshot.className ?? "không rõ"}
+- ${snapshot.participantCount} SV tham gia (có mặt ${snapshot.attendanceCounts.present}, muộn ${snapshot.attendanceCounts.late}, vắng ${snapshot.attendanceCounts.absent}, có phép ${snapshot.attendanceCounts.excused})
+
+CÁC HOẠT ĐỘNG TƯƠNG TÁC:
+${activitiesText || "(không có hoạt động nào)"}
+
+BÀI ĐĂNG TRÊN BOARD:
+${boardText}
+
+Trả về JSON đúng shape:
+{
+  "overview": "<1-2 câu tóm tắt thực tế, không ca ngợi rỗng>",
+  "understandings": ["<3 điểm SV nắm rõ>"],
+  "confusions": ["<2-3 điểm SV còn nhầm>"],
+  "notableQuestions": ["<3-5 câu Q&A đáng chú ý>"],
+  "nextSuggestions": ["<2-3 gợi ý cụ thể cho buổi sau>"]
+}
+KHÔNG markdown fence, KHÔNG text thừa.`;
+}
+
 type Summary = {
   overview: string;
   understandings: string[];
@@ -34,8 +101,8 @@ type Summary = {
 };
 
 export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"sessions">; onClose: () => void }) {
-  const summarize = useAction(api.ai.summarizeSession);
   const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
+  const snapshot = useQuery(api.sessionSummary.getSessionSnapshotForOwner, { sessionId });
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,20 +123,50 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
   };
 
   const handleRun = async () => {
+    if (!snapshot) {
+      toast.error("Chưa load được data buổi giảng");
+      return;
+    }
+    if (snapshot.activities.length === 0 && snapshot.board.length === 0) {
+      toast.error("Buổi chưa có hoạt động nào. Chạy ít nhất 1 activity trước.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setSummary(null);
     try {
-      const result = await summarize({
-        sessionId,
+      const prompt = buildSummaryPrompt(snapshot);
+      const { data } = await callAiJson<{
+        overview?: string;
+        understandings?: string[];
+        confusions?: string[];
+        notableQuestions?: string[];
+        nextSuggestions?: string[];
+      }>({
         provider: currentProvider,
         model: selectedModel.id,
-        apiKey: currentKey || undefined,
+        apiKey: currentKey,
+        systemPrompt: "Bạn là trợ lý giảng viên ĐH Việt Nam. CHỈ trả JSON đúng schema, KHÔNG markdown, KHÔNG text thừa.",
+        userPrompt: prompt,
       });
-      setSummary(result);
+      const responseCount = snapshot.activities.reduce(
+        (s: number, a: { responseCount: number }) => s + a.responseCount,
+        0
+      );
+      setSummary({
+        overview: (data.overview ?? "").trim() || "Không có dữ liệu.",
+        understandings: (data.understandings ?? []).map((s) => String(s).trim()).filter(Boolean),
+        confusions: (data.confusions ?? []).map((s) => String(s).trim()).filter(Boolean),
+        notableQuestions: (data.notableQuestions ?? []).map((s) => String(s).trim()).filter(Boolean),
+        nextSuggestions: (data.nextSuggestions ?? []).map((s) => String(s).trim()).filter(Boolean),
+        activityCount: snapshot.activities.length,
+        responseCount,
+        modelUsed: selectedModel.id,
+        providerUsed: currentProvider,
+      });
     } catch (e: unknown) {
-      const err = e as { data?: { message?: string; code?: string }; message?: string };
-      const msg = err.data?.message || err.message || "Lỗi không xác định";
+      const err = e as AiClientError | Error;
+      const msg = err instanceof AiClientError ? err.message : err.message || "Lỗi không xác định";
       setError(msg);
       toast.error(msg);
     } finally {

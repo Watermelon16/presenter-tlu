@@ -21,6 +21,7 @@ import { AttendancePanel } from "@/components/AttendancePanel";
 import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { SessionSummaryModal } from "@/components/SessionSummaryModal";
+import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -489,6 +490,7 @@ function PresenterPage() {
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const [showAiGenModal, setShowAiGenModal] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showSingleAiModal, setShowSingleAiModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
   const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
@@ -2479,8 +2481,17 @@ function PresenterPage() {
                 <>
                   <DropdownLabel>Sinh hoạt động</DropdownLabel>
                   <DropdownItem
+                    icon="✨"
+                    label="1 hoạt động từ chủ đề"
+                    hint="Nêu chủ đề + phần cần tập trung → AI sinh câu hỏi + lựa chọn + đáp án + nhiễu"
+                    onClick={() => {
+                      setShowSingleAiModal(true);
+                      close();
+                    }}
+                  />
+                  <DropdownItem
                     icon="📄"
-                    label="Từ slide PDF"
+                    label="Nhiều hoạt động từ slide PDF"
                     hint={hasPdf ? "Extract text PDF → gen 5-10 hoạt động" : "Cần upload PDF trước"}
                     disabled={!hasPdf}
                     onClick={() => {
@@ -2491,7 +2502,7 @@ function PresenterPage() {
                   <DropdownItem
                     icon="🗳"
                     label="Khảo sát từ chủ đề"
-                    hint="Nhập topic (vd phương pháp giảng dạy) → gen survey questions"
+                    hint="Nhập topic → gen survey questions (chuỗi nhiều câu)"
                     onClick={() => {
                       setShowSurveyModal(true);
                       close();
@@ -4640,6 +4651,16 @@ function PresenterPage() {
         <SessionSummaryModal
           sessionId={session._id}
           onClose={() => setShowSummaryModal(false)}
+        />
+      )}
+
+      {/* AI single activity gen */}
+      {showSingleAiModal && session._id && (
+        <AiSingleActivityModal
+          sessionId={session._id}
+          existingActivityCount={sortedActivities.length}
+          collectStudentCode={session.collectStudentCode ?? false}
+          onClose={() => setShowSingleAiModal(false)}
         />
       )}
 
