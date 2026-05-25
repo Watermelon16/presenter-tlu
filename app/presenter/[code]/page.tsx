@@ -847,10 +847,48 @@ function PresenterPage() {
       }
 
       // R hotkey:
-      //  - Ngoài overlay: mở result overlay VÀ reveal luôn đáp án (1 phím = xem + công bố)
       //  - Trong result overlay: toggle Công bố đáp án
+      //  - Trong slide overlay + có activity matched với slide hiện tại: mở result của activity đó
+      //  - Ngoài overlay: mở result overlay VÀ reveal luôn đáp án
+      // Shift+R: chạy lại hoạt động đang focus (matched slide / đang reveal / active)
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
+        // === Shift+R: chạy lại hoạt động đang focus ===
+        if (e.shiftKey) {
+          // Tìm activity để restart: ưu tiên displayActivity (đang xem), rồi slideMatch
+          let target = displayActivity;
+          if (!target && fullscreenOverlay === "slides" && hasPdf) {
+            target = sortedActivities.find(
+              (a) =>
+                a.slideCue &&
+                /^\d+$/.test(a.slideCue.trim()) &&
+                parseInt(a.slideCue.trim()) === pdfCurrentPage
+            );
+          }
+          if (!target) {
+            toast.message("Chưa có hoạt động nào để chạy lại");
+            return;
+          }
+          if (target.status === "draft") {
+            toast.message("Hoạt động chưa chạy lần nào — bấm A để kích hoạt");
+            return;
+          }
+          if (!confirm(`Chạy lại "${target.title}"? Toàn bộ câu trả lời hiện tại sẽ bị xoá.`)) return;
+          (async () => {
+            try {
+              if (target.status === "active") {
+                await closeActivity({ activityId: target._id });
+              }
+              await restartActivity({ activityId: target._id as Id<"activities"> });
+              toast.success(`Đã chạy lại: ${target.title}`);
+            } catch (err: unknown) {
+              toast.error(err instanceof Error ? err.message : "Chạy lại thất bại");
+            }
+          })();
+          return;
+        }
+
+        // === R thường ===
         if (fullscreenOverlay === "result") {
           setResultsRevealed((prev) => {
             const next = !prev;
@@ -858,11 +896,23 @@ function PresenterPage() {
             return next;
           });
         } else {
-          if (activeActivity || revealActivityId) {
+          // Trong slide overlay: nếu chưa có activity được focus mà slide hiện tại có
+          // activity matched → set revealActivityId để overlay biết hiện activity nào
+          let needSetReveal: string | null = null;
+          if (!activeActivity && !revealActivityId && fullscreenOverlay === "slides" && hasPdf) {
+            const match = sortedActivities.find(
+              (a) =>
+                a.slideCue &&
+                /^\d+$/.test(a.slideCue.trim()) &&
+                parseInt(a.slideCue.trim()) === pdfCurrentPage
+            );
+            if (match) needSetReveal = match._id;
+          }
+          if (activeActivity || revealActivityId || needSetReveal) {
+            if (needSetReveal) setRevealActivityId(needSetReveal);
             switchOverlay("result");
-            // Auto-reveal ngay khi mở (UX: 1 lần bấm R = xem kết quả + công bố đáp án)
             setResultsRevealed(true);
-            toast.message("✓ Đã công bố đáp án");
+            toast.message("✓ Xem kết quả + công bố đáp án");
           } else {
             toast.message("Chưa có hoạt động nào để xem kết quả");
           }
@@ -4560,8 +4610,9 @@ function PresenterPage() {
                             <button
                               onClick={() => focusActivity.type === "video" ? handleClose(focusActivity._id) : handleCloseAndReveal(focusActivity._id)}
                               className="w-full px-3 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+                              title="Đóng hoạt động (phím X)"
                             >
-                              ⏹ Đóng hoạt động
+                              ⏹ Đóng hoạt động <span className="opacity-70 text-[10px]">(X)</span>
                             </button>
                             <button
                               onClick={async () => {
@@ -4571,9 +4622,9 @@ function PresenterPage() {
                                 toast.success("Đã chạy lại — SV trả lời lại từ đầu");
                               }}
                               className="w-full px-3 py-2 text-xs rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium border border-blue-500"
-                              title="Đóng + xoá kết quả + mở lại cùng activity"
+                              title="Đóng + xoá kết quả + mở lại (Shift+R)"
                             >
-                              🔄 Chạy lại từ đầu
+                              🔄 Chạy lại từ đầu <span className="opacity-70 text-[10px]">(Shift+R)</span>
                             </button>
                           </>
                         )}
@@ -4582,15 +4633,16 @@ function PresenterPage() {
                             <button
                               onClick={() => handleViewResult(focusActivity._id)}
                               className="w-full px-3 py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                              title="Mở overlay xem kết quả (phím R)"
                             >
-                              📊 Xem kết quả
+                              📊 Xem kết quả <span className="opacity-70 text-[10px]">(R)</span>
                             </button>
                             <button
                               onClick={() => handleRestart(focusActivity._id, focusActivity.title)}
                               className="w-full px-3 py-2 text-xs rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium border border-blue-500"
-                              title="Xoá kết quả cũ + mở lại để SV làm lại"
+                              title="Xoá kết quả cũ + mở lại (Shift+R)"
                             >
-                              🔄 Chạy lại hoạt động
+                              🔄 Chạy lại <span className="opacity-70 text-[10px]">(Shift+R)</span>
                             </button>
                           </>
                         )}
@@ -4641,9 +4693,11 @@ function PresenterPage() {
               </button>
             </div>
 
-            <div className="text-[11px] text-zinc-500">
-              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">R</kbd> kết quả ·{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> QR
+            <div className="text-[11px] text-zinc-500 flex items-center gap-2 flex-wrap">
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">R</kbd> kết quả</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">⇧R</kbd> chạy lại</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">X</kbd> đóng</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">Q</kbd> QR</span>
             </div>
           </div>
         </div>

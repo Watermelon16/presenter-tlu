@@ -79,7 +79,10 @@ export function HelpModal({ onClose }: Props) {
               <KbdRow keys={["S"]} label="Chiếu slide PDF fullscreen" />
               <KbdRow keys={["A"]} label="Kích hoạt hoạt động kế tiếp" />
               <KbdRow keys={["X"]} label="Đóng hoạt động đang chạy" />
-              <KbdRow keys={["Esc"]} label="Thoát overlay" />
+              <KbdRow keys={["R"]} label="Xem kết quả + công bố đáp án (cũng work với hoạt động đã đóng gắn slide hiện tại)" />
+              <KbdRow keys={["Shift", "R"]} label="🔄 Chạy lại hoạt động đang focus — xoá câu trả lời, mở lại" />
+              <KbdRow keys={["T"]} label="Đổi tab Kết quả ↔ Bảng thành tích" />
+              <KbdRow keys={["Esc"]} label="Thoát overlay (auto về lại slide nếu vừa xem kết quả)" />
               <KbdRow keys={["←", "→"]} label="Chuyển slide (trong overlay slide)" />
               <KbdRow keys={["Space"]} label="Slide kế / bước tiếp script" />
               <KbdRow keys={["Home"]} label="Về slide đầu" />
