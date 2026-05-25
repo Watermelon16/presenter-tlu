@@ -3919,6 +3919,18 @@ function PresenterPage() {
                   ⏹ Đóng (X)
                 </button>
               )}
+              {/* Nút Chạy lại — khi xem 1 activity đã đóng, không có activity nào active */}
+              {!activeActivity &&
+                revealedActivity &&
+                (revealedActivity.status === "closed" || revealedActivity.status === "expired") && (
+                <button
+                  onClick={() => handleRestart(revealedActivity._id, revealedActivity.title)}
+                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+                  title="Xoá kết quả cũ + mở lại để SV làm lại"
+                >
+                  🔄 Chạy lại
+                </button>
+              )}
               <button
                 onClick={closeOverlay}
                 className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
@@ -4490,13 +4502,13 @@ function PresenterPage() {
                   const revealed = revealActivityId
                     ? sortedActivities.find((a) => a._id === revealActivityId)
                     : null;
+                  // Match TẤT CẢ status (kể cả closed) — khi GV back về slide có hoạt động đã đóng
+                  // → sidebar hiện card để xem kết quả + chạy lại nhanh
                   const slideMatch = !activeActivity && hasPdf
                     ? sortedActivities.find((a) =>
                         a.slideCue &&
                         /^\d+$/.test(a.slideCue.trim()) &&
-                        parseInt(a.slideCue.trim()) === pdfCurrentPage &&
-                        a.status !== "closed" &&
-                        a.status !== "expired"
+                        parseInt(a.slideCue.trim()) === pdfCurrentPage
                       )
                     : null;
                   const focusActivity = activeActivity || revealed || slideMatch;
@@ -4544,12 +4556,43 @@ function PresenterPage() {
                           </button>
                         )}
                         {isActive && (
-                          <button
-                            onClick={() => focusActivity.type === "video" ? handleClose(focusActivity._id) : handleCloseAndReveal(focusActivity._id)}
-                            className="w-full px-3 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
-                          >
-                            ⏹ Đóng hoạt động
-                          </button>
+                          <>
+                            <button
+                              onClick={() => focusActivity.type === "video" ? handleClose(focusActivity._id) : handleCloseAndReveal(focusActivity._id)}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
+                            >
+                              ⏹ Đóng hoạt động
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Chạy lại "${focusActivity.title}"?\nToàn bộ ${responseCount} câu trả lời hiện tại sẽ bị xoá.`)) return;
+                                await closeActivity({ activityId: focusActivity._id });
+                                await restartActivity({ activityId: focusActivity._id });
+                                toast.success("Đã chạy lại — SV trả lời lại từ đầu");
+                              }}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium border border-blue-500"
+                              title="Đóng + xoá kết quả + mở lại cùng activity"
+                            >
+                              🔄 Chạy lại từ đầu
+                            </button>
+                          </>
+                        )}
+                        {isClosed && (
+                          <>
+                            <button
+                              onClick={() => handleViewResult(focusActivity._id)}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                            >
+                              📊 Xem kết quả
+                            </button>
+                            <button
+                              onClick={() => handleRestart(focusActivity._id, focusActivity.title)}
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium border border-blue-500"
+                              title="Xoá kết quả cũ + mở lại để SV làm lại"
+                            >
+                              🔄 Chạy lại hoạt động
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

@@ -107,10 +107,22 @@ export function HelpModal({ onClose }: Props) {
                 </div>
               </div>
             </div>
-            <p className="text-sm text-zinc-700 mb-1.5">Ngoài ra với từng hoạt động đã đóng:</p>
+            <p className="text-sm text-zinc-700 mb-1.5">Với từng hoạt động khi đang thuyết trình:</p>
             <ul className="text-sm space-y-1 list-disc pl-5 text-zinc-700">
-              <li><Btn>👁 Xem</Btn> mở lại overlay xem kết quả + nhận xét cũ (không reset gì)</li>
-              <li><Btn tone="blue">🔄 Chạy lại</Btn> reset 1 hoạt động: xoá câu trả lời + nhận xét cũ, mở lại để SV làm lần nữa</li>
+              <li>
+                <strong>Khi đang chiếu slide</strong>: sidebar bên phải tự nhận diện hoạt động gắn slide hiện tại (theo Mốc slide).
+                Bấm <Btn tone="emerald">📊 Xem kết quả</Btn> để mở fullscreen, hoặc <Btn tone="blue">🔄 Chạy lại hoạt động</Btn> nếu muốn SV làm lại
+                (vd: ít SV tham gia, muốn cho thêm thời gian).
+              </li>
+              <li>
+                <strong>Trong dashboard</strong>: cạnh mỗi activity đã đóng có nút <Btn>👁 Xem</Btn> (mở overlay) và <Btn tone="blue">🔄 Chạy lại</Btn>.
+              </li>
+              <li>
+                <strong>Trong overlay kết quả fullscreen</strong>: có nút <Btn tone="blue">🔄 Chạy lại</Btn> ở thanh trên.
+              </li>
+              <li className="text-xs text-zinc-500 italic mt-1">
+                &ldquo;Chạy lại&rdquo; 1 hoạt động sẽ xoá câu trả lời cũ + nhận xét AI cũ, mở lại trạng thái active. KHÔNG đụng các hoạt động khác.
+              </li>
             </ul>
             <p className="text-xs text-zinc-500 mt-2">
               Lịch sử các phiên cũ luôn được lưu — xuất Excel "tất cả phiên" để tổng hợp về sau.
