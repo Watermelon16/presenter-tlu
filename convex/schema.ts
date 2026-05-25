@@ -182,6 +182,19 @@ export default defineSchema({
     createdAt: v.number(),
     startedAt: v.optional(v.number()),
     closedAt: v.optional(v.number()),
+
+    // === Nhận xét tự động khi đóng hoạt động ===
+    // Sinh client-side ngay sau khi GV bấm "Đóng" — không tốn thời gian giảng dạy.
+    // Lưu vào DB để xem lại + tránh gen lại mỗi lần reload.
+    aiReview: v.optional(v.object({
+      summary: v.string(),                 // 1-2 câu nhận xét tổng quát
+      observations: v.array(v.string()),   // 2-4 quan sát chi tiết
+      suggestion: v.optional(v.string()),  // gợi ý hành động (vd: ôn lại slide 12)
+      run: v.number(),                     // gắn theo phiên (run) hiện tại
+      provider: v.string(),
+      model: v.string(),
+      createdAt: v.number(),
+    })),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_order", ["sessionId", "order"]),

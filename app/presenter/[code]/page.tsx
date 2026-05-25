@@ -23,6 +23,7 @@ import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { FloatingAiTools } from "@/components/FloatingAiTools";
+import { ActivityAiReviewCard } from "@/components/ActivityAiReviewCard";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -4031,6 +4032,11 @@ function PresenterPage() {
                 {displayActivity.slideCue && (
                   <div className="mt-4 text-amber-400 text-xl">📍 {fmtSlide(displayActivity.slideCue)}</div>
                 )}
+
+                {/* ===== Nhận xét AI tự động (chỉ hiện sau khi đóng activity) ===== */}
+                <div className="text-left">
+                  <ActivityAiReviewCard activity={displayActivity} />
+                </div>
 
                 {/* ===== Block hướng dẫn + đáp án (CENTER, font to) ===== */}
                 {(() => {
