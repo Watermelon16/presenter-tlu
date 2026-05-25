@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
@@ -52,6 +52,7 @@ type Insights = {
 
 export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Props) {
   const generate = useAction(api.insights.generateSessionInsights);
+  const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
 
   const [stage, setStage] = useState<"idle" | "generating" | "done">("idle");
   const [insights, setInsights] = useState<Insights | null>(null);
@@ -67,7 +68,7 @@ export function SmartInsightsModal({ sessionId, run, sessionTitle, onClose }: Pr
 
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
-  const currentKey = loadSavedKey(currentProvider);
+  const currentKey = (dbKeys ?? {})[currentProvider] ?? loadSavedKey(currentProvider);
   const needsKey = !currentKey;
 
   const handleAnalyze = async () => {

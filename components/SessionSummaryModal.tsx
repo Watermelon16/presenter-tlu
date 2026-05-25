@@ -1,62 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { MODELS, PROVIDER_INFO, PROVIDER_ORDER, type Provider } from "@/lib/aiModels";
 
-type Provider = "gemini" | "deepseek" | "openrouter";
-
-type ModelDef = {
-  id: string;
-  provider: Provider;
-  label: string;
-  hint: string;
-};
-
-// Whitelist phải khớp ALLOWED_MODELS_BY_PROVIDER trong convex/ai.ts
-const MODELS: ModelDef[] = [
-  // Gemini
-  { id: "gemini-2.5-flash", provider: "gemini", label: "Gemini 2.5 Flash", hint: "Cân bằng · cần key Gemini" },
-  { id: "gemini-2.5-flash-lite", provider: "gemini", label: "Gemini 2.5 Flash Lite", hint: "Nhanh · quota cao" },
-  { id: "gemini-2.5-pro", provider: "gemini", label: "Gemini 2.5 Pro", hint: "Thông minh nhất · quota thấp" },
-  { id: "gemini-flash-latest", provider: "gemini", label: "Gemini Flash (latest)", hint: "Auto-route" },
-  { id: "gemini-2.0-flash-lite", provider: "gemini", label: "Gemini 2.0 Flash Lite", hint: "Phiên bản cũ" },
-  // DeepSeek
-  { id: "deepseek-chat", provider: "deepseek", label: "DeepSeek Chat", hint: "Cần nạp ≥ $2" },
-  { id: "deepseek-reasoner", provider: "deepseek", label: "DeepSeek Reasoner", hint: "Reasoning · cần balance" },
-  // OpenRouter (free)
-  { id: "deepseek/deepseek-v4-flash:free", provider: "openrouter", label: "DeepSeek V4 Flash (free)", hint: "Context 1M · mạnh nhất nhóm free" },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", provider: "openrouter", label: "Llama 3.3 70B (free)", hint: "Meta · ổn định" },
-  { id: "qwen/qwen3-next-80b-a3b-instruct:free", provider: "openrouter", label: "Qwen3 Next 80B (free)", hint: "Alibaba · context 256K" },
-  { id: "qwen/qwen3-coder:free", provider: "openrouter", label: "Qwen3 Coder 480B (free)", hint: "Alibaba · context 1M" },
-  { id: "nvidia/nemotron-3-super-120b-a12b:free", provider: "openrouter", label: "Nemotron 3 Super 120B (free)", hint: "NVIDIA · context 1M" },
-  { id: "google/gemma-4-31b-it:free", provider: "openrouter", label: "Gemma 4 31B (free)", hint: "Google · open weights" },
-  { id: "google/gemma-4-26b-a4b-it:free", provider: "openrouter", label: "Gemma 4 26B A4B (free)", hint: "Google · MoE" },
-  { id: "openai/gpt-oss-120b:free", provider: "openrouter", label: "GPT-OSS 120B (free)", hint: "OpenAI open source" },
-  { id: "z-ai/glm-4.5-air:free", provider: "openrouter", label: "GLM 4.5 Air (free)", hint: "Zhipu AI" },
-];
-
-const PROVIDER_INFO: Record<Provider, { label: string }> = {
-  gemini: { label: "Google Gemini" },
-  deepseek: { label: "DeepSeek" },
-  openrouter: { label: "OpenRouter" },
-};
-
-// Dùng chung key storage với AiGenFromPdfModal — 1 key dùng cho mọi feature AI
-const KEY_STORAGE_PREFIX = "ai_gen_apikey_";
 // Riêng cho summary để GV có thể chọn model khác cho summary mà không ảnh hưởng AI gen
 const SUMMARY_MODEL_KEY = "ai_summary_model_v1";
-
-function loadSavedKey(provider: Provider): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return localStorage.getItem(KEY_STORAGE_PREFIX + provider) || "";
-  } catch {
-    return "";
-  }
-}
 
 function loadSavedModelId(): string {
   if (typeof window === "undefined") return MODELS[0].id;
@@ -83,6 +35,7 @@ type Summary = {
 
 export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"sessions">; onClose: () => void }) {
   const summarize = useAction(api.ai.summarizeSession);
+  const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +43,7 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
   const [selectedModelId, setSelectedModelId] = useState<string>(() => loadSavedModelId());
   const selectedModel = MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
   const currentProvider = selectedModel.provider;
-  const currentKey = loadSavedKey(currentProvider);
+  const currentKey = (dbKeys ?? {})[currentProvider] ?? "";
   const hasKey = !!currentKey;
 
   const handleSelectModel = (id: string) => {
@@ -147,7 +100,7 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
               onChange={(e) => handleSelectModel(e.target.value)}
               className="flex-1 min-w-0 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
             >
-              {(["gemini", "deepseek", "openrouter"] as Provider[]).map((p) => (
+              {PROVIDER_ORDER.map((p) => (
                 <optgroup key={p} label={PROVIDER_INFO[p].label}>
                   {MODELS.filter((m) => m.provider === p).map((m) => (
                     <option key={m.id} value={m.id}>

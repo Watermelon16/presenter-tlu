@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
@@ -101,6 +101,7 @@ export function AiGenFromPdfModal({
 }: Props) {
   const generate = useAction(api.ai.generateActivitiesFromPdf);
   const createActivity = useMutation(api.activities.createActivity);
+  const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
 
   const [stage, setStage] = useState<"idle" | "extracting" | "generating" | "review" | "saving">("idle");
   const [progress, setProgress] = useState<string>("");
@@ -124,7 +125,7 @@ export function AiGenFromPdfModal({
 
   // API key load từ localStorage (set trong ⚙️ Cài đặt → 🔑 API key AI).
   // Load lazy mỗi render để pick-up thay đổi sau khi user update key ở Settings.
-  const currentKey = loadSavedKey(currentProvider);
+  const currentKey = (dbKeys ?? {})[currentProvider] ?? loadSavedKey(currentProvider);
   // Mọi provider đều cần user key (không còn server fallback)
   const hasKey = !!currentKey;
 

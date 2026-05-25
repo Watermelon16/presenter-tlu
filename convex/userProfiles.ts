@@ -598,3 +598,80 @@ export const getResourceUsagePercent = query({
     };
   },
 });
+
+// ============================================================================
+// AI API keys — gắn với user (đăng nhập máy khác vẫn dùng được)
+// ============================================================================
+
+/**
+ * Lấy API keys của user hiện tại. Trả về object map { provider: key }.
+ * Chỉ owner đọc được. Không có user → trả empty {}.
+ */
+export const getMyAiApiKeys = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return {};
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    return (profile?.aiApiKeys ?? {}) as Record<string, string>;
+  },
+});
+
+/**
+ * Set/unset API key cho 1 provider. Key rỗng → xóa khỏi map.
+ */
+export const setAiApiKey = mutation({
+  args: {
+    provider: v.string(),
+    apiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Chưa đăng nhập");
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!profile) throw new Error("Profile chưa được tạo. Vào trang chủ trước.");
+
+    const keys: Record<string, string> = { ...(profile.aiApiKeys ?? {}) };
+    const trimmed = args.apiKey.trim();
+    if (trimmed) {
+      keys[args.provider] = trimmed;
+    } else {
+      delete keys[args.provider];
+    }
+    await ctx.db.patch(profile._id, { aiApiKeys: keys });
+    return { ok: true, providerCount: Object.keys(keys).length };
+  },
+});
+
+/**
+ * Bulk set nhiều keys 1 lần — dùng khi migrate từ localStorage lên DB.
+ */
+export const setAiApiKeysBulk = mutation({
+  args: {
+    keys: v.record(v.string(), v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Chưa đăng nhập");
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!profile) throw new Error("Profile chưa được tạo");
+
+    // Merge: existing keys + new keys, drop entries với value rỗng
+    const merged: Record<string, string> = { ...(profile.aiApiKeys ?? {}) };
+    for (const [provider, key] of Object.entries(args.keys)) {
+      const trimmed = key.trim();
+      if (trimmed) merged[provider] = trimmed;
+    }
+    await ctx.db.patch(profile._id, { aiApiKeys: merged });
+    return { ok: true, providerCount: Object.keys(merged).length };
+  },
+});

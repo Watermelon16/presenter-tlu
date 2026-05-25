@@ -25,6 +25,10 @@ export default defineSchema({
     // Email phụ — dùng để LMS lookup khi GV có email khác với Google login
     // VD: Google login = phuonglh43@gmail.com, mail LMS = phuongle@tlu.edu.vn
     lmsEmail: v.optional(v.string()),
+
+    // API keys AI gắn với user — đăng nhập máy khác vẫn dùng được, không phải nhập lại.
+    // Map: { gemini, deepseek, openrouter, groq, cerebras, github, mistral, together }
+    aiApiKeys: v.optional(v.record(v.string(), v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_email", ["email"])

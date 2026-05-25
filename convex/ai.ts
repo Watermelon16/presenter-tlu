@@ -20,7 +20,7 @@ import { ConvexError, v } from "convex/values";
  *    - User key: bắt buộc. Lấy tại https://openrouter.ai/keys
  */
 
-// Provider config — endpoint only (không còn keyEnv vì mỗi user tự dùng key)
+// Provider config — endpoint only (mỗi user tự dùng key của mình)
 const PROVIDERS = {
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -30,6 +30,26 @@ const PROVIDERS = {
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
+  },
+  // Cực nhanh, free generous
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1",
+  },
+  // Cerebras LPU — nhanh nhất hiện tại
+  cerebras: {
+    baseUrl: "https://api.cerebras.ai/v1",
+  },
+  // GitHub Models — free cho GitHub user (PAT làm api key), nhiều model cả OpenAI lẫn Meta
+  github: {
+    baseUrl: "https://models.inference.ai.azure.com",
+  },
+  // Mistral La Plateforme — free tier
+  mistral: {
+    baseUrl: "https://api.mistral.ai/v1",
+  },
+  // Together AI — nhiều model :free
+  together: {
+    baseUrl: "https://api.together.xyz/v1",
   },
 } as const;
 
@@ -47,7 +67,6 @@ const ALLOWED_MODELS_BY_PROVIDER: Record<Provider, string[]> = {
   ],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
   // OpenRouter free models — verified từ https://openrouter.ai/api/v1/models
-  // tag :free thay đổi theo thời gian. Nếu user gặp 404 → đổi model.
   openrouter: [
     "deepseek/deepseek-v4-flash:free",
     "meta-llama/llama-3.3-70b-instruct:free",
@@ -58,6 +77,48 @@ const ALLOWED_MODELS_BY_PROVIDER: Record<Provider, string[]> = {
     "google/gemma-4-26b-a4b-it:free",
     "openai/gpt-oss-120b:free",
     "z-ai/glm-4.5-air:free",
+  ],
+  // Groq — free tier rất rộng rãi, RPM cao
+  groq: [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama-3.2-90b-vision-preview",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+    "deepseek-r1-distill-llama-70b",
+  ],
+  // Cerebras — fastest inference (vài nghìn tokens/giây)
+  cerebras: [
+    "llama-4-scout-17b-16e-instruct",
+    "llama-3.3-70b",
+    "llama3.1-8b",
+    "qwen-3-32b",
+  ],
+  // GitHub Models — dùng GitHub PAT làm key, free cho mọi GitHub user
+  github: [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "Phi-3.5-mini-instruct",
+    "Phi-3.5-MoE-instruct",
+    "Mistral-large-2407",
+    "Mistral-Nemo",
+    "Llama-3.3-70B-Instruct",
+    "Cohere-command-r-plus-08-2024",
+  ],
+  // Mistral — free tier "experimental" + ministral
+  mistral: [
+    "mistral-large-latest",
+    "mistral-small-latest",
+    "ministral-3b-latest",
+    "ministral-8b-latest",
+    "open-mistral-nemo",
+    "codestral-latest",
+  ],
+  // Together AI — model :free
+  together: [
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",
+    "meta-llama/Llama-Vision-Free",
   ],
 };
 
@@ -169,8 +230,14 @@ async function callGemini(args: {
   return { rawText: text, tokenUsage: data.usageMetadata ?? null };
 }
 
+// Provider nào KHÔNG support response_format JSON mode → bỏ qua header đó
+const NO_JSON_MODE: Set<Provider> = new Set([
+  "cerebras",  // Cerebras chưa hỗ trợ response_format
+  "github",    // GitHub Models inference đôi khi reject json_object
+]);
+
 async function callOpenAICompat(args: {
-  provider: "deepseek" | "openrouter";
+  provider: Exclude<Provider, "gemini">;
   apiKey: string;
   model: string;
   prompt: string;
@@ -182,11 +249,15 @@ async function callOpenAICompat(args: {
     Authorization: `Bearer ${args.apiKey}`,
   };
   if (args.provider === "openrouter") {
-    // OpenRouter recommend các header này để hiện trong dashboard
     headers["HTTP-Referer"] = "https://presenter-tlu.vercel.app";
     headers["X-Title"] = "Presenter TLU";
   }
-  const body = {
+  if (args.provider === "github") {
+    // GitHub Models prefer api-key header (vẫn accept Bearer)
+    headers["api-key"] = args.apiKey;
+  }
+  const supportsJsonMode = !NO_JSON_MODE.has(args.provider);
+  const body: Record<string, unknown> = {
     model: args.model,
     messages: [
       {
@@ -197,8 +268,8 @@ async function callOpenAICompat(args: {
       { role: "user", content: args.prompt },
     ],
     temperature: 0.7,
-    response_format: { type: "json_object" },
   };
+  if (supportsJsonMode) body.response_format = { type: "json_object" };
   const res = await fetchWithRetry(url, {
     method: "POST",
     headers,

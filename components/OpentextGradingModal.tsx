@@ -49,6 +49,7 @@ interface Props {
 }
 
 export function OpentextGradingModal({ activityId, onClose }: Props) {
+  const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
   const data = useQuery(api.gradingData.listOpentextResponsesForGrading, { activityId });
   const gradeAction = useAction(api.grading.gradeOpentextResponses);
   const overrideGrade = useMutation(api.gradingData.overrideResponseGrade);
@@ -64,7 +65,7 @@ export function OpentextGradingModal({ activityId, onClose }: Props) {
   });
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
-  const currentKey = loadSavedKey(currentProvider);
+  const currentKey = (dbKeys ?? {})[currentProvider] ?? loadSavedKey(currentProvider);
   const needsKey = !currentKey;
 
   if (data === undefined) {

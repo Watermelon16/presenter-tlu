@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
@@ -91,6 +91,7 @@ export function SurveyAiGenModal({
   onClose,
 }: Props) {
   const generate = useAction(api.ai.generateSurveyActivities);
+  const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
   const createActivity = useMutation(api.activities.createActivity);
 
   const [stage, setStage] = useState<"idle" | "generating" | "review" | "saving">("idle");
@@ -121,7 +122,7 @@ export function SurveyAiGenModal({
   });
   const currentModelDef = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
   const currentProvider = currentModelDef.provider;
-  const currentKey = loadSavedKey(currentProvider);
+  const currentKey = (dbKeys ?? {})[currentProvider] ?? loadSavedKey(currentProvider);
   const needsKey = !currentKey;
 
   const toggleType = (t: SurveyType) => {
