@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 
-export default function LoginPage() {
+// Chỉ chấp nhận internal path để chặn open redirect.
+function safeNext(raw: string | null): string {
+  if (!raw) return "/";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
+  if (raw.startsWith("/login")) return "/";
+  return raw;
+}
+
+function LoginInner() {
   const { signIn } = useAuthActions();
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
   const [busy, setBusy] = useState<"google" | "microsoft" | null>(null);
 
   const handleGoogle = async () => {
     setBusy("google");
     try {
-      await signIn("google", { redirectTo: "/" });
+      await signIn("google", { redirectTo: next });
     } catch (e: unknown) {
       console.error(e);
       setBusy(null);
@@ -24,7 +35,7 @@ export default function LoginPage() {
   const handleMicrosoft = async () => {
     setBusy("microsoft");
     try {
-      await signIn("microsoft-entra-id", { redirectTo: "/" });
+      await signIn("microsoft-entra-id", { redirectTo: next });
     } catch (e: unknown) {
       console.error(e);
       setBusy(null);
@@ -116,5 +127,14 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // useSearchParams cần Suspense boundary trong App Router
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-50" />}>
+      <LoginInner />
+    </Suspense>
   );
 }

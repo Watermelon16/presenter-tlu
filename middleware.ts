@@ -25,7 +25,14 @@ export default convexAuthNextjsMiddleware(async (request) => {
   if (isPublic) return;
   const authed = await isAuthenticatedNextjs();
   if (!authed) {
-    return nextjsMiddlewareRedirect(request, "/login");
+    // Lưu URL gốc (path + query) vào ?next= để login xong redirect đúng chỗ.
+    // Tránh redirect-loop khi đã ở /login (không vào nhánh này vì isPublic).
+    const url = new URL(request.url);
+    const next = url.pathname + url.search;
+    // Chỉ giữ next nếu là internal path (an toàn, không phải URL ngoài)
+    const safe = next.startsWith("/") && !next.startsWith("//") && next !== "/login";
+    const target = safe ? `/login?next=${encodeURIComponent(next)}` : "/login";
+    return nextjsMiddlewareRedirect(request, target);
   }
 });
 
