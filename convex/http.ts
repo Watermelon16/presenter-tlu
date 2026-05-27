@@ -109,10 +109,18 @@ http.route({
       const publicUrl =
         process.env.PRESENTER_PUBLIC_URL || "https://presenter-tlu.vercel.app";
 
+      // `url` = GV deep-link (bấm "Mở phòng giảng" trong LMS phải vào DASHBOARD,
+      // không phải /room/ là SV join page → bị yêu cầu nhập MSV).
+      // `join_url` = SV URL (cho QR code nếu LMS muốn dùng).
+      const presenterUrl = `${publicUrl}/presenter/${result.code}`;
+      const joinUrl = `${publicUrl}/room/${result.code}`;
+
       return jsonResp({
         ok: true,
         code: result.code,
-        url: `${publicUrl}/room/${result.code}`,
+        url: presenterUrl,
+        presenter_url: presenterUrl,
+        join_url: joinUrl,
         session_id: result.sessionId,
         created: result.created,
         roster_count: result.rosterCount,
