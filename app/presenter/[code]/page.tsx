@@ -33,6 +33,7 @@ import {
   type DrawTool,
   type Stroke,
 } from "@/components/SlideDrawingLayer";
+import { SlideHotspotLayer, type Hotspot } from "@/components/SlideHotspotLayer";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -405,8 +406,28 @@ function PresenterPage() {
     });
   }, []);
 
-  // Blank screen (B) — đè màn đen lên slide
+  // Blank screen (D) — đè màn đen lên slide
   const [blankScreen, setBlankScreen] = useState(false);
+
+  // === Hotspot trên slide (giống PPT Action) ===
+  // hotspotEditMode = true → vẽ vùng + chỉnh; false → click hotspot nhảy trang.
+  // navStack lưu pdfCurrentPage mỗi lần click hotspot, để phím B back về lần lượt.
+  const [hotspotEditMode, setHotspotEditMode] = useState(false);
+  const [navStack, setNavStack] = useState<number[]>([]);
+  const hotspotsRaw = useQuery(
+    api.pdfHotspots.listForPdf,
+    session?.pdfStorageId ? { pdfStorageId: session.pdfStorageId } : "skip",
+  );
+  const hotspots: Hotspot[] = useMemo(
+    () => (hotspotsRaw ?? []).map((h) => ({
+      _id: h._id, page: h.page, x: h.x, y: h.y, w: h.w, h: h.h,
+      targetPage: h.targetPage, label: h.label,
+    })),
+    [hotspotsRaw],
+  );
+  const createHotspot = useMutation(api.pdfHotspots.create);
+  const updateHotspot = useMutation(api.pdfHotspots.update);
+  const removeHotspot = useMutation(api.pdfHotspots.remove);
 
   // Floating cheatsheet phím tắt (H hoặc ?)
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -1028,10 +1049,25 @@ function PresenterPage() {
         setShowCheatsheet((v) => !v);
       }
 
-      // === B = Blank/đen màn hình (chỉ khi đang chiếu slide) ===
-      if ((e.key === "b" || e.key === "B") && fullscreenOverlay === "slides") {
+      // === D = Blank/đen màn hình (chỉ khi đang chiếu slide).
+      // Tránh nhầm Shift+D (xoá hết nét vẽ) — phải check !shiftKey. ===
+      if ((e.key === "d" || e.key === "D") && !e.shiftKey && fullscreenOverlay === "slides") {
         e.preventDefault();
         setBlankScreen((v) => !v);
+      }
+
+      // === B = Back từ hotspot về slide gốc (như nút "Back" trong browser) ===
+      if (
+        (e.key === "b" || e.key === "B") &&
+        fullscreenOverlay === "slides" &&
+        navStack.length > 0
+      ) {
+        e.preventDefault();
+        const prev = navStack[navStack.length - 1];
+        setNavStack((s) => s.slice(0, -1));
+        if (session?._id && hasPdf) {
+          setPdfCurrentPage({ sessionId: session._id, page: prev });
+        }
       }
 
       // === C = Collapse/expand QR sidebar trong slide overlay ===
@@ -1135,6 +1171,8 @@ function PresenterPage() {
     isScriptMode, sortedActivities.length,
     // Slide jump buffer
     slideJumpBuffer, resetSlideJumpBuffer,
+    // Hotspot back stack
+    navStack, session?._id,
   ]);
 
   const [isStarting, setIsStarting] = useState<string | null>(null);
@@ -4706,9 +4744,9 @@ function PresenterPage() {
                 <div
                   className="absolute inset-0 z-20 bg-black flex items-center justify-center cursor-pointer"
                   onClick={() => setBlankScreen(false)}
-                  title="Bấm để hiện lại slide (hoặc B)"
+                  title="Bấm để hiện lại slide (hoặc D)"
                 >
-                  <div className="text-zinc-700 text-sm">Bấm để hiện lại (B)</div>
+                  <div className="text-zinc-700 text-sm">Bấm để hiện lại (D)</div>
                 </div>
               )}
               {/* Whiteboard mode — nền trắng đè lên slide để vẽ tự do */}
@@ -4760,6 +4798,95 @@ function PresenterPage() {
                   onToggleWhiteboard={toggleWhiteboard}
                   surfaceLabel={drawSurfaceLabel}
                 />
+              )}
+
+              {/* === Hotspot layer ===
+                  - Edit mode: GV kéo chuột để vẽ vùng, chọn trang đích.
+                  - Present mode: click hotspot → push current page vào navStack rồi nhảy.
+                  Khi bật edit mode, tắt drawing tool để cursor không xung đột. */}
+              {hasPdf && !whiteboardMode && (
+                <SlideHotspotLayer
+                  mode={hotspotEditMode ? "edit" : "present"}
+                  currentPage={pdfCurrentPage}
+                  totalPages={pdfTotalPages}
+                  hotspots={hotspots}
+                  onJump={(target) => {
+                    if (!session?._id) return;
+                    setNavStack((s) => [...s, pdfCurrentPage]);
+                    setPdfCurrentPage({ sessionId: session._id, page: target });
+                  }}
+                  onCreate={async (rect) => {
+                    if (!session?.pdfStorageId) return;
+                    try {
+                      await createHotspot({
+                        pdfStorageId: session.pdfStorageId,
+                        page: pdfCurrentPage,
+                        x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+                        targetPage: rect.targetPage,
+                      });
+                      toast.success(`Đã tạo hotspot → slide ${rect.targetPage}`);
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Lỗi tạo hotspot");
+                    }
+                  }}
+                  onUpdate={async (id, patch) => {
+                    try {
+                      await updateHotspot({ id: id as Id<"pdfHotspots">, ...patch });
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Lỗi cập nhật hotspot");
+                    }
+                  }}
+                  onRemove={async (id) => {
+                    try {
+                      await removeHotspot({ id: id as Id<"pdfHotspots"> });
+                      toast.success("Đã xoá hotspot");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Lỗi xoá hotspot");
+                    }
+                  }}
+                />
+              )}
+
+              {/* Nút toggle "Chỉnh hotspot" — góc trên trái slide, dưới drawing toolbar */}
+              {hasPdf && !whiteboardMode && (
+                <button
+                  onClick={() => {
+                    setHotspotEditMode((v) => {
+                      const next = !v;
+                      if (next) setDrawTool("none"); // tắt drawing tool để khỏi xung đột cursor
+                      return next;
+                    });
+                  }}
+                  className={`absolute top-3 left-14 z-40 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-lg border transition flex items-center gap-1.5 ${
+                    hotspotEditMode
+                      ? "bg-amber-500 text-black border-amber-300"
+                      : "bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border-zinc-700"
+                  }`}
+                  title={hotspotEditMode
+                    ? "Đang chỉnh hotspot — kéo chuột để tạo, click hotspot để sửa/xoá"
+                    : "Chỉnh hotspot — vẽ vùng click để nhảy trang (giống PPT Action)"}
+                >
+                  <span>🎯</span>
+                  <span>{hotspotEditMode ? "Đang chỉnh hotspot" : "Hotspot"}</span>
+                </button>
+              )}
+
+              {/* Nút "Quay lại" floating — chỉ hiện khi có stack back. Phím tắt: B */}
+              {navStack.length > 0 && !hotspotEditMode && (
+                <button
+                  onClick={() => {
+                    if (!session?._id) return;
+                    const prev = navStack[navStack.length - 1];
+                    setNavStack((s) => s.slice(0, -1));
+                    setPdfCurrentPage({ sessionId: session._id, page: prev });
+                  }}
+                  className="absolute bottom-4 right-4 z-40 px-3 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold shadow-2xl border border-amber-300 flex items-center gap-1.5"
+                  title={`Quay lại slide ${navStack[navStack.length - 1]} (phím B)`}
+                >
+                  <span>←</span>
+                  <span>Quay lại</span>
+                  <kbd className="ml-1 px-1.5 py-0.5 rounded bg-black/30 text-[10px] font-mono">B</kbd>
+                </button>
               )}
             </div>
 
@@ -4969,7 +5096,8 @@ function PresenterPage() {
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">R</kbd> kết quả</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">⇧R</kbd> chạy lại</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">X</kbd> đóng</span>
-              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">B</kbd> blank</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">D</kbd> blank</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">B</kbd> back hotspot</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">C</kbd> sidebar</span>
               <button
                 onClick={() => setShowCheatsheet((v) => !v)}

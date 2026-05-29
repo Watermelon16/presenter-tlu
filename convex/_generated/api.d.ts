@@ -26,6 +26,7 @@ import type * as lmsProvisioning from "../lmsProvisioning.js";
 import type * as lmsSync from "../lmsSync.js";
 import type * as msDebug from "../msDebug.js";
 import type * as participants from "../participants.js";
+import type * as pdfHotspots from "../pdfHotspots.js";
 import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as responses from "../responses.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   lmsSync: typeof lmsSync;
   msDebug: typeof msDebug;
   participants: typeof participants;
+  pdfHotspots: typeof pdfHotspots;
   push: typeof push;
   pushSubscriptions: typeof pushSubscriptions;
   responses: typeof responses;

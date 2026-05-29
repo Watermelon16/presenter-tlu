@@ -262,6 +262,24 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_endpoint", ["endpoint"]),
 
+  // Hotspot trên PDF — vùng click trên slide để nhảy sang trang khác (giống PPT Action).
+  // Gắn theo pdfStorageId (file PDF) → dùng lại được qua nhiều phiên giảng.
+  // Toạ độ x/y/w/h là tỉ lệ 0..1 so với khung slide để không lệch khi đổi kích thước.
+  pdfHotspots: defineTable({
+    pdfStorageId: v.id("_storage"),
+    ownerUserId: v.id("users"),
+    page: v.number(),         // Trang chứa hotspot (1-based)
+    x: v.number(),            // 0..1
+    y: v.number(),            // 0..1
+    w: v.number(),            // 0..1
+    h: v.number(),            // 0..1
+    targetPage: v.number(),   // Trang đích khi click (1-based)
+    label: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_pdf", ["pdfStorageId"])
+    .index("by_pdf_page", ["pdfStorageId", "page"]),
+
   // Kịch bản mẫu (lưu để tái sử dụng cho các buổi sau)
   scriptTemplates: defineTable({
     name: v.string(),

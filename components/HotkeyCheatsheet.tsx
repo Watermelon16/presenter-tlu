@@ -21,13 +21,14 @@ const ROWS: Row[] = [
   { keys: ["S"], label: "Mở/đóng chiếu slide PDF", group: "Chiếu slide" },
   { keys: ["Q"], label: "Chiếu QR + mã phòng fullscreen" },
   { keys: ["K"], label: "Hiện/ẩn QR mini widget (góc trái) — cho SV vào muộn" },
-  { keys: ["B"], label: "Blank đen — tạm dừng slide" },
+  { keys: ["D"], label: "Blank đen — tạm dừng slide" },
   { keys: ["C"], label: "Ẩn/hiện QR sidebar trong slide overlay" },
   { keys: ["←", "→"], label: "Slide trước / sau" },
   { keys: ["Space"], label: "Slide kế / bước script tiếp" },
   { keys: ["Home"], label: "Slide đầu" },
   { keys: ["End"], label: "Slide cuối" },
   { keys: ["0-9", "↵"], label: "Nhảy đến slide cụ thể (gõ số + Enter)" },
+  { keys: ["B"], label: "Quay lại slide gốc sau khi click hotspot (PPT Action)" },
 
   // === VẼ TRÊN SLIDE / BẢNG TRẮNG ===
   { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)", group: "Vẽ trên slide" },
