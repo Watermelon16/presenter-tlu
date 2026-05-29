@@ -34,6 +34,10 @@ type Props = {
 };
 
 const MIN_RECT_FRAC = 0.015; // tránh hotspot quá nhỏ do click nhầm
+const MIN_HOTSPOT_FRAC = 0.02; // tối thiểu sau resize (2% chiều slide)
+const DRAG_THRESHOLD_FRAC = 0.005; // di chuyển > 0.5% slide mới tính là drag (không phải click)
+
+type DragMode = "move" | "nw" | "ne" | "sw" | "se";
 
 export function SlideHotspotLayer({
   mode, currentPage, totalPages, hotspots,
@@ -45,6 +49,16 @@ export function SlideHotspotLayer({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingRect, setPendingRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [targetInput, setTargetInput] = useState<string>("");
+  // Drag state — move hoặc resize 1 hotspot có sẵn
+  const [drag, setDrag] = useState<null | {
+    id: string;
+    dragMode: DragMode;
+    startNx: number;
+    startNy: number;
+    orig: { x: number; y: number; w: number; h: number };
+    moved: boolean;
+  }>(null);
+  const [dragPreview, setDragPreview] = useState<null | { id: string; x: number; y: number; w: number; h: number }>(null);
 
   // Lọc hotspot thuộc trang đang chiếu
   const pageHotspots = hotspots.filter((h) => h.page === currentPage);
@@ -121,16 +135,82 @@ export function SlideHotspotLayer({
     setTargetInput("");
   };
 
-  // === Click hotspot có sẵn ===
-  const handleHotspotClick = (h: Hotspot, e: React.MouseEvent) => {
+  // === Click present mode ===
+  const handlePresentClick = (h: Hotspot, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (mode === "present") {
-      onJump?.(h.targetPage);
-      return;
+    if (mode !== "present") return;
+    onJump?.(h.targetPage);
+  };
+
+  // === Drag/resize hotspot có sẵn (chỉ edit mode) ===
+  const startDrag = (h: Hotspot, dragMode: DragMode, e: React.PointerEvent) => {
+    if (mode !== "edit") return;
+    e.stopPropagation();
+    e.preventDefault();
+    const [nx, ny] = getNorm(e);
+    setDrag({
+      id: h._id,
+      dragMode,
+      startNx: nx,
+      startNy: ny,
+      orig: { x: h.x, y: h.y, w: h.w, h: h.h },
+      moved: false,
+    });
+    setDragPreview({ id: h._id, x: h.x, y: h.y, w: h.w, h: h.h });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const continueDrag = (e: React.PointerEvent) => {
+    if (!drag) return;
+    const [nx, ny] = getNorm(e);
+    const dx = nx - drag.startNx;
+    const dy = ny - drag.startNy;
+    const movedNow = Math.abs(dx) > DRAG_THRESHOLD_FRAC || Math.abs(dy) > DRAG_THRESHOLD_FRAC;
+    if (movedNow && !drag.moved) setDrag({ ...drag, moved: true });
+
+    const o = drag.orig;
+    let x = o.x, y = o.y, w = o.w, h = o.h;
+    if (drag.dragMode === "move") {
+      x = Math.max(0, Math.min(1 - o.w, o.x + dx));
+      y = Math.max(0, Math.min(1 - o.h, o.y + dy));
+    } else {
+      // Resize: tính theo 2 cạnh đối — góc đối diện cố định
+      const right = o.x + o.w;
+      const bottom = o.y + o.h;
+      if (drag.dragMode === "nw" || drag.dragMode === "sw") {
+        const newX = Math.max(0, Math.min(right - MIN_HOTSPOT_FRAC, o.x + dx));
+        x = newX;
+        w = right - newX;
+      } else { // ne | se
+        const newRight = Math.max(o.x + MIN_HOTSPOT_FRAC, Math.min(1, right + dx));
+        w = newRight - o.x;
+      }
+      if (drag.dragMode === "nw" || drag.dragMode === "ne") {
+        const newY = Math.max(0, Math.min(bottom - MIN_HOTSPOT_FRAC, o.y + dy));
+        y = newY;
+        h = bottom - newY;
+      } else { // sw | se
+        const newBottom = Math.max(o.y + MIN_HOTSPOT_FRAC, Math.min(1, bottom + dy));
+        h = newBottom - o.y;
+      }
     }
-    setEditingId(h._id);
-    setTargetInput(String(h.targetPage));
-    setPendingRect(null);
+    setDragPreview({ id: drag.id, x, y, w, h });
+  };
+
+  const endDrag = (h: Hotspot) => {
+    if (!drag || drag.id !== h._id) return;
+    const moved = drag.moved;
+    const preview = dragPreview;
+    setDrag(null);
+    setDragPreview(null);
+    if (moved && preview) {
+      onUpdate?.(h._id, { x: preview.x, y: preview.y, w: preview.w, h: preview.h });
+    } else {
+      // Click không drag → mở popup edit (đổi target / xoá)
+      setEditingId(h._id);
+      setTargetInput(String(h.targetPage));
+      setPendingRect(null);
+    }
   };
 
   const saveEdit = () => {
@@ -166,38 +246,61 @@ export function SlideHotspotLayer({
     >
       {/* Render hotspots hiện có */}
       {size.w > 0 && pageHotspots.map((h) => {
-        const left = h.x * size.w;
-        const top = h.y * size.h;
-        const width = h.w * size.w;
-        const height = h.h * size.h;
+        // Nếu đang drag hotspot này → render rect preview thay vì rect gốc
+        const useRect = dragPreview && dragPreview.id === h._id ? dragPreview : h;
+        const left = useRect.x * size.w;
+        const top = useRect.y * size.h;
+        const width = useRect.w * size.w;
+        const height = useRect.h * size.h;
         const isEditingThis = editingId === h._id;
+        const isDraggingThis = drag?.id === h._id;
         return (
           <div
             key={h._id}
             data-hotspot-existing
-            onClick={(e) => handleHotspotClick(h, e)}
+            onPointerDown={(e) => {
+              if (mode === "edit") startDrag(h, "move", e);
+            }}
+            onPointerMove={continueDrag}
+            onPointerUp={(e) => {
+              if (mode === "edit") {
+                endDrag(h);
+              } else {
+                handlePresentClick(h, e);
+              }
+            }}
+            onPointerCancel={() => { setDrag(null); setDragPreview(null); }}
+            onClick={(e) => e.stopPropagation()}
             className="absolute"
             style={{
               left, top, width, height,
               pointerEvents: "auto",
-              cursor: "pointer",
+              cursor: mode === "edit" ? "move" : "pointer",
               background: mode === "edit"
-                ? (isEditingThis ? "rgba(245,158,11,0.18)" : "rgba(59,130,246,0.10)")
+                ? (isEditingThis || isDraggingThis ? "rgba(245,158,11,0.18)" : "rgba(59,130,246,0.10)")
                 : "transparent",
               border: mode === "edit"
-                ? (isEditingThis ? "2px solid #f59e0b" : "2px dashed rgba(59,130,246,0.75)")
+                ? (isEditingThis || isDraggingThis ? "2px solid #f59e0b" : "2px dashed rgba(59,130,246,0.75)")
                 : "none",
               borderRadius: 4,
+              touchAction: mode === "edit" ? "none" : undefined,
             }}
             title={mode === "present"
               ? `→ Slide ${h.targetPage}${h.label ? ` (${h.label})` : ""}`
-              : `Hotspot → trang ${h.targetPage}`
+              : `Kéo để di chuyển · Kéo góc để resize · Click để đổi trang đích`
             }
           >
             {mode === "edit" && (
-              <div className="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-600 text-white whitespace-nowrap">
-                →{h.targetPage}
-              </div>
+              <>
+                <div className="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-600 text-white whitespace-nowrap pointer-events-none">
+                  →{h.targetPage}
+                </div>
+                {/* 4 corner resize handles */}
+                <ResizeHandle pos="nw" onPointerDown={(e) => startDrag(h, "nw", e)} onPointerMove={continueDrag} onPointerUp={() => endDrag(h)} />
+                <ResizeHandle pos="ne" onPointerDown={(e) => startDrag(h, "ne", e)} onPointerMove={continueDrag} onPointerUp={() => endDrag(h)} />
+                <ResizeHandle pos="sw" onPointerDown={(e) => startDrag(h, "sw", e)} onPointerMove={continueDrag} onPointerUp={() => endDrag(h)} />
+                <ResizeHandle pos="se" onPointerDown={(e) => startDrag(h, "se", e)} onPointerMove={continueDrag} onPointerUp={() => endDrag(h)} />
+              </>
             )}
           </div>
         );
@@ -258,6 +361,33 @@ export function SlideHotspotLayer({
         );
       })()}
     </div>
+  );
+}
+
+function ResizeHandle({
+  pos, onPointerDown, onPointerMove, onPointerUp,
+}: {
+  pos: "nw" | "ne" | "sw" | "se";
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: () => void;
+}) {
+  // Vị trí + cursor tương ứng góc
+  const styleByPos: Record<typeof pos, React.CSSProperties> = {
+    nw: { left: -6, top: -6, cursor: "nwse-resize" },
+    ne: { right: -6, top: -6, cursor: "nesw-resize" },
+    sw: { left: -6, bottom: -6, cursor: "nesw-resize" },
+    se: { right: -6, bottom: -6, cursor: "nwse-resize" },
+  };
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute w-3 h-3 bg-white border-2 border-amber-500 rounded-sm shadow"
+      style={{ ...styleByPos[pos], touchAction: "none" }}
+    />
   );
 }
 
