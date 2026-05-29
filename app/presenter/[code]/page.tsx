@@ -4871,6 +4871,22 @@ function PresenterPage() {
                 </button>
               )}
 
+              {/* Banner cảnh báo edit mode — chiếm trọn đỉnh slide cho dễ thấy.
+                  Tránh tình huống GV tưởng đang trình chiếu nhưng click chỉ ra popup. */}
+              {hasPdf && hotspotEditMode && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-lg bg-amber-500 text-black text-sm font-bold shadow-2xl border-2 border-amber-300 flex items-center gap-3">
+                  <span className="text-base">⚠️</span>
+                  <span>ĐANG CHỈNH HOTSPOT — không phải chế độ trình chiếu</span>
+                  <button
+                    onClick={() => setHotspotEditMode(false)}
+                    className="ml-1 px-2 py-0.5 rounded bg-black/80 hover:bg-black text-white text-xs font-semibold"
+                    title="Thoát chế độ chỉnh, quay lại trình chiếu"
+                  >
+                    Xong, trình chiếu →
+                  </button>
+                </div>
+              )}
+
               {/* Nút "Quay lại" floating — chỉ hiện khi có stack back. Phím tắt: B */}
               {navStack.length > 0 && !hotspotEditMode && (
                 <button
