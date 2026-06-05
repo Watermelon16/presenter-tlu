@@ -62,6 +62,53 @@ export const create = mutation({
   },
 });
 
+// Import hàng loạt hotspot từ các liên kết (link annotations) có sẵn trong PDF.
+// Thay thế trọn nhóm source="pdf-link" cũ của file (idempotent re-import),
+// giữ nguyên các hotspot vẽ tay.
+export const importLinks = mutation({
+  args: {
+    pdfStorageId: v.id("_storage"),
+    links: v.array(
+      v.object({
+        page: v.number(),
+        x: v.number(),
+        y: v.number(),
+        w: v.number(),
+        h: v.number(),
+        targetPage: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, { pdfStorageId, links }) => {
+    const { userId } = await requireApprovedUser(ctx);
+    // Xoá nhóm import cũ để re-import không nhân đôi.
+    const existing = await ctx.db
+      .query("pdfHotspots")
+      .withIndex("by_pdf", (q) => q.eq("pdfStorageId", pdfStorageId))
+      .collect();
+    for (const h of existing) {
+      if (h.source === "pdf-link") await ctx.db.delete(h._id);
+    }
+    let count = 0;
+    for (const link of links) {
+      await ctx.db.insert("pdfHotspots", {
+        pdfStorageId,
+        ownerUserId: userId,
+        page: Math.max(1, Math.floor(link.page)),
+        x: clamp01(link.x),
+        y: clamp01(link.y),
+        w: clamp01(link.w),
+        h: clamp01(link.h),
+        targetPage: Math.max(1, Math.floor(link.targetPage)),
+        source: "pdf-link",
+        createdAt: Date.now(),
+      });
+      count++;
+    }
+    return { count };
+  },
+});
+
 export const update = mutation({
   args: {
     id: v.id("pdfHotspots"),

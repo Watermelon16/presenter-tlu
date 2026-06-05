@@ -275,6 +275,9 @@ export default defineSchema({
     h: v.number(),            // 0..1
     targetPage: v.number(),   // Trang đích khi click (1-based)
     label: v.optional(v.string()),
+    // Nguồn tạo: undefined = vẽ tay; "pdf-link" = import từ link có sẵn trong PDF.
+    // Dùng để re-import thay thế đúng nhóm import, không đụng hotspot vẽ tay.
+    source: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_pdf", ["pdfStorageId"])

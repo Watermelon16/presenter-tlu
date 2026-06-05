@@ -34,6 +34,7 @@ import {
   type Stroke,
 } from "@/components/SlideDrawingLayer";
 import { SlideHotspotLayer, type Hotspot } from "@/components/SlideHotspotLayer";
+import { extractPdfLinks } from "@/lib/pdfLinks";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
@@ -428,6 +429,8 @@ function PresenterPage() {
   const createHotspot = useMutation(api.pdfHotspots.create);
   const updateHotspot = useMutation(api.pdfHotspots.update);
   const removeHotspot = useMutation(api.pdfHotspots.remove);
+  const importHotspotLinks = useMutation(api.pdfHotspots.importLinks);
+  const [importingLinks, setImportingLinks] = useState(false);
 
   // Floating cheatsheet phím tắt (H hoặc ?)
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -4868,6 +4871,40 @@ function PresenterPage() {
                 >
                   <span>🎯</span>
                   <span>{hotspotEditMode ? "Đang chỉnh hotspot" : "Hotspot"}</span>
+                </button>
+              )}
+
+              {/* Nút "Nhập liên kết từ PDF" — chỉ trong edit mode.
+                  Đọc link nội bộ có sẵn trong PDF → tạo hotspot, GV khỏi vẽ tay.
+                  Re-import thay thế nhóm import cũ, giữ hotspot vẽ tay. */}
+              {hasPdf && !whiteboardMode && hotspotEditMode && (
+                <button
+                  disabled={importingLinks || !pdfUrl || !session?.pdfStorageId}
+                  onClick={async () => {
+                    if (!pdfUrl || !session?.pdfStorageId) return;
+                    setImportingLinks(true);
+                    try {
+                      const links = await extractPdfLinks(pdfUrl);
+                      if (links.length === 0) {
+                        toast.info("Không tìm thấy liên kết trang nào trong PDF");
+                        return;
+                      }
+                      const { count } = await importHotspotLinks({
+                        pdfStorageId: session.pdfStorageId,
+                        links,
+                      });
+                      toast.success(`Đã nhập ${count} liên kết từ PDF thành hotspot`);
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Lỗi nhập liên kết từ PDF");
+                    } finally {
+                      setImportingLinks(false);
+                    }
+                  }}
+                  className="absolute top-3 left-56 z-40 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-lg border transition flex items-center gap-1.5 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Đọc các liên kết trang có sẵn trong PDF và tạo hotspot tự động (làm lại sẽ thay thế nhóm đã nhập)"
+                >
+                  <span>🔗</span>
+                  <span>{importingLinks ? "Đang nhập..." : "Nhập liên kết từ PDF"}</span>
                 </button>
               )}
 
