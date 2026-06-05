@@ -30,6 +30,9 @@ type LinkAnnotation = {
   rect?: number[];
   dest?: unknown;
   url?: string;
+  // PowerPoint export link "đến slide N" thành URI action giá trị là số trang
+  // trần. pdfjs không nhận ra GoTo → dest/url rỗng, số nằm ở unsafeUrl.
+  unsafeUrl?: string;
 };
 
 export async function extractPdfLinks(fileUrl: string): Promise<ExtractedLink[]> {
@@ -43,31 +46,43 @@ export async function extractPdfLinks(fileUrl: string): Promise<ExtractedLink[]>
 
     for (const a of annots) {
       if (a.subtype !== "Link") continue;
-      // Bỏ link URL ngoài — chỉ xử lý dest nội bộ (nhảy trang).
-      if (!a.dest || a.url) continue;
       if (!a.rect || a.rect.length < 4) continue;
 
-      // Resolve destination → chỉ số trang đích.
-      let dest: unknown = a.dest;
-      if (typeof dest === "string") {
-        dest = await pdf.getDestination(dest);
-      }
-      if (!Array.isArray(dest) || dest.length === 0) continue;
+      // Tìm trang đích từ 1 trong 2 dạng:
+      let targetPage: number | null = null;
 
-      const ref = dest[0];
-      let targetIndex: number | null = null;
-      if (typeof ref === "number") {
-        targetIndex = ref;
-      } else if (ref && typeof ref === "object") {
-        try {
-          // ref là RefProxy {num, gen}
-          targetIndex = await pdf.getPageIndex(ref as Parameters<typeof pdf.getPageIndex>[0]);
-        } catch {
-          targetIndex = null;
+      if (a.dest && !a.url) {
+        // (1) GoTo destination chuẩn — resolve ra chỉ số trang.
+        let dest: unknown = a.dest;
+        if (typeof dest === "string") {
+          dest = await pdf.getDestination(dest);
+        }
+        if (Array.isArray(dest) && dest.length > 0) {
+          const ref = dest[0];
+          let targetIndex: number | null = null;
+          if (typeof ref === "number") {
+            targetIndex = ref;
+          } else if (ref && typeof ref === "object") {
+            try {
+              // ref là RefProxy {num, gen}
+              targetIndex = await pdf.getPageIndex(ref as Parameters<typeof pdf.getPageIndex>[0]);
+            } catch {
+              targetIndex = null;
+            }
+          }
+          if (targetIndex != null) targetPage = targetIndex + 1;
+        }
+      } else if (!a.dest) {
+        // (2) Link "đến slide N" bị export thành số trang trần (PowerPoint).
+        // pdfjs để giá trị ở url/unsafeUrl; nhận diện nếu là số nguyên thuần.
+        const raw = (a.url ?? a.unsafeUrl ?? "").toString().trim();
+        if (/^\d+$/.test(raw)) {
+          const n = parseInt(raw, 10);
+          if (n >= 1 && n <= pdf.numPages) targetPage = n;
         }
       }
-      if (targetIndex == null) continue;
-      const targetPage = targetIndex + 1;
+
+      if (targetPage == null) continue;
       if (targetPage === pageNum) continue; // bỏ link tự trỏ về chính nó
 
       // rect PDF (gốc bottom-left) → viewport (gốc top-left).
