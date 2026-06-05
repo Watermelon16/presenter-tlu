@@ -49,6 +49,10 @@ export function SlideHotspotLayer({
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  // Khung ảnh PDF thật bên trong overlay (canvas react-pdf). Hotspot phải bám
+  // theo khung này, KHÔNG phải toàn vùng overlay — nếu không, do letterbox
+  // (viền đen 2 bên / trên dưới) các điểm xa tâm sẽ lệch dần.
+  const [pageBox, setPageBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingRect, setPendingRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -80,11 +84,41 @@ export function SlideHotspotLayer({
     return () => ro.disconnect();
   }, []);
 
+  // Đo khung canvas PDF (react-pdf) tương đối với lớp này. Canvas bị thay mỗi
+  // lần đổi trang nên ta truy vấn lại định kỳ + khi đổi currentPage.
+  useEffect(() => {
+    const layer = ref.current;
+    if (!layer) return;
+    const measure = () => {
+      const canvas = layer.parentElement?.querySelector(
+        "canvas.react-pdf__Page__canvas",
+      ) as HTMLElement | null;
+      if (!canvas) { setPageBox((p) => (p === null ? p : null)); return; }
+      const lr = layer.getBoundingClientRect();
+      const cr = canvas.getBoundingClientRect();
+      if (cr.width < 1 || cr.height < 1) return;
+      const next = { x: cr.left - lr.left, y: cr.top - lr.top, w: cr.width, h: cr.height };
+      setPageBox((prev) =>
+        prev &&
+        Math.abs(prev.x - next.x) < 0.5 && Math.abs(prev.y - next.y) < 0.5 &&
+        Math.abs(prev.w - next.w) < 0.5 && Math.abs(prev.h - next.h) < 0.5
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    const id = setInterval(measure, 250);
+    return () => clearInterval(id);
+  }, [currentPage, size.w, size.h]);
+
+  // Khung toạ độ thực dùng để map hotspot — ưu tiên khung PDF, fallback toàn lớp.
+  const box = pageBox ?? { x: 0, y: 0, w: size.w, h: size.h };
+
   const getNorm = (e: React.PointerEvent): [number, number] => {
     const r = ref.current!.getBoundingClientRect();
     return [
-      Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-      Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
+      Math.max(0, Math.min(1, (e.clientX - r.left - box.x) / box.w)),
+      Math.max(0, Math.min(1, (e.clientY - r.top - box.y) / box.h)),
     ];
   };
 
@@ -249,21 +283,22 @@ export function SlideHotspotLayer({
       onPointerCancel={() => setDrawing(null)}
     >
       {/* Render hotspots hiện có */}
-      {size.w > 0 && pageHotspots.map((h) => {
+      {box.w > 0 && pageHotspots.map((h) => {
         // Nếu đang drag hotspot này → render rect preview thay vì rect gốc
         const useRect = dragPreview && dragPreview.id === h._id ? dragPreview : h;
-        let left = useRect.x * size.w;
-        let top = useRect.y * size.h;
-        let width = useRect.w * size.w;
-        let height = useRect.h * size.h;
-        // Present mode: nới vùng bấm tối thiểu (giữ tâm), kẹp trong khung slide.
+        // Map theo khung PDF thật (box), không phải toàn vùng overlay.
+        let left = box.x + useRect.x * box.w;
+        let top = box.y + useRect.y * box.h;
+        let width = useRect.w * box.w;
+        let height = useRect.h * box.h;
+        // Present mode: nới vùng bấm tối thiểu (giữ tâm), kẹp trong khung PDF.
         if (mode === "present") {
-          const minW = MIN_HIT_FRAC * size.w;
-          const minH = MIN_HIT_FRAC * size.h;
+          const minW = MIN_HIT_FRAC * box.w;
+          const minH = MIN_HIT_FRAC * box.h;
           if (width < minW) { left -= (minW - width) / 2; width = minW; }
           if (height < minH) { top -= (minH - height) / 2; height = minH; }
-          left = Math.max(0, Math.min(left, size.w - width));
-          top = Math.max(0, Math.min(top, size.h - height));
+          left = Math.max(box.x, Math.min(left, box.x + box.w - width));
+          top = Math.max(box.y, Math.min(top, box.y + box.h - height));
         }
         const isEditingThis = editingId === h._id;
         const isDraggingThis = drag?.id === h._id;
@@ -320,14 +355,14 @@ export function SlideHotspotLayer({
       })}
 
       {/* Đang vẽ chữ nhật mới */}
-      {drawing && size.w > 0 && (
+      {drawing && box.w > 0 && (
         <div
           className="absolute pointer-events-none"
           style={{
-            left: drawing.x * size.w,
-            top: drawing.y * size.h,
-            width: drawing.w * size.w,
-            height: drawing.h * size.h,
+            left: box.x + drawing.x * box.w,
+            top: box.y + drawing.y * box.h,
+            width: drawing.w * box.w,
+            height: drawing.h * box.h,
             background: "rgba(245,158,11,0.20)",
             border: "2px dashed #f59e0b",
             borderRadius: 4,
@@ -336,10 +371,10 @@ export function SlideHotspotLayer({
       )}
 
       {/* Popup tạo hotspot mới */}
-      {pendingRect && size.w > 0 && (
+      {pendingRect && box.w > 0 && (
         <HotspotPopup
-          left={pendingRect.x * size.w}
-          top={(pendingRect.y + pendingRect.h) * size.h + 6}
+          left={box.x + pendingRect.x * box.w}
+          top={box.y + (pendingRect.y + pendingRect.h) * box.h + 6}
           containerWidth={size.w}
           title="Hotspot mới"
           subtitle="Click vào slide khi trình chiếu sẽ nhảy đến trang số:"
@@ -353,13 +388,13 @@ export function SlideHotspotLayer({
       )}
 
       {/* Popup sửa hotspot có sẵn */}
-      {editingId && size.w > 0 && (() => {
+      {editingId && box.w > 0 && (() => {
         const h = pageHotspots.find((x) => x._id === editingId);
         if (!h) return null;
         return (
           <HotspotPopup
-            left={h.x * size.w}
-            top={(h.y + h.h) * size.h + 6}
+            left={box.x + h.x * box.w}
+            top={box.y + (h.y + h.h) * box.h + 6}
             containerWidth={size.w}
             title={`Hotspot trang ${h.page} → ${h.targetPage}`}
             subtitle="Đổi trang đích:"
