@@ -36,6 +36,10 @@ type Props = {
 const MIN_RECT_FRAC = 0.015; // tránh hotspot quá nhỏ do click nhầm
 const MIN_HOTSPOT_FRAC = 0.02; // tối thiểu sau resize (2% chiều slide)
 const DRAG_THRESHOLD_FRAC = 0.005; // di chuyển > 0.5% slide mới tính là drag (không phải click)
+// Khi trình chiếu: nới vùng bấm tối thiểu để các node/hotspot nhỏ (vd thanh
+// stepper, vòng tròn số) dễ click trúng. Chỉ ảnh hưởng vùng bấm vô hình,
+// không đổi dữ liệu lưu hay hiển thị edit mode.
+const MIN_HIT_FRAC = 0.04;
 
 type DragMode = "move" | "nw" | "ne" | "sw" | "se";
 
@@ -248,10 +252,19 @@ export function SlideHotspotLayer({
       {size.w > 0 && pageHotspots.map((h) => {
         // Nếu đang drag hotspot này → render rect preview thay vì rect gốc
         const useRect = dragPreview && dragPreview.id === h._id ? dragPreview : h;
-        const left = useRect.x * size.w;
-        const top = useRect.y * size.h;
-        const width = useRect.w * size.w;
-        const height = useRect.h * size.h;
+        let left = useRect.x * size.w;
+        let top = useRect.y * size.h;
+        let width = useRect.w * size.w;
+        let height = useRect.h * size.h;
+        // Present mode: nới vùng bấm tối thiểu (giữ tâm), kẹp trong khung slide.
+        if (mode === "present") {
+          const minW = MIN_HIT_FRAC * size.w;
+          const minH = MIN_HIT_FRAC * size.h;
+          if (width < minW) { left -= (minW - width) / 2; width = minW; }
+          if (height < minH) { top -= (minH - height) / 2; height = minH; }
+          left = Math.max(0, Math.min(left, size.w - width));
+          top = Math.max(0, Math.min(top, size.h - height));
+        }
         const isEditingThis = editingId === h._id;
         const isDraggingThis = drag?.id === h._id;
         return (
