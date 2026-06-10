@@ -25,6 +25,7 @@ import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
 import { FloatingAiTools } from "@/components/FloatingAiTools";
 import { ActivityAiReviewCard } from "@/components/ActivityAiReviewCard";
 import { HotkeyCheatsheet } from "@/components/HotkeyCheatsheet";
+import WordCloud from "@/components/WordCloud";
 import {
   SlideDrawingLayer,
   PEN_SIZES,
@@ -3193,7 +3194,7 @@ function PresenterPage() {
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
                     { type: "poll", icon: "📊", name: "Trắc nghiệm", desc: "SV chọn 1 hoặc nhiều đáp án có sẵn (hỗ trợ chế độ Quiz)", color: "blue" },
-                    { type: "wordcloud", icon: "☁️", name: "Đám mây từ", desc: "Từ khóa ngắn, từ trùng → cụm to (brainstorm)", color: "sky" },
+                    { type: "wordcloud", icon: "☁️", name: "Đám mây từ", desc: "Từ khóa ngắn, tự gom từ trùng ý (cả gõ không dấu) → cụm to", color: "sky" },
                     { type: "rating", icon: "⭐", name: "Thang điểm", desc: "Chấm 1–N với nhãn thấp/cao tùy chỉnh", color: "amber" },
                     { type: "qa", icon: "❓", name: "Hỏi đáp", desc: "SV đặt câu hỏi tự do, có upvote", color: "emerald" },
                     { type: "opentext", icon: "✏️", name: "Trả lời ngắn", desc: "Câu trả lời 1–2 câu, không gom tần suất", color: "teal" },
@@ -4568,20 +4569,13 @@ function PresenterPage() {
 
                 {/* WORD CLOUD fullscreen */}
                 {shouldShowResults && displayActivity.type === "wordcloud" && wordCloudResults && wordCloudResults.words.length > 0 && (
-                  <div className="w-full max-w-6xl text-center">
-                    <div className="flex flex-wrap gap-x-8 gap-y-4 items-center justify-center py-10">
-                      {wordCloudResults.words.slice(0, 60).map((item: any, idx: number) => {
-                        const max = wordCloudResults.words[0]?.count || 1;
-                        const size = Math.max(28, Math.min(120, Math.round(28 + (item.count / max) * 92)));
-                        const opacity = Math.max(0.55, Math.min(1, 0.6 + (item.count / max) * 0.4));
-                        return (
-                          <span key={idx} className="font-semibold" style={{ fontSize: `${size}px`, color: `rgba(52, 211, 153, ${opacity})` }} title={`${item.word} — ${item.count} lần`}>
-                            {item.word}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <div className="text-zinc-400 text-xl mt-4">{wordCloudResults.totalResponses} phản hồi • {wordCloudResults.words.length} từ khác nhau</div>
+                  <div className="w-full max-w-7xl text-center">
+                    <WordCloud
+                      words={wordCloudResults.words}
+                      theme="dark"
+                      className="w-full h-[62vh]"
+                    />
+                    <div className="text-zinc-400 text-xl mt-3">{wordCloudResults.totalResponses} phản hồi • {wordCloudResults.words.length} từ khác nhau</div>
                   </div>
                 )}
 

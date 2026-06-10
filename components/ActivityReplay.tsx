@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sameWordGroup } from "@/lib/wordcloud";
 
 type Option = { id: string; text: string };
 type PollConfig = {
@@ -187,7 +188,7 @@ function WordCloudReplay({ act }: { act: ReplayActivity }) {
         <div className="text-xs text-zinc-500 mb-1.5">Top {top.length} từ phổ biến nhất:</div>
         <div className="flex flex-wrap gap-1.5">
           {top.map((w, i) => {
-            const isMine = w.word.toLowerCase() === myText.toLowerCase().trim();
+            const isMine = !!myText && sameWordGroup(w.word, myText);
             const size = Math.max(11, Math.min(20, 11 + w.count * 2));
             return (
               <span

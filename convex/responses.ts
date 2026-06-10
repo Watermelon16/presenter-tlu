@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { aggregateWordCloud } from "../lib/wordcloud";
 
 // Gửi câu trả lời cho một hoạt động
 //
@@ -190,19 +191,13 @@ export const getMyHistoryInSession = query({
       pollBreakdownByActivity.set(act._id as unknown as string, counts);
     }
 
-    // Wordcloud breakdown — top từ + count
+    // Wordcloud breakdown — top từ + count (gom trùng ý như màn trình chiếu)
     const wordcloudBreakdownByActivity = new Map<string, Array<{ word: string; count: number }>>();
     for (const act of visible.filter((a) => a.type === "wordcloud")) {
-      const wordCounts = new Map<string, number>();
-      for (const r of allResponses.filter((x) => x.activityId === act._id && x.status === "answered")) {
-        const text = typeof r.value === "string" ? r.value : "";
-        const word = text.trim().toLowerCase();
-        if (word) wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
-      }
-      const top = Array.from(wordCounts.entries())
-        .map(([word, count]) => ({ word, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 20);
+      const texts = allResponses
+        .filter((x) => x.activityId === act._id && x.status === "answered")
+        .map((r) => (typeof r.value === "string" ? r.value : ""));
+      const top = aggregateWordCloud(texts).slice(0, 20);
       wordcloudBreakdownByActivity.set(act._id as unknown as string, top);
     }
 
@@ -352,20 +347,10 @@ export const getWordCloudResults = query({
       .collect();
     const responses = all.filter((r) => (r.run ?? 1) === currentRun);
 
-    const wordCounts = new Map<string, number>();
-
-    for (const res of responses) {
-      if (typeof res.value !== "string") continue;
-      const word = res.value.trim().toLowerCase();
-      if (!word) continue;
-
-      wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
-    }
-
-    // Chuyển thành mảng và sắp xếp theo tần suất giảm dần
-    const results = Array.from(wordCounts.entries())
-      .map(([word, count]) => ({ word, count }))
-      .sort((a, b) => b.count - a.count);
+    // Gom từ trùng ý: không phân biệt hoa/thường, có dấu/không dấu, lỗi gõ 1 ký tự
+    const results = aggregateWordCloud(
+      responses.map((r) => (typeof r.value === "string" ? r.value : ""))
+    );
 
     return {
       words: results,
