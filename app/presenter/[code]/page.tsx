@@ -986,12 +986,14 @@ function PresenterPage() {
           // Tìm activity để restart: ưu tiên displayActivity (đang xem), rồi slideMatch
           let target = displayActivity;
           if (!target && fullscreenOverlay === "slides" && hasPdf) {
-            target = sortedActivities.find(
+            // Slide có nhiều hoạt động → chạy lại cái đóng gần nhất (không phải cái đầu tiên)
+            const matches = sortedActivities.filter(
               (a) =>
                 a.slideCue &&
                 /^\d+$/.test(a.slideCue.trim()) &&
                 parseInt(a.slideCue.trim()) === pdfCurrentPage
             );
+            target = [...matches].reverse().find((a) => a.status === "closed" || a.status === "expired") ?? matches[0];
           }
           if (!target) {
             toast.message("Chưa có hoạt động nào để chạy lại");
@@ -1028,12 +1030,14 @@ function PresenterPage() {
           // activity matched → set revealActivityId để overlay biết hiện activity nào
           let needSetReveal: string | null = null;
           if (!activeActivity && !revealActivityId && fullscreenOverlay === "slides" && hasPdf) {
-            const match = sortedActivities.find(
+            // Slide có nhiều hoạt động → xem kết quả cái đóng gần nhất (không phải cái đầu tiên)
+            const matches = sortedActivities.filter(
               (a) =>
                 a.slideCue &&
                 /^\d+$/.test(a.slideCue.trim()) &&
                 parseInt(a.slideCue.trim()) === pdfCurrentPage
             );
+            const match = [...matches].reverse().find((a) => a.status === "closed" || a.status === "expired") ?? matches[0];
             if (match) needSetReveal = match._id;
           }
           if (activeActivity || revealActivityId || needSetReveal) {
@@ -4998,17 +5002,22 @@ function PresenterPage() {
                   const revealed = revealActivityId
                     ? sortedActivities.find((a) => a._id === revealActivityId)
                     : null;
-                  // Match TẤT CẢ status (kể cả closed) — khi GV back về slide có hoạt động đã đóng
-                  // → sidebar hiện card để xem kết quả + chạy lại nhanh
-                  const slideMatch = !activeActivity && hasPdf
-                    ? sortedActivities.find((a) =>
+                  // Một slide có thể gắn NHIỀU hoạt động → lấy hết để chạy lần lượt
+                  const slideMatches = hasPdf
+                    ? sortedActivities.filter((a) =>
                         a.slideCue &&
                         /^\d+$/.test(a.slideCue.trim()) &&
                         parseInt(a.slideCue.trim()) === pdfCurrentPage
                       )
+                    : [];
+                  // Ưu tiên nháp kế tiếp (để chạy tuần tự); hết nháp → cái đóng gần nhất (xem kết quả)
+                  const slideMatch = !activeActivity
+                    ? slideMatches.find((a) => a.status === "draft") ?? slideMatches[slideMatches.length - 1] ?? null
                     : null;
                   const focusActivity = activeActivity || revealed || slideMatch;
                   if (!focusActivity) return null;
+                  const focusIdx = slideMatches.findIndex((a) => a._id === focusActivity._id);
+                  const doneCount = slideMatches.filter((a) => a.status === "closed" || a.status === "expired").length;
 
                   const isDraft = focusActivity.status === "draft";
                   const isActive = focusActivity.status === "active";
@@ -5033,6 +5042,39 @@ function PresenterPage() {
                       <div className="font-semibold text-sm mb-1 leading-snug">{focusActivity.title}</div>
                       {focusActivity.slideCue && (
                         <div className="text-[10px] text-amber-400 mb-2">📍 {fmtSlide(focusActivity.slideCue)}</div>
+                      )}
+                      {/* Slide có nhiều hoạt động → thanh tiến độ + chip chuyển nhanh */}
+                      {slideMatches.length > 1 && (
+                        <div className="mb-2">
+                          <div className="text-[10px] text-zinc-400 mb-1">
+                            Slide này có {slideMatches.length} hoạt động · xong {doneCount}/{slideMatches.length}
+                          </div>
+                          <div className="flex gap-1">
+                            {slideMatches.map((a, i) => {
+                              const isDone = a.status === "closed" || a.status === "expired";
+                              const isRunning = a.status === "active";
+                              const isFocus = i === focusIdx;
+                              return (
+                                <button
+                                  key={a._id}
+                                  onClick={() => setRevealActivityId(a._id)}
+                                  title={`${i + 1}. ${a.title}${isDone ? " (đã đóng)" : isRunning ? " (đang chạy)" : " (nháp)"}`}
+                                  className={`w-6 h-6 rounded-md text-[10px] font-bold border transition-colors ${
+                                    isFocus ? "ring-2 ring-amber-400 " : ""
+                                  }${
+                                    isRunning
+                                      ? "bg-emerald-600 border-emerald-500 text-white"
+                                      : isDone
+                                        ? "bg-zinc-700 border-zinc-600 text-zinc-300"
+                                        : "bg-zinc-950 border-zinc-600 text-white"
+                                  }`}
+                                >
+                                  {isDone ? "✓" : i + 1}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
                       {isActive && focusActivity.type !== "video" && (
                         <div className="text-lg font-bold text-emerald-300 mb-2">
