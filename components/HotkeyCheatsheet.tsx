@@ -28,10 +28,12 @@ const ROWS: Row[] = [
   { keys: ["Home"], label: "Slide đầu" },
   { keys: ["End"], label: "Slide cuối" },
   { keys: ["0-9", "↵"], label: "Nhảy đến slide cụ thể (gõ số + Enter)" },
+  { keys: ["O"], label: "Lưới thumbnail tất cả slide — click để nhảy" },
   { keys: ["B"], label: "Quay lại slide gốc sau khi click hotspot (PPT Action)" },
 
   // === VẼ TRÊN SLIDE / BẢNG TRẮNG ===
-  { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)", group: "Vẽ trên slide" },
+  { keys: ["F"], label: "Đèn rọi / Phóng to — làm tối quanh con trỏ, lăn chuột để zoom", group: "Vẽ trên slide" },
+  { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)" },
   { keys: ["P"], label: "Bút vẽ tự do" },
   { keys: ["Y"], label: "Highlight (bút dạ vàng/màu)" },
   { keys: ["G"], label: "Gôm tẩy — xoá từng nét vẽ (drag để xoá liên tục)" },
@@ -48,6 +50,7 @@ const ROWS: Row[] = [
   { keys: ["N"], label: "Mở Nhịp lớp (heatmap)" },
   { keys: ["I"], label: "Mở Smart Insights AI" },
   { keys: ["E"], label: "Xuất Excel phiên hiện tại" },
+  { keys: ["J"], label: "Đồng hồ phiên — bấm giờ tiết giảng, nhắc cháy giờ" },
 
   // === KHÁC ===
   { keys: ["H"], label: "Hiện/ẩn bảng phím tắt này", group: "Khác" },

@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PresenterCompanionView } from "@/components/PresenterCompanionView";
 
 /**
  * COMPANION WINDOW - "Trợ lý Kịch bản" (Giải pháp sâu cho B: Liền mạch PowerPoint)
@@ -40,6 +41,13 @@ export default function ScriptCompanion() {
     api.activities.getScriptState,
     session?._id ? { sessionId: session._id } : "skip"
   );
+
+  // PDF (cho Presenter View) — chỉ khi buổi có slide trong app
+  const pdfUrl = useQuery(
+    api.sessions.getSessionPdfUrl,
+    session?._id ? { sessionId: session._id } : "skip"
+  );
+  const hasPdf = !!session?.pdfStorageId && !!pdfUrl;
 
   const advance = useMutation(api.activities.advanceInScript);
   const jump = useMutation(api.activities.jumpToScriptPosition);
@@ -96,6 +104,7 @@ export default function ScriptCompanion() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (!session?._id) return;
+      if (hasPdf) return; // Presenter View tự xử lý phím đổi slide
 
       if (e.key === " " || e.key === "ArrowRight") {
         e.preventDefault();
@@ -113,7 +122,7 @@ export default function ScriptCompanion() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?._id, pos]);
+  }, [session?._id, pos, hasPdf]);
 
   // Chưa có session
   if (!session) {
@@ -124,6 +133,21 @@ export default function ScriptCompanion() {
           <div className="text-2xl font-semibold">Đang kết nối...</div>
         </div>
       </div>
+    );
+  }
+
+  // Presenter View — khi buổi có slide PDF trong app (kiểu PowerPoint/Keynote).
+  // Ưu tiên hơn giao diện kịch bản; chỉ áp cho cửa sổ thường (không phải PiP siêu nhỏ).
+  if (hasPdf && pdfUrl && !isPipMode) {
+    return (
+      <PresenterCompanionView
+        sessionId={session._id}
+        code={upperCode ?? ""}
+        pdfUrl={pdfUrl}
+        totalPages={session.pdfNumPages ?? 0}
+        currentPage={session.pdfCurrentPage ?? 1}
+        currentActivityTitle={isRunning ? current?.title : undefined}
+      />
     );
   }
 

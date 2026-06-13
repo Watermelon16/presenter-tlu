@@ -29,6 +29,7 @@ import type * as participants from "../participants.js";
 import type * as pdfHotspots from "../pdfHotspots.js";
 import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
+import type * as reactions from "../reactions.js";
 import type * as responses from "../responses.js";
 import type * as scriptTemplates from "../scriptTemplates.js";
 import type * as sessionSummary from "../sessionSummary.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   pdfHotspots: typeof pdfHotspots;
   push: typeof push;
   pushSubscriptions: typeof pushSubscriptions;
+  reactions: typeof reactions;
   responses: typeof responses;
   scriptTemplates: typeof scriptTemplates;
   sessionSummary: typeof sessionSummary;

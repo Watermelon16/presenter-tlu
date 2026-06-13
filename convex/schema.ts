@@ -291,4 +291,12 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_created", ["createdAt"]),
+
+  // Reactions (emoji bay) — SV thả cảm xúc, presenter hiển thị bay lên màn chiếu.
+  // Phù du: chỉ giữ vài chục bản ghi gần nhất/phòng; sendReaction tự dọn cái cũ.
+  reactions: defineTable({
+    sessionId: v.id("sessions"),
+    emoji: v.string(),
+  })
+    .index("by_session", ["sessionId"]),
 });

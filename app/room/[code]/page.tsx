@@ -9,6 +9,7 @@ import React, { useState, useEffect } from "react";
 import { VnInput, VnTextarea } from "@/components/VnInput";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { ActivityReplay } from "@/components/ActivityReplay";
+import { ReactionBar } from "@/components/ReactionBar";
 
 // Append voice transcript vào current text (space giữa nếu cần)
 function appendVoice(current: string, voice: string): string {
@@ -838,6 +839,9 @@ export default function ParticipantRoomPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 pb-12">
+      {/* Thanh thả cảm xúc (emoji bay lên màn chiếu của GV) */}
+      <ReactionBar sessionId={session._id} />
+
       {/* Header đơn giản */}
       <div className="border-b bg-white">
         <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between gap-3">

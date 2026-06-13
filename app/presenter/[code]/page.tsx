@@ -35,12 +35,17 @@ import {
   type Stroke,
 } from "@/components/SlideDrawingLayer";
 import { SlideHotspotLayer, type Hotspot } from "@/components/SlideHotspotLayer";
+import { SlideSpotlightLayer, type SpotlightMode } from "@/components/SlideSpotlightLayer";
+import { SlideThumbnailGrid } from "@/components/SlideThumbnailGrid";
+import { SessionTimer } from "@/components/SessionTimer";
+import { ReactionsOverlay } from "@/components/ReactionsOverlay";
 import { extractPdfLinks } from "@/lib/pdfLinks";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
 import { ApiKeysModal } from "@/components/ApiKeysModal";
 import { HelpModal } from "@/components/HelpModal";
+import { CommandPalette, type Command } from "@/components/CommandPalette";
 // Note: PollBarChart / RatingBarChart / WordcloudBars vẫn export trong components/ResultCharts.tsx
 // dùng cho fullscreen overlay nếu cần — không import ở đây vì block "Kết quả realtime" trên màn chính đã bỏ.
 
@@ -435,6 +440,7 @@ function PresenterPage() {
 
   // Floating cheatsheet phím tắt (H hoặc ?)
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
 
   // Floating mini QR widget (K) — hiện ở bất cứ đâu để cho SV vào muộn quét nhanh.
   // Khác với Q (QR fullscreen) và C (sidebar trong slide overlay).
@@ -442,6 +448,13 @@ function PresenterPage() {
 
   // === Slide annotation tools (PowerPoint-like): laser / pen / highlighter / eraser / whiteboard ===
   const [drawTool, setDrawTool] = useState<DrawTool>("none");
+  // Đèn rọi & Phóng to slide ("off" = tắt). Loại trừ lẫn nhau với công cụ vẽ.
+  const [spotlight, setSpotlight] = useState<"off" | SpotlightMode>("off");
+  const slideAreaRef = useRef<HTMLDivElement>(null);
+  const [showThumbnails, setShowThumbnails] = useState(false); // lưới thumbnail nhảy slide (phím O)
+  const [showTimer, setShowTimer] = useState(false); // đồng hồ phiên (phím J)
+  const [showRemoteQr, setShowRemoteQr] = useState(false); // QR mở remote trên điện thoại
+  const [remoteQrUrl, setRemoteQrUrl] = useState<string>("");
   const [drawColor, setDrawColor] = useState("#ef4444");
   const [whiteboardMode, setWhiteboardMode] = useState(false);
   // Kích thước nét — persist localStorage
@@ -806,6 +819,15 @@ function PresenterPage() {
       .catch(() => setQrDataUrl(""));
   }, [upperCode]);
 
+  // QR cho trang Remote điều khiển (GV quét bằng điện thoại để điều khiển buổi học)
+  useEffect(() => {
+    if (!upperCode || typeof window === "undefined") return;
+    const remoteUrl = `${window.location.origin}/presenter/${upperCode}/remote`;
+    QRCode.toDataURL(remoteUrl, { margin: 1, width: 512, color: { dark: "#000000", light: "#FFFFFF" } })
+      .then(setRemoteQrUrl)
+      .catch(() => setRemoteQrUrl(""));
+  }, [upperCode]);
+
   // Tải QR thành file PNG để dán vào slide PPT
   const handleDownloadQr = useCallback(() => {
     if (!qrDataUrl || !upperCode) return;
@@ -817,6 +839,18 @@ function PresenterPage() {
     document.body.removeChild(a);
     toast.success("Đã tải QR. Dán vào slide đầu của PPT để SV quét nhanh.");
   }, [qrDataUrl, upperCode]);
+
+  // ⌘/Ctrl + K → mở/đóng Command Palette. Tách riêng để hoạt động kể cả khi đang focus input.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setShowCommandPalette((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Phím tắt toàn cục:
   //   F     → overlay kết quả activity
@@ -1126,26 +1160,48 @@ function PresenterPage() {
         setShowQrWidget((v) => !v);
       }
 
+      // === O = Mở/đóng lưới thumbnail tất cả slide (nhảy nhanh, khỏi nhớ số trang) ===
+      if ((e.key === "o" || e.key === "O") && hasPdf) {
+        e.preventDefault();
+        setShowThumbnails((v) => !v);
+      }
+
+      // === J = Hiện/ẩn đồng hồ phiên (bấm giờ tiết giảng) ===
+      if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        setShowTimer((v) => !v);
+      }
+
       // === Slide annotation tools — chỉ khi đang trong slide overlay ===
       if (fullscreenOverlay === "slides") {
+        // F = Đèn rọi / Phóng to (bật mặc định ở chế độ đèn rọi). Loại trừ với công cụ vẽ.
+        if ((e.key === "f" || e.key === "F") && hasPdf) {
+          e.preventDefault();
+          setSpotlight((s) => (s === "off" ? "spotlight" : "off"));
+          setDrawTool("none");
+        }
         // L = laser pointer
         if (e.key === "l" || e.key === "L") {
           e.preventDefault();
+          setSpotlight("off");
           setDrawTool((t) => (t === "laser" ? "none" : "laser"));
         }
         // P = pen
         if (e.key === "p" || e.key === "P") {
           e.preventDefault();
+          setSpotlight("off");
           setDrawTool((t) => (t === "pen" ? "none" : "pen"));
         }
         // Y = highlighter (Yellow)
         if (e.key === "y" || e.key === "Y") {
           e.preventDefault();
+          setSpotlight("off");
           setDrawTool((t) => (t === "highlighter" ? "none" : "highlighter"));
         }
         // G = Gôm tẩy (eraser) — xoá từng nét
         if (e.key === "g" || e.key === "G") {
           e.preventDefault();
+          setSpotlight("off");
           setDrawTool((t) => (t === "eraser" ? "none" : "eraser"));
         }
         // W = whiteboard toggle
@@ -2157,7 +2213,8 @@ function PresenterPage() {
     if (!code) return;
 
     const url = `/presenter/${code}/companion`;
-    const features = "width=460,height=380,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no";
+    // Rộng hơn để hợp với Presenter View (slide + slide kế + ghi chú); vẫn kéo nhỏ lại được nếu chỉ dùng cue kịch bản
+    const features = "width=860,height=560,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no";
 
     const win = window.open(url, `tk-companion-${code}`, features);
 
@@ -2169,6 +2226,126 @@ function PresenterPage() {
       toast.error("Trình duyệt chặn popup. Vui lòng cho phép popup cho trang này.");
     }
   };
+
+  // === Command Palette (⌘/Ctrl+K): danh sách lệnh, tái dùng đúng các hàm đã có ===
+  // Tính lại mỗi render (rẻ) để label/disabled luôn phản ánh state mới nhất.
+  const activateNextDraftCmd = () => {
+    if (activeActivity) {
+      toast.message(`Đang chạy: ${activeActivity.title}`);
+      return;
+    }
+    let target: { _id: string; title: string; slideCue?: string } | null = null;
+    if (hasPdf) {
+      const slideMatch = sortedActivities.find(
+        (a) =>
+          a.status === "draft" &&
+          a.slideCue &&
+          /^\d+$/.test(a.slideCue.trim()) &&
+          parseInt(a.slideCue.trim()) === pdfCurrentPage
+      );
+      if (slideMatch) target = slideMatch;
+    }
+    if (!target && isScriptMode && currentScriptActivity && currentScriptActivity.status === "draft") {
+      target = currentScriptActivity;
+    }
+    if (!target) {
+      const draft = sortedActivities.find((a) => a.status === "draft");
+      if (draft) target = draft;
+    }
+    if (target) {
+      handleStart(target._id);
+      toast.success(`Đã kích hoạt: ${target.title}`);
+    } else {
+      toast.message("Không còn hoạt động nháp để kích hoạt");
+    }
+  };
+
+  const ensureSlidesThen = (fn: () => void) => {
+    if (fullscreenOverlay !== "slides") switchOverlay("slides");
+    fn();
+  };
+
+  const paletteCommands: Command[] = [
+    // — Chiếu & điều hướng —
+    {
+      id: "slides",
+      group: "Chiếu & điều hướng",
+      label: fullscreenOverlay === "slides" ? "Đóng chiếu slide" : "Chiếu slide PDF",
+      hint: hasPdf ? undefined : "Chưa có PDF — hãy tải lên trước",
+      keys: ["S"],
+      disabled: !hasPdf,
+      run: () =>
+        fullscreenOverlay === "slides"
+          ? (setFullscreenOverlay(null), setOverlayReturnTo(null))
+          : switchOverlay("slides"),
+    },
+    {
+      id: "qr",
+      group: "Chiếu & điều hướng",
+      label: "Chiếu QR + mã phòng",
+      keys: ["Q"],
+      run: () => (fullscreenOverlay === "qr" ? closeOverlay() : switchOverlay("qr")),
+    },
+    {
+      id: "qr-widget",
+      group: "Chiếu & điều hướng",
+      label: "Hiện/ẩn QR mini (cho SV vào muộn)",
+      keys: ["K"],
+      run: () => setShowQrWidget((v) => !v),
+    },
+    { id: "slide-next", group: "Chiếu & điều hướng", label: "Slide kế tiếp", keys: ["→"], disabled: !hasPdf, run: () => ensureSlidesThen(goPdfNext) },
+    { id: "slide-prev", group: "Chiếu & điều hướng", label: "Slide trước", keys: ["←"], disabled: !hasPdf, run: () => ensureSlidesThen(goPdfPrev) },
+    { id: "slide-grid", group: "Chiếu & điều hướng", label: "Lưới thumbnail tất cả slide", keys: ["O"], disabled: !hasPdf, run: () => setShowThumbnails(true) },
+    { id: "slide-first", group: "Chiếu & điều hướng", label: "Slide đầu tiên", keys: ["Home"], disabled: !hasPdf, run: () => ensureSlidesThen(goPdfFirst) },
+    { id: "slide-last", group: "Chiếu & điều hướng", label: "Slide cuối cùng", keys: ["End"], disabled: !hasPdf, run: () => ensureSlidesThen(() => goPdfPage(pdfTotalPages)) },
+    { id: "blank", group: "Chiếu & điều hướng", label: "Blank đen — tạm dừng slide", keys: ["D"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setBlankScreen((v) => !v)) },
+
+    // — Hoạt động —
+    { id: "act-start", group: "Hoạt động", label: "Kích hoạt hoạt động kế tiếp", keys: ["A"], run: activateNextDraftCmd },
+    {
+      id: "act-close",
+      group: "Hoạt động",
+      label: "Đóng hoạt động đang chạy",
+      keys: ["X"],
+      disabled: !activeActivity,
+      run: () => (activeActivity ? handleCloseAndReveal(activeActivity._id) : toast.message("Không có hoạt động đang chạy")),
+    },
+    {
+      id: "act-result",
+      group: "Hoạt động",
+      label: "Xem kết quả + công bố đáp án",
+      keys: ["R"],
+      run: () =>
+        activeActivity || displayActivity
+          ? (switchOverlay("result"), setResultsRevealed(true), toast.message("✓ Xem kết quả + công bố đáp án"))
+          : toast.message("Chưa có hoạt động nào để xem kết quả"),
+    },
+
+    // — Công cụ slide —
+    { id: "tool-laser", group: "Công cụ slide", label: "Laser pointer", keys: ["L"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setDrawTool((t) => (t === "laser" ? "none" : "laser"))) },
+    { id: "tool-pen", group: "Công cụ slide", label: "Bút vẽ", keys: ["P"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setDrawTool((t) => (t === "pen" ? "none" : "pen"))) },
+    { id: "tool-hl", group: "Công cụ slide", label: "Highlight (bút dạ)", keys: ["Y"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setDrawTool((t) => (t === "highlighter" ? "none" : "highlighter"))) },
+    { id: "tool-eraser", group: "Công cụ slide", label: "Gôm tẩy", keys: ["G"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setDrawTool((t) => (t === "eraser" ? "none" : "eraser"))) },
+    { id: "tool-wb", group: "Công cụ slide", label: "Bật/tắt bảng trắng", keys: ["W"], disabled: !hasPdf, run: () => ensureSlidesThen(() => setWhiteboardMode((v) => !v)) },
+    { id: "tool-spotlight", group: "Công cụ slide", label: "Đèn rọi (làm tối quanh con trỏ)", keys: ["F"], disabled: !hasPdf, run: () => ensureSlidesThen(() => { setDrawTool("none"); setSpotlight("spotlight"); }) },
+    { id: "tool-zoom", group: "Công cụ slide", label: "Phóng to vùng slide (lăn chuột để zoom)", disabled: !hasPdf, run: () => ensureSlidesThen(() => { setDrawTool("none"); setSpotlight("zoom"); }) },
+
+    // — Kịch bản —
+    { id: "script-next", group: "Kịch bản", label: "Bước sau trong kịch bản", keys: ["."], disabled: !isScriptMode, run: goToNextInScript },
+    { id: "script-prev", group: "Kịch bản", label: "Bước trước trong kịch bản", keys: [","], disabled: !isScriptMode, run: goToPrevInScript },
+    { id: "script-companion", group: "Kịch bản", label: "Mở cửa sổ Trợ lý Kịch bản (companion)", run: openCompanionWindow },
+
+    // — Menu & dữ liệu —
+    { id: "attendance", group: "Menu & dữ liệu", label: "Mở bảng điểm danh", keys: ["M"], run: () => setShowAttendanceModal(true) },
+    { id: "heatmap", group: "Menu & dữ liệu", label: "Mở Nhịp lớp (heatmap)", keys: ["N"], disabled: !heatmapEnabled, run: () => setShowHeatmapModal(true) },
+    { id: "insights", group: "Menu & dữ liệu", label: "Mở Smart Insights AI", keys: ["I"], run: () => setShowInsightsModal(true) },
+    { id: "export", group: "Menu & dữ liệu", label: "Xuất Excel phiên hiện tại", keys: ["E"], disabled: isExporting, run: () => { if (confirm(`Xuất Excel phiên #${session?.currentRun ?? 1}?`)) handleExportExcel(); } },
+    { id: "timer", group: "Menu & dữ liệu", label: "Đồng hồ phiên (bấm giờ tiết giảng)", keys: ["J"], run: () => setShowTimer((v) => !v) },
+    { id: "remote", group: "Menu & dữ liệu", label: "Remote điều khiển bằng điện thoại (QR)", run: () => setShowRemoteQr(true) },
+    { id: "cheatsheet", group: "Menu & dữ liệu", label: "Hiện/ẩn bảng phím tắt", keys: ["H"], run: () => setShowCheatsheet((v) => !v) },
+    { id: "help", group: "Menu & dữ liệu", label: "Mở Hướng dẫn sử dụng", run: () => setShowHelpModal(true) },
+    { id: "apikeys", group: "Menu & dữ liệu", label: "Cấu hình API key AI", run: () => setShowApiKeysModal(true) },
+  ];
 
   // Hỗ trợ phím tắt khi đang chạy kịch bản (giống PowerPoint)
   useEffect(() => {
@@ -4727,10 +4904,21 @@ function PresenterPage() {
             </div>
           )}
 
+          {/* Đèn rọi & Phóng to — lớp động đè lên vùng slide (fixed, tự đo theo slideAreaRef) */}
+          {spotlight !== "off" && hasPdf && (
+            <SlideSpotlightLayer
+              key={spotlight}
+              mode={spotlight}
+              onChangeMode={(m) => setSpotlight(m)}
+              onExit={() => setSpotlight("off")}
+              targetRef={slideAreaRef}
+            />
+          )}
+
           {/* Main row: slide area (flex-1) + sidebar (w-72) — KHÔNG đè nội dung slide */}
           <div className="flex-1 flex min-h-0">
             {/* Slide viewer area — tự fit. Countdown nổi trên góc trái slide. */}
-            <div className="flex-1 relative bg-black">
+            <div ref={slideAreaRef} className="flex-1 relative bg-black overflow-hidden">
               {activeActivity?.timeLimit && activeActivity?.startedAt && (
                 <CountdownOverlay
                   startedAt={activeActivity.startedAt}
@@ -4849,7 +5037,7 @@ function PresenterPage() {
               )}
 
               {/* Nút toggle "Chỉnh hotspot" — góc trên trái slide, dưới drawing toolbar */}
-              {hasPdf && !whiteboardMode && (
+              {hasPdf && !whiteboardMode && spotlight === "off" && (
                 <button
                   onClick={() => {
                     setHotspotEditMode((v) => {
@@ -5281,6 +5469,56 @@ function PresenterPage() {
 
       {/* Floating cheatsheet phím tắt — bật bằng H hoặc ? */}
       {showCheatsheet && <HotkeyCheatsheet onClose={() => setShowCheatsheet(false)} />}
+      {showCommandPalette && (
+        <CommandPalette commands={paletteCommands} onClose={() => setShowCommandPalette(false)} />
+      )}
+      {session?._id && <ReactionsOverlay sessionId={session._id} />}
+      {showThumbnails && hasPdf && pdfUrl && (
+        <SlideThumbnailGrid
+          fileUrl={pdfUrl}
+          totalPages={pdfTotalPages}
+          currentPage={pdfCurrentPage}
+          onJump={(page) => {
+            goPdfPage(page);
+            switchOverlay("slides");
+            setShowThumbnails(false);
+          }}
+          onClose={() => setShowThumbnails(false)}
+        />
+      )}
+      {showTimer && (
+        <SessionTimer storageKey={`tk-timer-${upperCode ?? "x"}`} onClose={() => setShowTimer(false)} />
+      )}
+      {showRemoteQr && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setShowRemoteQr(false)}
+        >
+          <div
+            className="bg-zinc-950 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-lg font-semibold mb-1">📱 Remote điều khiển</div>
+            <div className="text-sm text-zinc-400 mb-4">
+              Quét bằng điện thoại (đã đăng nhập GV) để điều khiển slide & hoạt động khi đi lại trong lớp.
+            </div>
+            {remoteQrUrl ? (
+              <img src={remoteQrUrl} alt="QR Remote" className="w-[min(64vw,300px)] h-[min(64vw,300px)] mx-auto rounded-xl bg-white p-3" />
+            ) : (
+              <div className="text-zinc-500 py-10">Đang tạo QR…</div>
+            )}
+            <div className="text-[11px] text-zinc-500 mt-3 break-all font-mono">
+              /presenter/{upperCode}/remote
+            </div>
+            <button
+              onClick={() => setShowRemoteQr(false)}
+              className="mt-4 px-5 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating mini QR widget — bật bằng K, hiện ở bất cứ đâu để SV đến muộn quét nhanh */}
       {showQrWidget && qrDataUrl && (
