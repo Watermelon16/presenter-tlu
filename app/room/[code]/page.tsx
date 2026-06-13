@@ -111,6 +111,18 @@ export default function ParticipantRoomPage() {
   const submitResponse = useMutation(api.responses.submitResponse);
   const joinSession = useMutation(api.participants.joinSession);
   const upvoteQuestion = useMutation(api.responses.upvoteQuestion);
+  const heartbeat = useMutation(api.presence.heartbeat);
+
+  // Presence: báo "còn online" định kỳ để presenter đếm số SV đang kết nối
+  useEffect(() => {
+    if (!session?._id) return;
+    const sid = session._id;
+    const clientId = getOrCreateDeviceId();
+    const ping = () => heartbeat({ sessionId: sid, clientId }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 20_000);
+    return () => clearInterval(id);
+  }, [session?._id, heartbeat]);
 
   // Board
   const boardPosts = useQuery(
@@ -839,8 +851,8 @@ export default function ParticipantRoomPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 pb-12">
-      {/* Thanh thả cảm xúc (emoji bay lên màn chiếu của GV) */}
-      <ReactionBar sessionId={session._id} />
+      {/* Thanh thả cảm xúc (emoji bay lên màn chiếu của GV) — ẩn nếu GV tắt reactions */}
+      {session.reactionsEnabled !== false && <ReactionBar sessionId={session._id} />}
 
       {/* Header đơn giản */}
       <div className="border-b bg-white">

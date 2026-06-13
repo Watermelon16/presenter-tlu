@@ -72,6 +72,9 @@ export default defineSchema({
     // Records cũ không có field run → coi như run = 1 (backward compat)
     currentRun: v.optional(v.number()),
 
+    // === Reactions (emoji bay) — bật/tắt cho cả buổi. undefined = bật (mặc định) ===
+    reactionsEnabled: v.optional(v.boolean()),
+
     // === Điểm danh (attendance) ===
     // officialStartAt: T0 — thời điểm tính giờ điểm danh. Auto-set khi SV ĐẦU TIÊN scan.
     // GV có thể set tay (epoch ms) để override.
@@ -299,4 +302,24 @@ export default defineSchema({
     emoji: v.string(),
   })
     .index("by_session", ["sessionId"]),
+
+  // Ghi chú giảng theo từng slide — gắn theo PDF (như hotspots) để dùng lại qua nhiều buổi.
+  // Lưu bền trên Convex (thay localStorage) → theo GV mọi thiết bị.
+  slideNotes: defineTable({
+    pdfStorageId: v.id("_storage"),
+    page: v.number(),
+    text: v.string(),
+  })
+    .index("by_pdf", ["pdfStorageId"])
+    .index("by_pdf_and_page", ["pdfStorageId", "page"]),
+
+  // Presence — đếm "ai đang online". Mỗi client (deviceId) heartbeat định kỳ;
+  // presenter đếm số client còn mới (lastSeenAt gần đây). heartbeat tự dọn bản ghi cũ.
+  presence: defineTable({
+    sessionId: v.id("sessions"),
+    clientId: v.string(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_and_client", ["sessionId", "clientId"]),
 });

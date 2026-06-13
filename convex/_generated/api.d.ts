@@ -27,6 +27,7 @@ import type * as lmsSync from "../lmsSync.js";
 import type * as msDebug from "../msDebug.js";
 import type * as participants from "../participants.js";
 import type * as pdfHotspots from "../pdfHotspots.js";
+import type * as presence from "../presence.js";
 import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as reactions from "../reactions.js";
@@ -34,6 +35,7 @@ import type * as responses from "../responses.js";
 import type * as scriptTemplates from "../scriptTemplates.js";
 import type * as sessionSummary from "../sessionSummary.js";
 import type * as sessions from "../sessions.js";
+import type * as slideNotes from "../slideNotes.js";
 import type * as userProfiles from "../userProfiles.js";
 
 import type {
@@ -62,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   msDebug: typeof msDebug;
   participants: typeof participants;
   pdfHotspots: typeof pdfHotspots;
+  presence: typeof presence;
   push: typeof push;
   pushSubscriptions: typeof pushSubscriptions;
   reactions: typeof reactions;
@@ -69,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   scriptTemplates: typeof scriptTemplates;
   sessionSummary: typeof sessionSummary;
   sessions: typeof sessions;
+  slideNotes: typeof slideNotes;
   userProfiles: typeof userProfiles;
 }>;
 

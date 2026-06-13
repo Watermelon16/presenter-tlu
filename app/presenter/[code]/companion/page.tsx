@@ -144,6 +144,7 @@ export default function ScriptCompanion() {
         sessionId={session._id}
         code={upperCode ?? ""}
         pdfUrl={pdfUrl}
+        pdfStorageId={session.pdfStorageId!}
         totalPages={session.pdfNumPages ?? 0}
         currentPage={session.pdfCurrentPage ?? 1}
         currentActivityTitle={isRunning ? current?.title : undefined}

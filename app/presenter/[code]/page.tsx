@@ -196,6 +196,12 @@ function PresenterPage() {
     session?._id ? { sessionId: session._id } : "skip"
   );
 
+  // Số SV đang online (presence heartbeat) — biết lớp đã vào đủ chưa
+  const onlineCount = useQuery(
+    api.presence.onlineCount,
+    session?._id ? { sessionId: session._id } : "skip"
+  );
+
   // Lấy kết quả vote realtime — query theo displayActivity để vẫn xem được sau khi đóng
   const pollResults = useQuery(
     api.responses.getPollVoteCounts,
@@ -614,6 +620,7 @@ function PresenterPage() {
   const setSessionPdf = useMutation(api.sessions.setSessionPdf);
   const clearSessionPdf = useMutation(api.sessions.clearSessionPdf);
   const setPdfCurrentPage = useMutation(api.sessions.setPdfCurrentPage);
+  const setReactionsEnabled = useMutation(api.sessions.setReactionsEnabled);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const pdfUrl = useQuery(
     api.sessions.getSessionPdfUrl,
@@ -2342,6 +2349,17 @@ function PresenterPage() {
     { id: "export", group: "Menu & dữ liệu", label: "Xuất Excel phiên hiện tại", keys: ["E"], disabled: isExporting, run: () => { if (confirm(`Xuất Excel phiên #${session?.currentRun ?? 1}?`)) handleExportExcel(); } },
     { id: "timer", group: "Menu & dữ liệu", label: "Đồng hồ phiên (bấm giờ tiết giảng)", keys: ["J"], run: () => setShowTimer((v) => !v) },
     { id: "remote", group: "Menu & dữ liệu", label: "Remote điều khiển bằng điện thoại (QR)", run: () => setShowRemoteQr(true) },
+    {
+      id: "reactions-toggle",
+      group: "Menu & dữ liệu",
+      label: session?.reactionsEnabled === false ? "Bật reactions (cho SV thả emoji)" : "Tắt reactions (chặn SV thả emoji)",
+      run: () => {
+        if (!session?._id) return;
+        const next = session.reactionsEnabled === false;
+        setReactionsEnabled({ sessionId: session._id, enabled: next });
+        toast.message(next ? "✓ Đã bật reactions" : "Đã tắt reactions");
+      },
+    },
     { id: "cheatsheet", group: "Menu & dữ liệu", label: "Hiện/ẩn bảng phím tắt", keys: ["H"], run: () => setShowCheatsheet((v) => !v) },
     { id: "help", group: "Menu & dữ liệu", label: "Mở Hướng dẫn sử dụng", run: () => setShowHelpModal(true) },
     { id: "apikeys", group: "Menu & dữ liệu", label: "Cấu hình API key AI", run: () => setShowApiKeysModal(true) },
@@ -2832,6 +2850,15 @@ function PresenterPage() {
                 <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold tracking-wider">
                   PHIÊN #{session.currentRun ?? 1}
                 </span>
+                {typeof onlineCount === "number" && (
+                  <span
+                    className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold inline-flex items-center gap-1"
+                    title="Số sinh viên đang online (cập nhật realtime)"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {onlineCount} online
+                  </span>
+                )}
               </div>
               <div className="text-sm font-medium truncate max-w-[260px] lg:max-w-md" title={session.title}>
                 {session.title}
@@ -5472,7 +5499,7 @@ function PresenterPage() {
       {showCommandPalette && (
         <CommandPalette commands={paletteCommands} onClose={() => setShowCommandPalette(false)} />
       )}
-      {session?._id && <ReactionsOverlay sessionId={session._id} />}
+      {session?._id && session.reactionsEnabled !== false && <ReactionsOverlay sessionId={session._id} />}
       {showThumbnails && hasPdf && pdfUrl && (
         <SlideThumbnailGrid
           fileUrl={pdfUrl}

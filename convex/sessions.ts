@@ -359,6 +359,14 @@ export const setPdfCurrentPage = mutation({
   },
 });
 
+// Bật/tắt reactions (emoji bay) cho cả buổi
+export const setReactionsEnabled = mutation({
+  args: { sessionId: v.id("sessions"), enabled: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.sessionId, { reactionsEnabled: args.enabled });
+  },
+});
+
 // Lấy URL công khai của PDF (để frontend tải về và render bằng PDF.js)
 export const getSessionPdfUrl = query({
   args: { sessionId: v.id("sessions") },

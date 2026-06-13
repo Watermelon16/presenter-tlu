@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -17,21 +17,35 @@ pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 type TimerState = { startedAt: number | null; accumulatedMs: number; goalMin: number };
 
-/** Ghi chú giảng theo trang — lazy-init từ localStorage; parent đặt key để remount khi đổi trang. */
-function SlideNotes({ notesKey, page }: { notesKey: string; page: number }) {
-  const [note, setNote] = useState<string>(() => {
-    try {
-      return window.localStorage.getItem(notesKey) ?? "";
-    } catch {
-      return "";
-    }
-  });
+/**
+ * Ghi chú giảng theo trang — seed từ Convex (parent đặt key để remount khi đổi trang),
+ * lưu bền lên Convex (debounce khi gõ + lưu ngay khi blur).
+ */
+function SlideNotes({
+  page,
+  initialText,
+  onSave,
+}: {
+  page: number;
+  initialText: string;
+  onSave: (text: string) => void;
+}) {
+  const [note, setNote] = useState<string>(initialText);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const onChange = (v: string) => {
     setNote(v);
-    try {
-      window.localStorage.setItem(notesKey, v);
-    } catch {}
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => onSave(v), 700); // debounce gõ
   };
+  const flush = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    onSave(note);
+  };
+
   return (
     <>
       <div className="px-2.5 pt-3 pb-1 text-[10px] tracking-widest text-zinc-500">GHI CHÚ — SLIDE {page}</div>
@@ -39,7 +53,8 @@ function SlideNotes({ notesKey, page }: { notesKey: string; page: number }) {
         <textarea
           value={note}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Gõ ghi chú giảng cho slide này… (chỉ bạn thấy, lưu trên máy)"
+          onBlur={flush}
+          placeholder="Gõ ghi chú giảng cho slide này… (lưu trên đám mây, theo bạn mọi thiết bị)"
           className="w-full h-full min-h-[80px] resize-none rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-zinc-200 outline-none focus:border-sky-600 placeholder:text-zinc-600"
         />
       </div>
@@ -61,6 +76,7 @@ export function PresenterCompanionView({
   sessionId,
   code,
   pdfUrl,
+  pdfStorageId,
   totalPages,
   currentPage,
   currentActivityTitle,
@@ -68,11 +84,15 @@ export function PresenterCompanionView({
   sessionId: Id<"sessions">;
   code: string;
   pdfUrl: string;
+  pdfStorageId: Id<"_storage">;
   totalPages: number;
   currentPage: number;
   currentActivityTitle?: string;
 }) {
   const setPdfCurrentPage = useMutation(api.sessions.setPdfCurrentPage);
+  const setSlideNote = useMutation(api.slideNotes.setSlideNote);
+  const notesRows = useQuery(api.slideNotes.getSlideNotes, { pdfStorageId });
+  const noteForCurrent = notesRows?.find((n) => n.page === currentPage)?.text ?? "";
 
   const goPage = useCallback(
     (p: number) => {
@@ -104,8 +124,6 @@ export function PresenterCompanionView({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [goPage, currentPage, totalPages]);
-
-  const notesKey = `tk-notes-${code}-${currentPage}`;
 
   // === Giờ thực + bấm giờ tiết giảng (đọc chung tk-timer-<code>) ===
   const [clock, setClock] = useState("");
@@ -208,7 +226,16 @@ export function PresenterCompanionView({
               )}
             </div>
 
-            <SlideNotes key={notesKey} notesKey={notesKey} page={currentPage} />
+            {notesRows === undefined ? (
+              <div className="px-2.5 pt-3 text-[10px] tracking-widest text-zinc-600">GHI CHÚ — đang tải…</div>
+            ) : (
+              <SlideNotes
+                key={`${pdfStorageId}-${currentPage}`}
+                page={currentPage}
+                initialText={noteForCurrent}
+                onSave={(text) => setSlideNote({ pdfStorageId, page: currentPage, text })}
+              />
+            )}
           </div>
         </div>
       </Document>
