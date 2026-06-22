@@ -33,17 +33,13 @@ const ROWS: Row[] = [
 
   // === VẼ TRÊN SLIDE / BẢNG TRẮNG ===
   { keys: ["F"], label: "Đèn rọi / Phóng to — làm tối quanh con trỏ, lăn chuột để zoom", group: "Vẽ trên slide" },
-  { keys: ["L"], label: "Laser pointer (dot đỏ phát sáng)" },
+  { keys: ["L"], label: "Laser pointer (dot đỏ) — CHỈ khi đang chiếu slide PDF" },
   { keys: ["P"], label: "Bút vẽ tự do" },
   { keys: ["Y"], label: "Highlight (bút dạ vàng/màu)" },
   { keys: ["G"], label: "Gôm tẩy — xoá từng nét vẽ (drag để xoá liên tục)" },
   { keys: ["W"], label: "Bật/tắt bảng trắng (vẽ tự do trên nền trắng)" },
   { keys: ["Z"], label: "Hoàn tác nét vẽ cuối" },
   { keys: ["⇧", "D"], label: "Xoá hết nét vẽ trên slide/bảng hiện tại" },
-
-  // === SCRIPT ===
-  { keys: [","], label: "Bước trước trong script", group: "Script" },
-  { keys: ["."], label: "Bước sau trong script" },
 
   // === MENU ===
   { keys: ["M"], label: "Mở bảng điểm danh", group: "Menu nhanh" },

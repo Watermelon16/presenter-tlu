@@ -125,12 +125,10 @@ export function HelpModal({ onClose }: Props) {
                   <KbdRow keys={["Shift", "D"]} label="Xoá hết nét vẽ slide/bảng hiện tại" />
                 </div>
               </div>
-              {/* Script + Menu */}
+              {/* Menu nhanh */}
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Menu nhanh + Script</div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold mb-1.5">Menu nhanh</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-                  <KbdRow keys={[","]} label="Bước trước trong script" />
-                  <KbdRow keys={["."]} label="Bước sau trong script" />
                   <KbdRow keys={["M"]} label="Mở bảng điểm danh" />
                   <KbdRow keys={["N"]} label="Mở Nhịp lớp (heatmap)" />
                   <KbdRow keys={["I"]} label="Mở Smart Insights AI" />

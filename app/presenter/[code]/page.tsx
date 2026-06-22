@@ -1168,16 +1168,6 @@ function PresenterPage() {
         toggleSlideSidebar();
       }
 
-      // === , = Bước trước trong script, . = Bước sau (chỉ khi script mode) ===
-      if (e.key === "," && isScriptMode) {
-        e.preventDefault();
-        goToPrevInScript();
-      }
-      if (e.key === "." && isScriptMode) {
-        e.preventDefault();
-        goToNextInScript();
-      }
-
       // === E = Xuất Excel phiên hiện tại ===
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
@@ -1278,8 +1268,6 @@ function PresenterPage() {
     // Cập nhật closure khi activity / display thay đổi để A/X/R nhận state mới nhất
     activeActivity?._id, displayActivity?._id, displayActivity?.status,
     isScriptMode, sortedActivities.length,
-    // , (bước trước) gọi goToPrevInScript dùng currentScriptIndex → cần deps để không kẹt index cũ
-    currentScriptIndex,
     // Slide jump buffer
     slideJumpBuffer, resetSlideJumpBuffer,
     // Hotspot back stack
@@ -2423,8 +2411,8 @@ function PresenterPage() {
     { id: "tool-zoom", group: "Công cụ slide", label: "Phóng to vùng slide (lăn chuột để zoom)", disabled: !hasPdf, run: () => ensureSlidesThen(() => { setDrawTool("none"); setSpotlight("zoom"); }) },
 
     // — Kịch bản —
-    { id: "script-next", group: "Kịch bản", label: "Bước sau trong kịch bản", keys: ["."], disabled: !isScriptMode, run: goToNextInScript },
-    { id: "script-prev", group: "Kịch bản", label: "Bước trước trong kịch bản", keys: [","], disabled: !isScriptMode, run: goToPrevInScript },
+    { id: "script-next", group: "Kịch bản", label: "Bước sau trong kịch bản", disabled: !isScriptMode, run: goToNextInScript },
+    { id: "script-prev", group: "Kịch bản", label: "Bước trước trong kịch bản", disabled: !isScriptMode, run: goToPrevInScript },
     { id: "script-companion", group: "Kịch bản", label: "Mở cửa sổ Trợ lý Kịch bản (companion)", run: openCompanionWindow },
 
     // — Menu & dữ liệu —

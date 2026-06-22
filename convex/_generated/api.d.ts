@@ -12,6 +12,7 @@ import type * as activities from "../activities.js";
 import type * as activityAiReview from "../activityAiReview.js";
 import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
+import type * as authz from "../authz.js";
 import type * as board from "../board.js";
 import type * as engagement from "../engagement.js";
 import type * as files from "../files.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   activityAiReview: typeof activityAiReview;
   ai: typeof ai;
   auth: typeof auth;
+  authz: typeof authz;
   board: typeof board;
   engagement: typeof engagement;
   files: typeof files;
