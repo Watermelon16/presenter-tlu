@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireApprovedUser, requireSessionOwner } from "./authz";
 
 // Lưu toàn bộ kịch bản hiện tại thành mẫu
 export const saveScriptAsTemplate = mutation({
@@ -8,6 +9,7 @@ export const saveScriptAsTemplate = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
+    const { userId } = await requireSessionOwner(ctx, args.sessionId);
     const activities = await ctx.db
       .query("activities")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
@@ -30,6 +32,7 @@ export const saveScriptAsTemplate = mutation({
 
     await ctx.db.insert("scriptTemplates", {
       name: args.name.trim(),
+      hostId: userId,
       activitiesSnapshot: snapshot,
       createdAt: Date.now(),
     });
@@ -42,10 +45,14 @@ export const saveScriptAsTemplate = mutation({
 export const listTemplates = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const { userId, profile } = await requireApprovedUser(ctx);
+    const all = await ctx.db
       .query("scriptTemplates")
       .order("desc")
       .collect();
+    if (profile.role === "admin") return all;
+    // Mỗi GV chỉ thấy mẫu của mình + mẫu cũ chưa gắn chủ (dùng chung, tương thích ngược).
+    return all.filter((t) => !t.hostId || t.hostId === userId);
   },
 });
 
@@ -56,6 +63,7 @@ export const applyTemplateToSession = mutation({
     templateId: v.id("scriptTemplates"),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     const template = await ctx.db.get(args.templateId);
     if (!template) {
       throw new Error("Không tìm thấy kịch bản mẫu");
@@ -97,9 +105,13 @@ export const applyTemplateToSession = mutation({
 export const deleteTemplate = mutation({
   args: { templateId: v.id("scriptTemplates") },
   handler: async (ctx, args) => {
+    const { userId, profile } = await requireApprovedUser(ctx);
     const template = await ctx.db.get(args.templateId);
     if (!template) {
       throw new Error("Không tìm thấy mẫu để xóa");
+    }
+    if (template.hostId && template.hostId !== userId && profile.role !== "admin") {
+      throw new Error("Bạn không có quyền xóa mẫu này");
     }
     await ctx.db.delete(args.templateId);
     return { success: true, name: template.name };

@@ -55,6 +55,8 @@ type CallArgs = {
   geminiSchema?: object;
   /** Cho phép retry 2 lần với 5xx errors (default true). */
   retryTransient?: boolean;
+  /** Hủy request khi đóng modal / unmount (tránh setState sau unmount + phí token). */
+  signal?: AbortSignal;
 };
 
 /**
@@ -116,6 +118,7 @@ async function callGeminiDirect(args: CallArgs): Promise<{ rawText: string; toke
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: args.signal,
   }, args.retryTransient !== false);
   if (!res.ok) {
     const text = await res.text();
@@ -177,6 +180,7 @@ async function callOpenAICompatDirect(args: CallArgs): Promise<{ rawText: string
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    signal: args.signal,
   }, args.retryTransient !== false);
   if (!res.ok) {
     const text = await res.text();

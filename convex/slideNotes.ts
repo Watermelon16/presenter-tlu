@@ -27,12 +27,12 @@ export const setSlideNote = mutation({
     const text = args.text.trim();
     if (existing) {
       if (text === "") await ctx.db.delete(existing._id);
-      else await ctx.db.patch(existing._id, { text: args.text });
+      else await ctx.db.patch(existing._id, { text });
     } else if (text !== "") {
       await ctx.db.insert("slideNotes", {
         pdfStorageId: args.pdfStorageId,
         page: args.page,
-        text: args.text,
+        text,
       });
     }
   },

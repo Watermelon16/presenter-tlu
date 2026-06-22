@@ -43,7 +43,7 @@ export const gatherSessionInsightsData = internalQuery({
     // Board posts
     const allBoardPosts = await ctx.db
       .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     const boardPosts = allBoardPosts.filter((p) => (p.run ?? 1) === targetRun);
 

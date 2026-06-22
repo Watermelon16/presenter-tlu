@@ -25,7 +25,7 @@ async function buildSnapshot(ctx: QueryCtx, sessionId: Id<"sessions">) {
     .collect();
   const boardPosts = await ctx.db
     .query("boardPosts")
-    .filter((q) => q.eq(q.field("sessionId"), sessionId))
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
     .collect();
   const participants = await ctx.db
     .query("participants")

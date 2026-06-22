@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -222,12 +222,17 @@ export function AiSingleActivityModal({
   const hasKey = !!currentKey;
 
   const [generating, setGenerating] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
   const [result, setResult] = useState<AiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try { localStorage.setItem(MODEL_STORAGE_KEY, selectedModelId); } catch { /* ignore */ }
   }, [selectedModelId]);
+
+  // Hủy request AI đang chạy khi unmount (đóng modal) → tránh setState sau unmount + phí token.
+  useEffect(() => () => aiAbortRef.current?.abort(), []);
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
@@ -241,6 +246,8 @@ export function AiSingleActivityModal({
     setGenerating(true);
     setError(null);
     setResult(null);
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
     try {
       const prompt = buildPrompt({
         type: activityType,
@@ -256,23 +263,27 @@ export function AiSingleActivityModal({
         userPrompt: prompt,
         geminiSchema: geminiSchemaForType(activityType),
         systemPrompt: "Bạn là trợ lý giảng viên ĐH Việt Nam. CHỈ trả JSON đúng schema, KHÔNG markdown fence, KHÔNG text thừa.",
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return; // đã đóng modal giữa chừng
       if (!data?.title?.trim()) {
         throw new Error("AI trả thiếu trường title");
       }
       setResult(data);
     } catch (e: unknown) {
+      if (controller.signal.aborted) return; // bỏ qua lỗi do hủy khi unmount
       const err = e as AiClientError | Error;
       const msg = err instanceof AiClientError ? err.message : err.message || "Lỗi";
       setError(msg);
       toast.error(msg);
     } finally {
-      setGenerating(false);
+      if (!controller.signal.aborted) setGenerating(false);
     }
   };
 
   const handleApply = async () => {
-    if (!result?.title) return;
+    if (!result?.title || applying) return;
+    setApplying(true);
     try {
       let config: Record<string, unknown> = {};
       if (activityType === "poll") {
@@ -331,6 +342,8 @@ export function AiSingleActivityModal({
     } catch (e: unknown) {
       const err = e as Error;
       toast.error(err.message || "Lỗi tạo hoạt động");
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -553,9 +566,10 @@ export function AiSingleActivityModal({
             {result && (
               <button
                 onClick={handleApply}
-                className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                disabled={applying}
+                className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ✓ Thêm vào kịch bản
+                {applying ? "Đang thêm…" : "✓ Thêm vào kịch bản"}
               </button>
             )}
             <button

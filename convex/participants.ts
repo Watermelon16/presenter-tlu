@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { computeAttendanceFromCheckin, resolveAccessMode } from "./lms";
+import { requireSessionOwner } from "./authz";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
 //
@@ -307,6 +308,7 @@ export const setAttendanceStatus = mutation({
   handler: async (ctx, args) => {
     const participant = await ctx.db.get(args.participantId);
     if (!participant) throw new ConvexError("Không tìm thấy SV");
+    await requireSessionOwner(ctx, participant.sessionId);
 
     await ctx.db.patch(args.participantId, {
       attendanceStatus: args.status,
@@ -336,6 +338,7 @@ export const setAttendanceStatus = mutation({
 export const resetOfficialStartAt = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, { officialStartAt: undefined });
     return { ok: true };
   },
@@ -350,6 +353,7 @@ export const removeParticipant = mutation({
   handler: async (ctx, args) => {
     const p = await ctx.db.get(args.participantId);
     if (!p) return { ok: false, reason: "not_found" };
+    await requireSessionOwner(ctx, p.sessionId);
     // Xóa responses của SV này trong session
     const responses = await ctx.db
       .query("responses")
@@ -382,14 +386,22 @@ export const setAttendanceStatusBulk = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    if (args.participantIds.length === 0) return { count: 0 };
+    // Xác thực chủ buổi qua SV đầu tiên, rồi chỉ xử lý các SV cùng buổi đó.
+    const first = await ctx.db.get(args.participantIds[0]);
+    if (!first) throw new ConvexError("Không tìm thấy SV");
+    await requireSessionOwner(ctx, first.sessionId);
+
+    let count = 0;
     for (const id of args.participantIds) {
+      const p = await ctx.db.get(id);
+      if (!p || p.sessionId !== first.sessionId) continue;
       await ctx.db.patch(id, {
         attendanceStatus: args.status,
         attendanceManualOverride: true,
       });
+      count++;
       // Push từng SV lên LMS nếu session liên thông LMS
-      const p = await ctx.db.get(id);
-      if (!p) continue;
       const session = await ctx.db.get(p.sessionId);
       if (session?.lmsSessionId) {
         await ctx.scheduler.runAfter(0, internal.lmsSync.sendAttendanceToLms, {
@@ -402,7 +414,7 @@ export const setAttendanceStatusBulk = mutation({
         });
       }
     }
-    return { count: args.participantIds.length };
+    return { count };
   },
 });
 
@@ -414,8 +426,7 @@ export const setAttendanceStatusBulk = mutation({
 export const pushAllParticipantsToLms = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
     if (!session.lmsSessionId) {
       throw new ConvexError("Buổi giảng này không liên thông LMS");
     }
@@ -462,6 +473,7 @@ export const updateAttendanceSettings = mutation({
     lmsSessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     const patch: Record<string, unknown> = {};
     if (args.lateThresholdMinutes !== undefined) {
       patch.lateThresholdMinutes = Math.max(0, Math.min(120, args.lateThresholdMinutes));

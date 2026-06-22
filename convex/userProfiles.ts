@@ -398,7 +398,7 @@ export const adminWipeAllSessions = mutation({
       }
       const posts = await ctx.db
         .query("boardPosts")
-        .filter((q) => q.eq(q.field("sessionId"), s._id))
+        .withIndex("by_session", (q) => q.eq("sessionId", s._id))
         .collect();
       for (const p of posts) {
         if (p.imageStorageId) {

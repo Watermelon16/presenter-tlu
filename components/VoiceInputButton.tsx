@@ -140,6 +140,11 @@ export function VoiceInputButton({
       }
       setInterim(interimText);
     };
+    // Hủy recognizer cũ (nếu bấm nhanh 2 lần trước khi onstart kịp set listening)
+    // → tránh để lại 1 recognizer mồ côi giữ mic + bắn onresult cũ.
+    if (recRef.current) {
+      try { recRef.current.abort(); } catch { /* ignore */ }
+    }
     recRef.current = rec;
     try {
       rec.start();

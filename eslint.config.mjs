@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Thư viện minify (pdf.js worker) — không lint code bên thứ ba.
+    "public/pdf.worker.min.mjs",
+    // Code Convex tự sinh — có sẵn eslint-disable nội bộ, không cần lint lại.
+    "convex/_generated/**",
   ]),
 ]);
 

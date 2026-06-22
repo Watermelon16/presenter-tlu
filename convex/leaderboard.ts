@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { requireSessionOwner } from "./authz";
 
 // Default scoring (công bằng cho sinh viên đại học)
 const DEFAULT_SCORING = {
@@ -50,6 +51,7 @@ export const updateScoringConfig = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       scoringConfig: args.config,
     });
@@ -88,7 +90,7 @@ async function computeSessionRunScores(
 
   const allBoardPosts = await ctx.db
     .query("boardPosts")
-    .filter((q) => q.eq(q.field("sessionId"), sessionId))
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
     .collect();
   const boardPosts = allBoardPosts.filter((p) => (p.run ?? 1) === run);
 

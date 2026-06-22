@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireSessionOwner } from "./authz";
 
 // Lấy danh sách tất cả bài đăng của một Board (realtime) — chỉ phiên hiện tại
 export const listBoardPosts = query({
@@ -111,6 +112,9 @@ export const setBoardPostStatus = mutation({
     status: v.union(v.literal("visible"), v.literal("hidden")),
   },
   handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    if (!post) return;
+    await requireSessionOwner(ctx, post.sessionId);
     await ctx.db.patch(args.postId, { status: args.status });
   },
 });
@@ -121,6 +125,7 @@ export const deleteBoardPost = mutation({
   handler: async (ctx, args) => {
     const post = await ctx.db.get(args.postId);
     if (!post) return;
+    await requireSessionOwner(ctx, post.sessionId);
     // Cleanup ảnh khỏi Convex storage nếu có (chỉ posts mới có imageStorageId).
     if (post.imageStorageId) {
       try { await ctx.storage.delete(post.imageStorageId); } catch { /* ignore */ }
@@ -136,6 +141,9 @@ export const moveBoardPostToColumn = mutation({
     newColumnId: v.string(),
   },
   handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    if (!post) return;
+    await requireSessionOwner(ctx, post.sessionId);
     await ctx.db.patch(args.postId, { columnId: args.newColumnId });
   },
 });

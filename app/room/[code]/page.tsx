@@ -213,6 +213,10 @@ export default function ParticipantRoomPage() {
   >("checking");
   const [pushBusy, setPushBusy] = useState(false);
   const [pushDismissed, setPushDismissed] = useState(false);
+
+  // Chống spam: khóa nút sau khi SV đã upvote/like (tránh bấm lặp đẩy số ảo).
+  const [votedQuestions, setVotedQuestions] = useState<Set<string>>(new Set());
+  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const registerPushSubscription = useMutation(api.pushSubscriptions.registerSubscription);
   const unregisterPushSubscription = useMutation(api.pushSubscriptions.unregisterSubscription);
 
@@ -716,6 +720,7 @@ export default function ParticipantRoomPage() {
         setBoardContentInput("");
         setBoardSelectedColumn("");
         setBoardSelectedImage(null);
+        if (boardImagePreview) URL.revokeObjectURL(boardImagePreview);
         setBoardImagePreview(null);
         setSubmitError("");
         return;
@@ -733,7 +738,7 @@ export default function ParticipantRoomPage() {
         value = wordcloudInput.trim();
       } else if (activeActivity.type === "rating") {
         // Backend mong { rating: number }
-        value = { rating: parseInt(selectedOptions[0]) };
+        value = { rating: parseInt(selectedOptions[0], 10) };
       } else if (activeActivity.type === "qa") {
         value = { text: qaQuestionInput.trim(), upvotes: 0, status: "visible" };
       } else {
@@ -1593,8 +1598,19 @@ export default function ParticipantRoomPage() {
                                   <div className="text-sm text-zinc-800">{questionText}</div>
                                 </div>
                                 <button
-                                  onClick={() => upvoteQuestion({ responseId: q._id })}
-                                  className="flex flex-col items-center text-xs text-emerald-600 hover:text-emerald-700 active:scale-95 transition-all shrink-0"
+                                  onClick={() => {
+                                    if (votedQuestions.has(q._id)) return;
+                                    setVotedQuestions((prev) => new Set(prev).add(q._id));
+                                    upvoteQuestion({ responseId: q._id }).catch(() => {
+                                      setVotedQuestions((prev) => {
+                                        const n = new Set(prev);
+                                        n.delete(q._id);
+                                        return n;
+                                      });
+                                    });
+                                  }}
+                                  disabled={votedQuestions.has(q._id)}
+                                  className="flex flex-col items-center text-xs text-emerald-600 hover:text-emerald-700 active:scale-95 transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   <span>▲</span>
                                   <span className="font-mono">{upvotes}</span>
@@ -1862,8 +1878,18 @@ export default function ParticipantRoomPage() {
                                           </div>
 
                                           <button
-                                            onClick={() => toggleLikeBoardPost({ postId: post._id })}
-                                            disabled={activeActivity.status !== "active"}
+                                            onClick={() => {
+                                              if (likedPosts.has(post._id)) return;
+                                              setLikedPosts((prev) => new Set(prev).add(post._id));
+                                              toggleLikeBoardPost({ postId: post._id }).catch(() => {
+                                                setLikedPosts((prev) => {
+                                                  const n = new Set(prev);
+                                                  n.delete(post._id);
+                                                  return n;
+                                                });
+                                              });
+                                            }}
+                                            disabled={activeActivity.status !== "active" || likedPosts.has(post._id)}
                                             className="flex items-center gap-1 px-2 py-0.5 rounded-full hover:bg-white active:bg-white text-emerald-600 transition-colors disabled:opacity-50"
                                           >
                                             <span>♥</span>

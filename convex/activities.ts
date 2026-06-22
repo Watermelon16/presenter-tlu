@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { api } from "./_generated/api";
+import { requireSessionOwner } from "./authz";
 
 // Tạo một hoạt động mới (bắt đầu với Poll)
 export const createActivity = mutation({
@@ -16,8 +16,7 @@ export const createActivity = mutation({
     slideCue: v.optional(v.string()), // Mốc slide PowerPoint (tùy chọn)
   },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     // Nếu hoạt động yêu cầu mã sinh viên thì session phải bật thu thập (treat missing as false)
     const sessionCollectsCode = session.collectStudentCode ?? false;
@@ -60,6 +59,7 @@ export const startActivity = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) throw new Error("Không tìm thấy hoạt động");
+    await requireSessionOwner(ctx, activity.sessionId);
 
     const session = await ctx.db.get(activity.sessionId);
 
@@ -124,7 +124,7 @@ export const internalExpireActivity = internalMutation({
 
     // Nếu hoạt động yêu cầu mã sinh viên → tự động tạo bản ghi "Không trả lời"
     if (activity.requiresStudentCode) {
-      await ctx.runMutation(api.responses.createNoResponseRecords, {
+      await ctx.runMutation(internal.responses.createNoResponseRecords, {
         activityId: args.activityId,
       });
     }
@@ -137,6 +137,7 @@ export const closeActivity = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return;
+    await requireSessionOwner(ctx, activity.sessionId);
 
     await ctx.db.patch(args.activityId, {
       status: "closed",
@@ -145,7 +146,7 @@ export const closeActivity = mutation({
 
     // Nếu hoạt động yêu cầu mã sinh viên → vẫn tạo no_response cho những người chưa trả lời
     if (activity.requiresStudentCode) {
-      await ctx.runMutation(api.responses.createNoResponseRecords, {
+      await ctx.runMutation(internal.responses.createNoResponseRecords, {
         activityId: args.activityId,
       });
     }
@@ -177,6 +178,7 @@ export const moveActivityUp = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return;
+    await requireSessionOwner(ctx, activity.sessionId);
 
     const previous = await ctx.db
       .query("activities")
@@ -200,6 +202,7 @@ export const moveActivityDown = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return;
+    await requireSessionOwner(ctx, activity.sessionId);
 
     const next = await ctx.db
       .query("activities")
@@ -225,6 +228,7 @@ export const reorderActivities = mutation({
   },
   handler: async (ctx, args) => {
     const { sessionId, orderedActivityIds } = args;
+    await requireSessionOwner(ctx, sessionId);
 
     // Lấy tất cả hoạt động của session để verify
     const existing = await ctx.db
@@ -256,8 +260,7 @@ export const reorderActivities = mutation({
 export const restartAllActivities = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const activities = await ctx.db
       .query("activities")
@@ -335,6 +338,7 @@ export const restartActivity = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) throw new Error("Không tìm thấy hoạt động");
+    await requireSessionOwner(ctx, activity.sessionId);
 
     if (activity.status === "active") {
       throw new Error("Hoạt động đang chạy");
@@ -393,6 +397,7 @@ export const duplicateActivity = mutation({
     if (!original) {
       throw new Error("Không tìm thấy hoạt động gốc");
     }
+    await requireSessionOwner(ctx, original.sessionId);
 
     // Tìm order lớn nhất hiện tại trong session để đặt activity mới ở cuối
     const activitiesInSession = await ctx.db
@@ -434,6 +439,7 @@ export const updateActivity = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) throw new Error("Không tìm thấy hoạt động");
+    await requireSessionOwner(ctx, activity.sessionId);
 
     if (activity.status === "active") {
       throw new Error("Không thể sửa hoạt động đang diễn ra");
@@ -457,6 +463,7 @@ export const deleteActivity = mutation({
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
     if (!activity) return;
+    await requireSessionOwner(ctx, activity.sessionId);
 
     if (activity.status === "active") {
       throw new Error("Không thể xóa hoạt động đang diễn ra");
@@ -530,8 +537,7 @@ async function getSortedActivities(ctx: any, sessionId: any) {
 export const startScriptRunner = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const sorted = await getSortedActivities(ctx, args.sessionId);
     if (sorted.length === 0) {
@@ -556,6 +562,7 @@ export const startScriptRunner = mutation({
 export const stopScriptRunner = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       isScriptRunning: false,
     });
@@ -572,8 +579,7 @@ export const jumpToScriptPosition = mutation({
     position: v.number(),
   },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    await requireSessionOwner(ctx, args.sessionId);
 
     const sorted = await getSortedActivities(ctx, args.sessionId);
     if (sorted.length === 0) throw new Error("Kịch bản trống");
@@ -598,8 +604,7 @@ export const jumpToScriptPosition = mutation({
 export const advanceInScript = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const sorted = await getSortedActivities(ctx, args.sessionId);
     if (sorted.length === 0) throw new Error("Kịch bản trống");
@@ -636,8 +641,7 @@ export const advanceInScript = mutation({
 export const advanceAndActivate = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const sorted = await getSortedActivities(ctx, args.sessionId);
     if (sorted.length === 0) throw new Error("Kịch bản trống");

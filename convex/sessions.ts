@@ -1,23 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-
-// Helper: require user đã đăng nhập + approved. Throw nếu không.
-async function requireApprovedUser(ctx: {
-  auth: unknown;
-  db: import("./_generated/server").QueryCtx["db"];
-}) {
-  const userId = await getAuthUserId(ctx as Parameters<typeof getAuthUserId>[0]);
-  if (!userId) throw new Error("Cần đăng nhập trước");
-  const profile = await ctx.db
-    .query("userProfiles")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .first();
-  if (!profile) throw new Error("Profile chưa tạo — refresh và thử lại");
-  if (profile.status === "banned") throw new Error("Tài khoản đã bị khoá");
-  if (profile.status === "pending") throw new Error("Tài khoản chờ admin duyệt");
-  return { userId, profile };
-}
+import { requireApprovedUser, requireSessionOwner } from "./authz";
 
 // Tạo phòng mới — yêu cầu auth
 export const createSession = mutation({
@@ -82,7 +66,7 @@ export const listMySessions = query({
         .collect();
       const boardPosts = await ctx.db
         .query("boardPosts")
-        .filter((q) => q.eq(q.field("sessionId"), s._id))
+        .withIndex("by_session", (q) => q.eq("sessionId", s._id))
         .collect();
       results.push({
         _id: s._id,
@@ -140,6 +124,7 @@ export const getSessionByCode = query({
 export const endSession = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       status: "ended",
       endedAt: Date.now(),
@@ -154,6 +139,7 @@ export const updateCollectStudentCode = mutation({
     collectStudentCode: v.boolean(),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       collectStudentCode: args.collectStudentCode,
     });
@@ -172,6 +158,7 @@ export const setAccessMode = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, { accessMode: args.accessMode });
   },
 });
@@ -181,8 +168,7 @@ export const setAccessMode = mutation({
 export const startScript = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    await requireSessionOwner(ctx, args.sessionId);
 
     await ctx.db.patch(args.sessionId, {
       isScriptRunning: true,
@@ -194,6 +180,7 @@ export const startScript = mutation({
 export const stopScript = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       isScriptRunning: false,
     });
@@ -206,8 +193,7 @@ export const setScriptPosition = mutation({
     position: v.number(),
   },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    await requireSessionOwner(ctx, args.sessionId);
 
     await ctx.db.patch(args.sessionId, {
       currentScriptPosition: Math.max(0, args.position),
@@ -228,8 +214,7 @@ export const setScriptPosition = mutation({
 export const resetSessionForNewRun = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const oldRun = session.currentRun ?? 1;
     const newRun = oldRun + 1;
@@ -330,8 +315,8 @@ export const setSessionPdf = mutation({
   },
   handler: async (ctx, args) => {
     // Nếu đã có PDF cũ → xóa khỏi storage để tiết kiệm dung lượng
-    const session = await ctx.db.get(args.sessionId);
-    if (session?.pdfStorageId) {
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
+    if (session.pdfStorageId) {
       try {
         await ctx.storage.delete(session.pdfStorageId);
       } catch {
@@ -352,8 +337,8 @@ export const setSessionPdf = mutation({
 export const clearSessionPdf = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (session?.pdfStorageId) {
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
+    if (session.pdfStorageId) {
       try {
         await ctx.storage.delete(session.pdfStorageId);
       } catch {
@@ -376,6 +361,7 @@ export const setPdfCurrentPage = mutation({
     page: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, {
       pdfCurrentPage: Math.max(1, args.page),
     });
@@ -386,6 +372,7 @@ export const setPdfCurrentPage = mutation({
 export const setReactionsEnabled = mutation({
   args: { sessionId: v.id("sessions"), enabled: v.boolean() },
   handler: async (ctx, args) => {
+    await requireSessionOwner(ctx, args.sessionId);
     await ctx.db.patch(args.sessionId, { reactionsEnabled: args.enabled });
   },
 });
@@ -429,7 +416,7 @@ export const listSessionsByIds = query({
 
       const boardPosts = await ctx.db
         .query("boardPosts")
-        .filter((q) => q.eq(q.field("sessionId"), sid))
+        .withIndex("by_session", (q) => q.eq("sessionId", sid))
         .collect();
 
       results.push({
@@ -463,8 +450,7 @@ export const listSessionsByIds = query({
 export const deleteSession = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new Error("Không tìm thấy buổi giảng");
+    const { session } = await requireSessionOwner(ctx, args.sessionId);
 
     const counts = {
       activities: 0,
@@ -478,7 +464,7 @@ export const deleteSession = mutation({
     // 1. Board posts (+ ảnh storage)
     const boardPosts = await ctx.db
       .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     for (const p of boardPosts) {
       if (p.imageStorageId) {

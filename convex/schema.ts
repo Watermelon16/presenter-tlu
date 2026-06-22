@@ -268,7 +268,8 @@ export default defineSchema({
     run: v.optional(v.number()),
   })
     .index("by_activity", ["activityId"])
-    .index("by_activity_and_column", ["activityId", "columnId"]),
+    .index("by_activity_and_column", ["activityId", "columnId"])
+    .index("by_session", ["sessionId"]),
 
   // Web Push subscriptions — để gửi notification khi giảng viên kích hoạt activity
   pushSubscriptions: defineTable({

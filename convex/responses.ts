@@ -1,6 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { aggregateWordCloud } from "../lib/wordcloud";
+import { requireSessionOwner } from "./authz";
 
 // Gửi câu trả lời cho một hoạt động
 //
@@ -145,12 +146,8 @@ export const getMyHistoryInSession = query({
     // Board posts của SV — filter theo phiên
     const allBoardPosts = await ctx.db
       .query("boardPosts")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("sessionId"), args.sessionId),
-          q.eq(q.field("studentCode"), args.studentCode)
-        )
-      )
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .filter((q) => q.eq(q.field("studentCode"), args.studentCode))
       .collect();
     const boardPosts = allBoardPosts.filter((p) => (p.run ?? 1) === currentRun);
 
@@ -441,6 +438,7 @@ export const answerQaQuestion = mutation({
   handler: async (ctx, args) => {
     const response = await ctx.db.get(args.responseId);
     if (!response) return;
+    await requireSessionOwner(ctx, response.sessionId);
 
     let newValue = response.value;
 
@@ -471,7 +469,7 @@ export const answerQaQuestion = mutation({
 });
 
 // Hàm hỗ trợ: Tạo bản ghi "Không trả lời" cho những sinh viên đã có mã trong buổi
-export const createNoResponseRecords = mutation({
+export const createNoResponseRecords = internalMutation({
   args: { activityId: v.id("activities") },
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(args.activityId);
@@ -883,7 +881,7 @@ export const getSessionFullExport = query({
     // Lấy board posts của phiên target
     const allBoardPostsRaw = await ctx.db
       .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     const allBoardPosts = allBoardPostsRaw.filter((p) => (p.run ?? 1) === targetRun);
 
@@ -982,6 +980,7 @@ export const setQaQuestionStatus = mutation({
   handler: async (ctx, args) => {
     const response = await ctx.db.get(args.responseId);
     if (!response) return;
+    await requireSessionOwner(ctx, response.sessionId);
 
     let newValue = response.value;
     if (typeof newValue === "string") {
@@ -999,6 +998,9 @@ export const setQaQuestionStatus = mutation({
 export const deleteQaQuestion = mutation({
   args: { responseId: v.id("responses") },
   handler: async (ctx, args) => {
+    const response = await ctx.db.get(args.responseId);
+    if (!response) return;
+    await requireSessionOwner(ctx, response.sessionId);
     await ctx.db.delete(args.responseId);
   },
 });

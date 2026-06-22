@@ -35,7 +35,7 @@ export const getEngagementHeatmap = query({
 
     const allBoardPosts = await ctx.db
       .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), args.sessionId))
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     const boardPosts = allBoardPosts.filter(
       (b) => (b.run ?? 1) === currentRun && b.status === "visible"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -108,6 +108,10 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
   const [error, setError] = useState<string | null>(null);
 
   const [selectedModelId, setSelectedModelId] = useState<string>(() => loadSavedModelId());
+  const aiAbortRef = useRef<AbortController | null>(null);
+
+  // Hủy request AI khi đóng/unmount modal → tránh setState sau unmount + phí token.
+  useEffect(() => () => aiAbortRef.current?.abort(), []);
   const selectedModel = MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
   const currentProvider = selectedModel.provider;
   const currentKey = (dbKeys ?? {})[currentProvider] ?? "";
@@ -134,6 +138,8 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
     setLoading(true);
     setError(null);
     setSummary(null);
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
     try {
       const prompt = buildSummaryPrompt(snapshot);
       const { data } = await callAiJson<{
@@ -148,7 +154,9 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
         apiKey: currentKey,
         systemPrompt: "Bạn là trợ lý giảng viên ĐH Việt Nam. CHỈ trả JSON đúng schema, KHÔNG markdown, KHÔNG text thừa.",
         userPrompt: prompt,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return; // đã đóng modal giữa chừng
       const responseCount = snapshot.activities.reduce(
         (s: number, a: { responseCount: number }) => s + a.responseCount,
         0
@@ -165,12 +173,13 @@ export function SessionSummaryModal({ sessionId, onClose }: { sessionId: Id<"ses
         providerUsed: currentProvider,
       });
     } catch (e: unknown) {
+      if (controller.signal.aborted) return; // bỏ qua lỗi do hủy khi unmount
       const err = e as AiClientError | Error;
       const msg = err instanceof AiClientError ? err.message : err.message || "Lỗi không xác định";
       setError(msg);
       toast.error(msg);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 

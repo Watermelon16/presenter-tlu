@@ -1278,6 +1278,8 @@ function PresenterPage() {
     // Cập nhật closure khi activity / display thay đổi để A/X/R nhận state mới nhất
     activeActivity?._id, displayActivity?._id, displayActivity?.status,
     isScriptMode, sortedActivities.length,
+    // , (bước trước) gọi goToPrevInScript dùng currentScriptIndex → cần deps để không kẹt index cũ
+    currentScriptIndex,
     // Slide jump buffer
     slideJumpBuffer, resetSlideJumpBuffer,
     // Hotspot back stack
@@ -1289,6 +1291,7 @@ function PresenterPage() {
   const [isDuplicating, setIsDuplicating] = useState<string | null>(null);
   const [editingActivity, setEditingActivity] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const exportingRef = useRef(false); // chống gọi handleExportExcel chồng nhau (bấm E nhanh)
 
   // Q&A moderation state (cho phần Results - B)
   const [answeringId, setAnsweringId] = useState<string | null>(null);
@@ -1679,7 +1682,8 @@ function PresenterPage() {
   // Export Excel cho phiên hiện tại (giữ tương thích với nút cũ)
   const handleExportExcel = async () => {
     if (!exportData || !session) return;
-
+    if (exportingRef.current) return; // chống chạy 2 lần (bấm E nhanh / trùng menu)
+    exportingRef.current = true;
     setIsExporting(true);
 
     try {
@@ -1801,6 +1805,7 @@ function PresenterPage() {
       console.error(err);
       toast.error("Xuất Excel thất bại. Vui lòng thử lại.");
     } finally {
+      exportingRef.current = false;
       setIsExporting(false);
     }
   };
@@ -2449,11 +2454,14 @@ function PresenterPage() {
     if (!isScriptMode) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "ArrowRight") {
+      // Khi đang chiếu slide, để slide nav xử lý mũi tên/space (tránh nhảy 2 lần:
+      // vừa lật slide vừa nhảy bước kịch bản). Đổi bước bằng , / . hoặc nút bấm.
+      const slidesOpen = fullscreenOverlay === "slides";
+      if ((e.key === " " || e.key === "ArrowRight") && !slidesOpen) {
         e.preventDefault();
         goToNextInScript();
       }
-      if (e.key === "ArrowLeft") {
+      if (e.key === "ArrowLeft" && !slidesOpen) {
         e.preventDefault();
         goToPrevInScript();
       }
@@ -2465,7 +2473,7 @@ function PresenterPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isScriptMode, currentScriptIndex]);
+  }, [isScriptMode, currentScriptIndex, fullscreenOverlay]);
 
   // Mở modal ở chế độ tạo mới, pre-config theo loại được chọn
   const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html") => {
@@ -2653,13 +2661,20 @@ function PresenterPage() {
 
     const oldIndex = sortedActivities.findIndex((a) => a._id === active.id);
     const newIndex = sortedActivities.findIndex((a) => a._id === over.id);
+    // Danh sách có thể đổi realtime giữa lúc kéo → id không còn tồn tại.
+    // Không guard thì arrayMove(-1) sẽ sắp xếp nhầm phần tử và lưu sai thứ tự.
+    if (oldIndex === -1 || newIndex === -1) return;
 
     const newOrder = arrayMove(sortedActivities, oldIndex, newIndex);
 
-    await reorderActivities({
-      sessionId: session!._id,
-      orderedActivityIds: newOrder.map((a) => a._id),
-    });
+    try {
+      await reorderActivities({
+        sessionId: session!._id,
+        orderedActivityIds: newOrder.map((a) => a._id),
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Không thể sắp xếp lại hoạt động");
+    }
   };
 
   // Derived cho DragOverlay (tránh IIFE phức tạp trong JSX)
@@ -3874,7 +3889,7 @@ function PresenterPage() {
                           type="number"
                           min={0}
                           value={ratingMin}
-                          onChange={(e) => setRatingMin(parseInt(e.target.value) || 1)}
+                          onChange={(e) => { const n = parseInt(e.target.value, 10); setRatingMin(Number.isNaN(n) ? 1 : n); }}
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
@@ -3884,7 +3899,7 @@ function PresenterPage() {
                           type="number"
                           min={ratingMin + 1}
                           value={ratingMax}
-                          onChange={(e) => setRatingMax(parseInt(e.target.value) || 5)}
+                          onChange={(e) => { const n = parseInt(e.target.value, 10); setRatingMax(Number.isNaN(n) ? 5 : n); }}
                           className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
@@ -4333,7 +4348,7 @@ function PresenterPage() {
                         step="0.5"
                         min={0.1}
                         value={timeLimitValue}
-                        onChange={(e) => setTimeLimitValue(parseFloat(e.target.value) || 1.5)}
+                        onChange={(e) => { const n = parseFloat(e.target.value); setTimeLimitValue(Number.isNaN(n) ? 1.5 : n); }}
                         className="w-24 bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm"
                       />
                       <span className="text-xs text-zinc-500">phút (chấp nhận thập phân, VD: 1.5)</span>

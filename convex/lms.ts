@@ -333,7 +333,7 @@ export const deleteSessionByLmsId = internalMutation({
     // 1. Board posts (+ ảnh storage)
     const boardPosts = await ctx.db
       .query("boardPosts")
-      .filter((q) => q.eq(q.field("sessionId"), session._id))
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
       .collect();
     for (const p of boardPosts) {
       if (p.imageStorageId) {
