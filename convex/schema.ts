@@ -165,7 +165,8 @@ export default defineSchema({
       v.literal("board"),
       v.literal("qa"),
       v.literal("opentext"),
-      v.literal("video")
+      v.literal("video"),
+      v.literal("html")
     ),
     title: v.string(),                    // Tiêu đề hoạt động
     config: v.any(),                      // Cấu hình chi tiết (câu hỏi, lựa chọn, thang điểm...)

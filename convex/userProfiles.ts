@@ -374,6 +374,9 @@ export const adminWipeAllSessions = mutation({
         if (a.type === "video" && a.config?.videoStorageId) {
           try { await ctx.storage.delete(a.config.videoStorageId); } catch { /* ignore */ }
         }
+        if (a.type === "html" && a.config?.htmlStorageId) {
+          try { await ctx.storage.delete(a.config.htmlStorageId); } catch { /* ignore */ }
+        }
         await ctx.db.delete(a._id);
         counts.activities++;
       }

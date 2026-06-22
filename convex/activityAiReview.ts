@@ -47,7 +47,7 @@ async function requireOwnerOfActivity(
 // Trả về cấu trúc gọn (đã agg) để client gửi cho AI mà không phải gửi raw responses to lớn.
 export type ReviewSnapshot = {
   activityId: string;
-  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video";
+  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video" | "html";
   title: string;
   config: unknown;
   totalAnswered: number;

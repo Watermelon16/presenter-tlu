@@ -491,6 +491,14 @@ export const deleteSession = mutation({
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
     for (const a of activities) {
+      if (a.type === "html" && a.config?.htmlStorageId) {
+        try {
+          await ctx.storage.delete(a.config.htmlStorageId);
+          counts.images++;
+        } catch {
+          // Ignore — file có thể đã bị xóa
+        }
+      }
       if (a.type === "video" && a.config?.videoStorageId) {
         try {
           await ctx.storage.delete(a.config.videoStorageId);

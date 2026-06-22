@@ -47,7 +47,6 @@ const ROWS: Row[] = [
 
   // === MENU ===
   { keys: ["M"], label: "Mở bảng điểm danh", group: "Menu nhanh" },
-  { keys: ["N"], label: "Mở Nhịp lớp (heatmap)" },
   { keys: ["I"], label: "Mở Smart Insights AI" },
   { keys: ["E"], label: "Xuất Excel phiên hiện tại" },
   { keys: ["J"], label: "Đồng hồ phiên — bấm giờ tiết giảng, nhắc cháy giờ" },

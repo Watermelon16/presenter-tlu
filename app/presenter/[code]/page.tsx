@@ -13,12 +13,12 @@ import QRCode from "qrcode";
 import * as XLSX from "xlsx";
 import { PdfSlideViewer } from "@/components/PdfSlideViewer";
 import { VideoOverlayPlayer } from "@/components/VideoOverlayPlayer";
+import { HtmlOverlayPlayer } from "@/components/HtmlOverlayPlayer";
 import { VnInput, VnTextarea } from "@/components/VnInput";
 import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
 import { AttendancePanel } from "@/components/AttendancePanel";
-import { EngagementHeatmap } from "@/components/EngagementHeatmap";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
@@ -397,7 +397,6 @@ function PresenterPage() {
   const [showScriptMenu, setShowScriptMenu] = useState(false);
   // Modal danh sách sinh viên (click vào "X sinh viên tham gia")
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
 
   // Slide overlay: ẩn/hiện QR sidebar — GV muốn mở rộng vùng slide khi đang giảng,
   // hiện lại khi cần cho SV vào muộn. Persist localStorage.
@@ -512,22 +511,6 @@ function PresenterPage() {
       return { ...prev, [drawSurface]: arr.filter((_, i) => i !== idx) };
     });
   const toggleWhiteboard = () => setWhiteboardMode((v) => !v);
-  // Toggle bật/tắt tính năng Nhịp lớp — persist trong localStorage để GV khống chế việc auto-update.
-  // Mặc định BẬT để giữ behavior cũ; khi TẮT thì không render nút topbar query + không subscribe Convex.
-  const [heatmapEnabled, setHeatmapEnabled] = useState(true);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const v = window.localStorage.getItem("tkbg-heatmap-enabled");
-    if (v === "0") setHeatmapEnabled(false);
-  }, []);
-  const toggleHeatmapEnabled = (next: boolean) => {
-    setHeatmapEnabled(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("tkbg-heatmap-enabled", next ? "1" : "0");
-    }
-    if (!next) setShowHeatmapModal(false);
-    toast.success(next ? "Đã bật Nhịp lớp" : "Đã tắt Nhịp lớp — sẽ không tự cập nhật nữa");
-  };
 
   // Tab cho overlay kết quả (F): "result" = kết quả activity hiện tại, "leaderboard" = bảng thành tích
   const [resultTab, setResultTab] = useState<"result" | "leaderboard">("result");
@@ -739,6 +722,66 @@ function PresenterPage() {
       toast.error(msg);
     } finally {
       setIsUploadingVideo(false);
+    }
+  };
+
+  // === HTML activity upload ===
+  // File .html tự chứa (CSS/JS inline hoặc trỏ CDN). Tối đa 20MB.
+  const MAX_HTML_MB = 20;
+  const handleUploadHtml = async (file: File) => {
+    if (!session?._id) return;
+    const isHtml =
+      file.type === "text/html" ||
+      /\.x?html?$/i.test(file.name); // .html / .htm / .xhtml
+    if (!isHtml) {
+      toast.error("Chỉ chấp nhận file HTML (.html, .htm)");
+      return;
+    }
+    if (file.size > MAX_HTML_MB * 1024 * 1024) {
+      toast.error(`File vượt quá ${MAX_HTML_MB}MB. File HTML nên gọn (CSS/JS inline hoặc trỏ CDN).`);
+      return;
+    }
+
+    setIsUploadingHtml(true);
+    setHtmlUploadProgress(0);
+    try {
+      const uploadUrl = await generateUploadUrl();
+
+      const storageId = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", uploadUrl);
+        // Ép text/html để storage phục vụ inline → iframe render được (một số .html có type rỗng)
+        xhr.setRequestHeader("Content-Type", "text/html");
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            setHtmlUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const { storageId } = JSON.parse(xhr.responseText);
+              resolve(storageId);
+            } catch (err) {
+              reject(new Error("Phản hồi upload không hợp lệ"));
+            }
+          } else {
+            reject(new Error(`Upload thất bại (HTTP ${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Lỗi mạng khi upload"));
+        xhr.send(file);
+      });
+
+      setHtmlStorageId(storageId as Id<"_storage">);
+      setHtmlFileName(file.name);
+      setHtmlFileSize(file.size);
+      toast.success(`Đã tải lên "${file.name}"`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload thất bại";
+      toast.error(msg);
+    } finally {
+      setIsUploadingHtml(false);
     }
   };
 
@@ -1155,11 +1198,6 @@ function PresenterPage() {
         setShowAttendanceModal(true);
       }
 
-      // === N = Mở modal nhịp lớp (heatmap) ===
-      if ((e.key === "n" || e.key === "N") && heatmapEnabled) {
-        e.preventDefault();
-        setShowHeatmapModal(true);
-      }
 
       // === K = Hiện/ẩn mini QR widget (cho SV vào muộn quét nhanh) ===
       if (e.key === "k" || e.key === "K") {
@@ -1321,7 +1359,7 @@ function PresenterPage() {
   const [titleError, setTitleError] = useState("");
 
   // Loại hoạt động đang tạo
-  const [createType, setCreateType] = useState<"poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video">("poll");
+  const [createType, setCreateType] = useState<"poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html">("poll");
 
   // === Cấu hình Video activity ===
   // Sau khi upload xong, lưu storageId + filename + size để render preview + tạo activity
@@ -1333,6 +1371,16 @@ function PresenterPage() {
   const [videoMute, setVideoMute] = useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0); // 0..100
+
+  // === Cấu hình HTML / Animation activity ===
+  // Nguồn: upload file .html HOẶC dán link nhúng. Chỉ chiếu overlay trên máy chiếu.
+  const [htmlSourceMode, setHtmlSourceMode] = useState<"upload" | "url">("upload");
+  const [htmlStorageId, setHtmlStorageId] = useState<Id<"_storage"> | null>(null);
+  const [htmlFileName, setHtmlFileName] = useState("");
+  const [htmlFileSize, setHtmlFileSize] = useState(0); // bytes
+  const [htmlEmbedUrl, setHtmlEmbedUrl] = useState("");
+  const [isUploadingHtml, setIsUploadingHtml] = useState(false);
+  const [htmlUploadProgress, setHtmlUploadProgress] = useState(0); // 0..100
 
   // Reset board columns khi chuyển loại hoạt động
   useEffect(() => {
@@ -1983,6 +2031,25 @@ function PresenterPage() {
       return;
     }
 
+    // HTML-specific validation: cần file upload HOẶC link nhúng hợp lệ
+    if (effectiveType === "html") {
+      if (htmlSourceMode === "upload" && !htmlStorageId) {
+        setCreateError("Vui lòng upload file HTML trước khi tạo hoạt động.");
+        return;
+      }
+      if (htmlSourceMode === "url") {
+        const u = htmlEmbedUrl.trim();
+        if (!u) {
+          setCreateError("Vui lòng dán link nhúng trước khi tạo hoạt động.");
+          return;
+        }
+        if (!/^https?:\/\//i.test(u)) {
+          setCreateError("Link nhúng phải bắt đầu bằng http:// hoặc https://");
+          return;
+        }
+      }
+    }
+
     setIsCreating(true);
 
     try {
@@ -2043,6 +2110,15 @@ function PresenterPage() {
         config.autoplay = videoAutoplay;
         config.loop = videoLoop;
         config.mute = videoMute;
+      } else if (effectiveType === "html") {
+        config.htmlSource = htmlSourceMode; // "upload" | "url"
+        if (htmlSourceMode === "upload") {
+          config.htmlStorageId = htmlStorageId;
+          config.fileName = htmlFileName;
+          config.fileSize = htmlFileSize;
+        } else {
+          config.embedUrl = htmlEmbedUrl.trim();
+        }
       }
 
       let timeLimit: number | undefined = undefined;
@@ -2050,9 +2126,10 @@ function PresenterPage() {
         timeLimit = timeLimitValue;
       }
 
-      // Video không có response → ép requiresStudentCode = false và bỏ timeLimit
-      const effectiveRequiresCode = effectiveType === "video" ? false : requiresStudentCode;
-      const effectiveTimeLimit = effectiveType === "video" ? undefined : timeLimit;
+      // Video / HTML không có response → ép requiresStudentCode = false và bỏ timeLimit
+      const isProjectionOnly = effectiveType === "video" || effectiveType === "html";
+      const effectiveRequiresCode = isProjectionOnly ? false : requiresStudentCode;
+      const effectiveTimeLimit = isProjectionOnly ? undefined : timeLimit;
 
       if (editingActivity) {
         // Chế độ chỉnh sửa
@@ -2344,7 +2421,6 @@ function PresenterPage() {
 
     // — Menu & dữ liệu —
     { id: "attendance", group: "Menu & dữ liệu", label: "Mở bảng điểm danh", keys: ["M"], run: () => setShowAttendanceModal(true) },
-    { id: "heatmap", group: "Menu & dữ liệu", label: "Mở Nhịp lớp (heatmap)", keys: ["N"], disabled: !heatmapEnabled, run: () => setShowHeatmapModal(true) },
     { id: "insights", group: "Menu & dữ liệu", label: "Mở Smart Insights AI", keys: ["I"], run: () => setShowInsightsModal(true) },
     { id: "export", group: "Menu & dữ liệu", label: "Xuất Excel phiên hiện tại", keys: ["E"], disabled: isExporting, run: () => { if (confirm(`Xuất Excel phiên #${session?.currentRun ?? 1}?`)) handleExportExcel(); } },
     { id: "timer", group: "Menu & dữ liệu", label: "Đồng hồ phiên (bấm giờ tiết giảng)", keys: ["J"], run: () => setShowTimer((v) => !v) },
@@ -2389,7 +2465,7 @@ function PresenterPage() {
   }, [isScriptMode, currentScriptIndex]);
 
   // Mở modal ở chế độ tạo mới, pre-config theo loại được chọn
-  const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video") => {
+  const openCreateModal = (type: "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html") => {
     // Reset form về trạng thái mặc định cho loại này
     setEditingActivity(null);
     setCreateType(type);
@@ -2430,6 +2506,14 @@ function PresenterPage() {
       setVideoMute(false);
       setIsUploadingVideo(false);
       setVideoUploadProgress(0);
+    } else if (type === "html") {
+      setHtmlSourceMode("upload");
+      setHtmlStorageId(null);
+      setHtmlFileName("");
+      setHtmlFileSize(0);
+      setHtmlEmbedUrl("");
+      setIsUploadingHtml(false);
+      setHtmlUploadProgress(0);
     } else if (type === "board") {
       setBoardColumns([
         { id: "understood", title: "Đã hiểu" },
@@ -2494,6 +2578,13 @@ function PresenterPage() {
     setVideoMute(false);
     setIsUploadingVideo(false);
     setVideoUploadProgress(0);
+    setHtmlSourceMode("upload");
+    setHtmlStorageId(null);
+    setHtmlFileName("");
+    setHtmlFileSize(0);
+    setHtmlEmbedUrl("");
+    setIsUploadingHtml(false);
+    setHtmlUploadProgress(0);
 
     // ===== Bước 3: Load state đặc thù cho loại của activity =====
     if (activity.type === "poll") {
@@ -2531,6 +2622,14 @@ function PresenterPage() {
       setVideoAutoplay(activity.config?.autoplay ?? true);
       setVideoLoop(activity.config?.loop ?? false);
       setVideoMute(activity.config?.mute ?? false);
+    }
+    else if (activity.type === "html") {
+      const mode = activity.config?.embedUrl ? "url" : "upload";
+      setHtmlSourceMode(mode);
+      setHtmlStorageId(activity.config?.htmlStorageId ?? null);
+      setHtmlFileName(activity.config?.fileName || "");
+      setHtmlFileSize(activity.config?.fileSize ?? 0);
+      setHtmlEmbedUrl(activity.config?.embedUrl || "");
     }
     else if (activity.type === "board") {
       const savedCols = activity.config?.columns;
@@ -2594,7 +2693,7 @@ function PresenterPage() {
     const isStartingThis = isStarting === activity._id;
 
     const typeIcon: Record<string, string> = {
-      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️", video: "🎬",
+      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️", video: "🎬", html: "✨",
     };
 
     return (
@@ -2932,35 +3031,6 @@ function PresenterPage() {
               <span className="text-xs text-zinc-500 hidden sm:inline">SV</span>
             </button>
 
-            {heatmapEnabled ? (
-              <div className="flex items-center bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 transition-colors overflow-hidden">
-                <button
-                  onClick={() => setShowHeatmapModal(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-emerald-50/40 transition-colors"
-                  title="Xem biểu đồ nhịp lớp theo phút"
-                >
-                  <span className="text-sm">📊</span>
-                  <span className="text-xs text-zinc-500 hidden sm:inline">Nhịp lớp</span>
-                </button>
-                <button
-                  onClick={() => toggleHeatmapEnabled(false)}
-                  className="px-1.5 py-1.5 border-l border-zinc-200 hover:bg-red-50 text-zinc-400 hover:text-red-600 transition-colors text-[10px]"
-                  title="Tắt tính năng Nhịp lớp — sẽ không tự cập nhật nữa"
-                >
-                  ⏻
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => toggleHeatmapEnabled(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-100 rounded-lg border border-dashed border-zinc-300 text-zinc-500 hover:bg-emerald-50/40 hover:border-emerald-400 hover:text-emerald-700 transition-colors"
-                title="Nhịp lớp đang TẮT — bấm để bật lại"
-              >
-                <span className="text-sm opacity-50">📊</span>
-                <span className="text-xs hidden sm:inline">Nhịp lớp · TẮT</span>
-              </button>
-            )}
-
             {/* 🎬 Chiếu */}
             <Dropdown
               align="right"
@@ -3218,7 +3288,7 @@ function PresenterPage() {
 
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* Panel điểm danh + Heatmap đều là modal — render ở cuối file, mở qua nút topbar */}
+        {/* Panel điểm danh — modal, mở qua nút topbar */}
 
         {/* === TỔNG QUAN BUỔI GIẢNG (tạm ẩn để ổn định syntax — sẽ khôi phục + cải thiện ở Results) === */}
         {/* {exportData && ( ... dashboard stats ... )} */}
@@ -3408,11 +3478,12 @@ function PresenterPage() {
                     { type: "opentext", icon: "✏️", name: "Trả lời ngắn", desc: "Câu trả lời 1–2 câu, không gom tần suất", color: "teal" },
                     { type: "board", icon: "📌", name: "Bảng cộng tác", desc: "Padlet — đăng text + ảnh theo cột", color: "purple" },
                     { type: "video", icon: "🎬", name: "Video", desc: "Upload MP4/WebM, chiếu overlay tại slide chỉ định", color: "rose" },
+                    { type: "html", icon: "✨", name: "HTML / Animation", desc: "Nhúng file .html hoặc link animation, chiếu overlay trên máy chiếu", color: "indigo" },
                   ].map((item) => (
                     <button
                       key={item.type}
                       onClick={() => {
-                        openCreateModal(item.type as "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video");
+                        openCreateModal(item.type as "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html");
                         setShowCreatePicker(false);
                       }}
                       className="text-left p-3 rounded-xl hover:bg-zinc-50 active:bg-zinc-100 transition-colors flex items-start gap-3 group"
@@ -3537,6 +3608,7 @@ function PresenterPage() {
                     {createType === "opentext" && "✏️"}
                     {createType === "board" && "📌"}
                     {createType === "video" && "🎬"}
+                    {createType === "html" && "✨"}
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-semibold text-zinc-900">
@@ -3547,6 +3619,7 @@ function PresenterPage() {
                       {createType === "opentext" && "Trả lời ngắn (Open Text)"}
                       {createType === "board" && "Bảng cộng tác (Board)"}
                       {createType === "video" && "Video (chiếu trên máy chiếu)"}
+                      {createType === "html" && "HTML / Animation (chiếu trên máy chiếu)"}
                     </div>
                     <div className="text-xs text-zinc-600 mt-0.5">
                       {createType === "poll" && "SV chọn 1 hoặc nhiều đáp án từ danh sách có sẵn"}
@@ -3556,6 +3629,7 @@ function PresenterPage() {
                       {createType === "opentext" && "SV nhập câu trả lời ngắn 1-2 câu, hiển thị danh sách đầy đủ"}
                       {createType === "board" && "SV đăng text + ảnh theo cột phân loại"}
                       {createType === "video" && "Video bung overlay phủ slide khi bấm Kích hoạt. SV không xem trên điện thoại."}
+                      {createType === "html" && "File HTML/animation bung overlay phủ slide khi bấm Kích hoạt. SV không xem trên điện thoại."}
                     </div>
                   </div>
                 </div>
@@ -4029,6 +4103,147 @@ function PresenterPage() {
                   </div>
                 )}
 
+                {/* ===== HTML / ANIMATION-specific ===== */}
+                {createType === "html" && (
+                  <div className="space-y-3 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                    <div className="text-sm font-semibold text-indigo-900">✨ Cấu hình HTML / Animation</div>
+
+                    {/* Chọn nguồn: upload file hay dán link */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHtmlSourceMode("upload")}
+                        className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                          htmlSourceMode === "upload"
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-100/40"
+                        }`}
+                      >
+                        📄 Upload file .html
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHtmlSourceMode("url")}
+                        className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                          htmlSourceMode === "url"
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-100/40"
+                        }`}
+                      >
+                        🔗 Dán link nhúng
+                      </button>
+                    </div>
+
+                    {/* --- Chế độ UPLOAD --- */}
+                    {htmlSourceMode === "upload" && (
+                      <>
+                        {/* Trạng thái file đã upload */}
+                        {htmlStorageId && !isUploadingHtml && (
+                          <div className="flex items-center justify-between gap-3 p-3 bg-white rounded-lg border border-indigo-200">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="text-xl">📄</span>
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-zinc-900 truncate" title={htmlFileName}>
+                                  {htmlFileName || "File HTML đã upload"}
+                                </div>
+                                {htmlFileSize > 0 && (
+                                  <div className="text-xs text-zinc-500">
+                                    {(htmlFileSize / 1024).toFixed(0)} KB
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setHtmlStorageId(null);
+                                setHtmlFileName("");
+                                setHtmlFileSize(0);
+                              }}
+                              className="px-2 py-1 text-xs rounded-md bg-zinc-200 hover:bg-zinc-300 text-zinc-700"
+                              title="Xóa file đã upload, chọn file khác"
+                            >
+                              ✕ Đổi file
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Upload area */}
+                        {!htmlStorageId && (
+                          <label className="block">
+                            <input
+                              type="file"
+                              accept=".html,.htm,.xhtml,text/html"
+                              disabled={isUploadingHtml}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleUploadHtml(file);
+                                e.target.value = "";
+                              }}
+                              className="hidden"
+                            />
+                            <div
+                              className={`px-4 py-6 rounded-lg border-2 border-dashed text-center cursor-pointer transition-colors ${
+                                isUploadingHtml
+                                  ? "border-indigo-300 bg-indigo-100/50 cursor-wait"
+                                  : "border-indigo-300 bg-white hover:bg-indigo-100/40"
+                              }`}
+                            >
+                              {isUploadingHtml ? (
+                                <div className="space-y-2">
+                                  <div className="text-sm font-medium text-indigo-700">
+                                    Đang upload… {htmlUploadProgress}%
+                                  </div>
+                                  <div className="w-full bg-indigo-100 rounded-full h-2 overflow-hidden">
+                                    <div
+                                      className="bg-indigo-600 h-full transition-all"
+                                      style={{ width: `${htmlUploadProgress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="text-3xl mb-1">📤</div>
+                                  <div className="text-sm font-medium text-zinc-800">
+                                    Chọn file .html để upload
+                                  </div>
+                                  <div className="text-xs text-zinc-500 mt-1">
+                                    HTML tự chứa · tối đa {MAX_HTML_MB}MB
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </label>
+                        )}
+
+                        <div className="text-xs text-indigo-800/80 bg-white/60 px-3 py-2 rounded-lg leading-relaxed">
+                          ⚠️ File phải <strong>tự chứa</strong>: CSS/JS viết inline hoặc trỏ tới CDN. File tham chiếu tới các file rời cạnh nó (script.js, ảnh local…) sẽ không chạy.
+                        </div>
+                      </>
+                    )}
+
+                    {/* --- Chế độ URL --- */}
+                    {htmlSourceMode === "url" && (
+                      <>
+                        <input
+                          type="url"
+                          value={htmlEmbedUrl}
+                          onChange={(e) => setHtmlEmbedUrl(e.target.value)}
+                          placeholder="https://… (CodePen embed, GeoGebra, H5P, trang animation…)"
+                          className="w-full bg-white border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <div className="text-xs text-indigo-800/80 bg-white/60 px-3 py-2 rounded-lg leading-relaxed">
+                          💡 Dán link cho phép nhúng (embed). Một số trang chặn hiển thị trong iframe — khi đó dùng nút <strong>↗ Mở tab mới</strong> trên overlay.
+                        </div>
+                      </>
+                    )}
+
+                    <div className="text-xs text-indigo-800/80 bg-white/60 px-3 py-2 rounded-lg leading-relaxed">
+                      ▶ Khi bấm <strong>Kích hoạt</strong> tại slide tương ứng, nội dung bung overlay phủ slide trên máy chiếu. Bấm <kbd className="px-1 bg-zinc-100 border border-zinc-300 rounded text-[10px]">Esc</kbd> hoặc nút Đóng để quay lại slide.
+                    </div>
+                  </div>
+                )}
+
                 {/* ===== BOARD-specific ===== */}
                 {createType === "board" && (
                   <div className="space-y-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
@@ -4186,15 +4401,6 @@ function PresenterPage() {
         )}
 
         {/* ==================== MODAL HEATMAP NHỊP LỚP ==================== */}
-        {session._id && (
-          <EngagementHeatmap
-            sessionId={session._id}
-            open={heatmapEnabled && showHeatmapModal}
-            onClose={() => setShowHeatmapModal(false)}
-            onDisable={() => toggleHeatmapEnabled(false)}
-          />
-        )}
-
         {/* ==================== MODAL CẤU HÌNH ĐIỂM BẢNG THÀNH TÍCH ==================== */}
         {showScoringConfig && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[120]">
@@ -5291,13 +5497,16 @@ function PresenterPage() {
                           </div>
                         </div>
                       )}
-                      {isActive && focusActivity.type !== "video" && (
+                      {isActive && focusActivity.type !== "video" && focusActivity.type !== "html" && (
                         <div className="text-lg font-bold text-emerald-300 mb-2">
                           {responseCount} <span className="text-xs font-normal text-zinc-400">phản hồi</span>
                         </div>
                       )}
                       {isActive && focusActivity.type === "video" && (
                         <div className="text-[10px] text-rose-300 mb-2">🎬 Đang chiếu trên slide</div>
+                      )}
+                      {isActive && focusActivity.type === "html" && (
+                        <div className="text-[10px] text-indigo-300 mb-2">✨ Đang chiếu trên slide</div>
                       )}
                       <div className="space-y-1.5">
                         {isDraft && (
@@ -5311,7 +5520,7 @@ function PresenterPage() {
                         {isActive && (
                           <>
                             <button
-                              onClick={() => focusActivity.type === "video" ? handleClose(focusActivity._id) : handleCloseAndReveal(focusActivity._id)}
+                              onClick={() => (focusActivity.type === "video" || focusActivity.type === "html") ? handleClose(focusActivity._id) : handleCloseAndReveal(focusActivity._id)}
                               className="w-full px-3 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
                               title="Đóng hoạt động (phím X)"
                             >
@@ -5449,6 +5658,15 @@ function PresenterPage() {
           autoplay={activeActivity.config?.autoplay ?? true}
           loop={activeActivity.config?.loop ?? false}
           mute={activeActivity.config?.mute ?? false}
+          onClose={() => handleClose(activeActivity._id)}
+        />
+      )}
+
+      {activeActivity?.type === "html" && (activeActivity.config?.htmlStorageId || activeActivity.config?.embedUrl) && (
+        <HtmlOverlayPlayer
+          storageId={(activeActivity.config?.htmlStorageId as Id<"_storage">) ?? null}
+          embedUrl={activeActivity.config?.embedUrl ?? null}
+          title={activeActivity.title}
           onClose={() => handleClose(activeActivity._id)}
         />
       )}

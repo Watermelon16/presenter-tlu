@@ -355,6 +355,9 @@ export const deleteSessionByLmsId = internalMutation({
       if (a.type === "video" && a.config?.videoStorageId) {
         try { await ctx.storage.delete(a.config.videoStorageId); counts.images++; } catch { /* ignore */ }
       }
+      if (a.type === "html" && a.config?.htmlStorageId) {
+        try { await ctx.storage.delete(a.config.htmlStorageId); counts.images++; } catch { /* ignore */ }
+      }
       await ctx.db.delete(a._id);
       counts.activities++;
     }
