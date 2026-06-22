@@ -233,6 +233,15 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  return (
+    d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "2-digit" }) +
+    " " +
+    d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+  );
+}
+
 function ResourcePanel({
   usage,
   onDeleteSession,
@@ -314,34 +323,39 @@ function ResourcePanel({
         ))}
       </div>
 
-      {/* Top sessions to clean up */}
-      {usage.topSessions.length > 0 && (
+      {/* Tất cả buổi — người tạo, ngày tạo, hoạt động gần nhất, storage */}
+      {usage.allSessions.length > 0 && (
         <div>
           <div className="text-sm font-semibold text-zinc-800 mb-2">
-            Top {usage.topSessions.length} buổi tốn storage nhất {pct >= 70 && "— bấm Xóa để dọn"}
+            Tất cả buổi ({usage.allSessions.length}) — mới hoạt động xếp trước{pct >= 70 && "; bấm Xóa để dọn storage"}
           </div>
-          <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-zinc-50 border-b border-zinc-200">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium text-zinc-600">Mã</th>
                   <th className="text-left px-3 py-2 font-medium text-zinc-600">Buổi</th>
-                  <th className="text-right px-3 py-2 font-medium text-zinc-600">PDF</th>
-                  <th className="text-right px-3 py-2 font-medium text-zinc-600">Video</th>
-                  <th className="text-right px-3 py-2 font-medium text-zinc-600">Ảnh</th>
-                  <th className="text-right px-3 py-2 font-medium text-zinc-600">Tổng</th>
+                  <th className="text-left px-3 py-2 font-medium text-zinc-600">Người tạo</th>
+                  <th className="text-left px-3 py-2 font-medium text-zinc-600">Ngày tạo</th>
+                  <th className="text-left px-3 py-2 font-medium text-zinc-600">Gần đây</th>
+                  <th className="text-right px-3 py-2 font-medium text-zinc-600">Storage</th>
                   <th className="text-right px-3 py-2 font-medium text-zinc-600"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {usage.topSessions.map((s) => (
+                {usage.allSessions.map((s) => (
                   <tr key={s.sessionId} className="hover:bg-zinc-50/60">
                     <td className="px-3 py-2 font-mono text-zinc-700">{s.code}</td>
-                    <td className="px-3 py-2 truncate max-w-xs" title={s.title}>{s.title}</td>
-                    <td className="px-3 py-2 text-right font-mono text-zinc-700">{s.pdf > 0 ? fmtBytes(s.pdf) : "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-zinc-700">{s.video > 0 ? fmtBytes(s.video) : "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-zinc-700">{s.image > 0 ? fmtBytes(s.image) : "—"}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-zinc-900 tabular-nums">{fmtBytes(s.total)}</td>
+                    <td className="px-3 py-2 truncate max-w-[12rem]" title={s.title}>{s.title}</td>
+                    <td className="px-3 py-2 text-zinc-700 truncate max-w-[11rem]" title={s.ownerName ?? "Không rõ chủ buổi"}>{s.ownerName ?? "—"}</td>
+                    <td className="px-3 py-2 text-zinc-600 whitespace-nowrap">{fmtDate(s.createdAt)}</td>
+                    <td className="px-3 py-2 text-zinc-600 whitespace-nowrap">{fmtDate(s.lastActiveAt)}</td>
+                    <td
+                      className="px-3 py-2 text-right font-mono text-zinc-700 tabular-nums"
+                      title={`PDF ${fmtBytes(s.pdf)} · Video ${fmtBytes(s.video)} · Ảnh ${fmtBytes(s.image)}`}
+                    >
+                      {s.total > 0 ? fmtBytes(s.total) : "—"}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => onDeleteSession(s.sessionId, s.title)}

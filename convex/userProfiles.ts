@@ -508,24 +508,37 @@ export const getResourceUsage = query({
       }
     }
 
-    const sessionMap = new Map(sessions.map((s) => [s._id, s]));
-    const topSessions = Array.from(sessionBytes.entries())
-      .map(([sid, b]) => {
-        const s = sessionMap.get(sid as Id<"sessions">);
-        return s
-          ? {
-              sessionId: sid as Id<"sessions">,
-              code: s.code,
-              title: s.title,
-              createdAt: s.createdAt,
-              status: s.status,
-              ...b,
-            }
-          : null;
+    // Người tạo: map userId -> profile (tên hiển thị / email)
+    const profiles = await ctx.db.query("userProfiles").collect();
+    const profileById = new Map(profiles.map((p) => [p.userId, p]));
+
+    // Hoạt động gần nhất mỗi buổi = max(tạo buổi, activity bắt đầu/tạo, response gửi)
+    const lastActiveBySession = new Map<string, number>();
+    const bumpActive = (sid: string, t: number | undefined) => {
+      if (!t) return;
+      const cur = lastActiveBySession.get(sid) ?? 0;
+      if (t > cur) lastActiveBySession.set(sid, t);
+    };
+    for (const a of activities) bumpActive(a.sessionId, a.startedAt ?? a.createdAt);
+    for (const r of responses) bumpActive(r.sessionId, r.submittedAt);
+
+    // Tất cả buổi (kèm storage, người tạo, ngày tạo, hoạt động gần nhất) — mới nhất trước
+    const allSessions = sessions
+      .map((s) => {
+        const b = sessionBytes.get(s._id) ?? { pdf: 0, video: 0, image: 0, total: 0 };
+        const owner = s.ownerUserId ? profileById.get(s.ownerUserId) : undefined;
+        return {
+          sessionId: s._id,
+          code: s.code,
+          title: s.title,
+          ownerName: owner?.displayName || owner?.email || null,
+          createdAt: s.createdAt,
+          lastActiveAt: Math.max(s.createdAt, lastActiveBySession.get(s._id) ?? 0),
+          status: s.status,
+          ...b,
+        };
       })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
+      .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
     // Free tier limits
     const FREE_FILE_STORAGE_BYTES = 1024 * 1024 * 1024; // 1 GiB
@@ -556,7 +569,7 @@ export const getResourceUsage = query({
           sessions.length + activities.length + responses.length + boardPosts.length +
           participants.length + rosters.length + pushSubs.length,
       },
-      topSessions,
+      allSessions,
     };
   },
 });
