@@ -1,24 +1,31 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
-import { computeAttendanceFromCheckin } from "./lms";
+import { computeAttendanceFromCheckin, resolveAccessMode } from "./lms";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
 //
 // CHỐNG GIAN LẬN (điểm danh hộ / làm bài hộ):
-// - 1 thiết bị (deviceId) chỉ được dùng cho 1 studentCode duy nhất trong 1 phòng
-// - Nếu cố join code khác từ cùng thiết bị → reject (báo "thiết bị đã đăng ký SV khác")
+// - 1 thiết bị (deviceId) chỉ được dùng cho 1 SV CHÍNH THỨC duy nhất trong 1 phòng
+// - Nếu cố join bằng MSV chính thức khác từ cùng thiết bị → reject
 // - Nếu studentCode đã có nhưng từ thiết bị khác → flag participant để giảng viên kiểm tra
 //
-// LIÊN THÔNG LMS: nếu session.lmsSessionId set:
-// - fullName/className truyền vào bị bỏ qua, lấy từ rosterCache theo studentCode
-// - studentCode không có trong rosterCache → REJECT
-// - Cutoff đi muộn dùng attendanceOpenAt + lateCutoffMinutes (LMS-driven)
-//   fallback sang officialStartAt + lateThresholdMinutes (legacy first-scan)
+// CHẾ ĐỘ VÀO PHÒNG (accessMode — xem resolveAccessMode trong lms.ts):
+// - roster : bắt buộc MSV có trong rosterCache, không có → REJECT (như cũ cho phòng LMS)
+// - open   : ai cũng vào; MSV khớp roster → SV chính thức; còn lại bắt buộc Họ tên + Lớp,
+//            đánh dấu KHÁCH (isGuest) — không điểm danh, không sync LMS
+// - public : quảng bá/đại trà; chỉ bắt buộc Họ tên, Lớp + MSV tùy chọn; mọi người không
+//            khớp roster đều là KHÁCH
+//
+// KHÁCH (isGuest): vẫn tham gia hoạt động, nhưng KHÔNG vào sổ điểm danh (attendanceStatus
+// để trống), KHÔNG auto-set T0, KHÔNG đẩy lên LMS. MSV trống → sinh guest_<deviceId>.
+//
+// ĐIỂM DANH (SV chính thức): cutoff đi muộn dùng attendanceOpenAt + lateCutoffMinutes
+// (LMS-driven), fallback officialStartAt + lateThresholdMinutes (legacy first-scan).
 export const joinSession = mutation({
   args: {
     code: v.string(),
-    studentCode: v.string(),
+    studentCode: v.optional(v.string()),  // tùy chọn ở chế độ open/public
     fullName: v.optional(v.string()),
     className: v.optional(v.string()),
     deviceId: v.optional(v.string()),
@@ -37,34 +44,53 @@ export const joinSession = mutation({
       throw new ConvexError("Phòng đã kết thúc");
     }
 
-    const studentCode = args.studentCode.trim();
-    if (!studentCode) {
-      throw new ConvexError("Vui lòng nhập mã sinh viên");
-    }
     const deviceId = args.deviceId?.trim() || undefined;
+    const inputStudentCode = (args.studentCode ?? "").trim();
+    const accessMode = resolveAccessMode(session);
     const isLmsLinked = !!session.lmsSessionId;
 
-    // Resolve fullName + className
+    // Tra danh sách lớp theo MSV (nếu có) — dùng chung cho cả 3 chế độ
+    const rosterRow = inputStudentCode
+      ? await ctx.db
+          .query("rosterCache")
+          .withIndex("by_session_and_student", (q) =>
+            q.eq("sessionId", session._id).eq("studentCode", inputStudentCode)
+          )
+          .first()
+      : null;
+
+    // Resolve danh tính + xác định SV chính thức / khách
+    let studentCode: string;
     let fullName: string;
     let className: string;
-    if (isLmsLinked) {
-      const rosterRow = await ctx.db
-        .query("rosterCache")
-        .withIndex("by_session_and_student", (q) =>
-          q.eq("sessionId", session._id).eq("studentCode", studentCode)
-        )
-        .first();
-      if (!rosterRow) {
-        throw new ConvexError("Mã sinh viên không có trong danh sách lớp. Liên hệ giảng viên để kiểm tra.");
-      }
+    let isGuest: boolean;
+
+    if (rosterRow) {
+      // Khớp danh sách lớp → SV chính thức (ở mọi chế độ)
+      studentCode = inputStudentCode;
       fullName = rosterRow.fullName;
-      className = session.className ?? "";
+      className = session.className ?? (args.className ?? "").trim();
+      isGuest = false;
+    } else if (accessMode === "roster") {
+      // Chế độ chặt: bắt buộc có trong danh sách lớp
+      if (!inputStudentCode) {
+        throw new ConvexError("Vui lòng nhập mã sinh viên");
+      }
+      throw new ConvexError("Mã sinh viên không có trong danh sách lớp. Liên hệ giảng viên để kiểm tra.");
     } else {
+      // open / public — khách vãng lai (không khớp danh sách lớp)
       fullName = (args.fullName ?? "").trim();
       className = (args.className ?? "").trim();
-      if (!fullName || !className) {
+      if (!fullName) {
+        throw new ConvexError("Vui lòng nhập họ và tên");
+      }
+      if (accessMode === "open" && !className) {
         throw new ConvexError("Vui lòng nhập đầy đủ Họ tên và Lớp");
       }
+      isGuest = true;
+      // MSV: dùng MSV khai (nếu có) để GV vẫn nhận diện, else sinh khóa ổn định theo thiết bị
+      studentCode = inputStudentCode
+        || (deviceId ? `guest_${deviceId}` : `guest_${Math.random().toString(36).slice(2, 12)}`);
     }
 
     // CHECK 1: Thiết bị này đã đăng ký SV khác trong phòng này chưa?
@@ -76,7 +102,15 @@ export const joinSession = mutation({
         )
         .first();
 
-      if (sameDevice && sameDevice.studentCode !== studentCode) {
+      // Chỉ chặn khi CẢ HAI là SV chính thức (chống điểm danh hộ). Khách (isGuest)
+      // được miễn — để chế độ open/public không vướng, và cho phép "nâng cấp" từ
+      // khách sang SV thật trên cùng thiết bị.
+      if (
+        sameDevice &&
+        sameDevice.studentCode !== studentCode &&
+        !sameDevice.isGuest &&
+        !isGuest
+      ) {
         throw new ConvexError(
           `Thiết bị này đã đăng ký SV "${sameDevice.studentCode}" (${sameDevice.fullName}) trong buổi. Mỗi thiết bị chỉ dùng cho 1 SV.`
         );
@@ -100,7 +134,27 @@ export const joinSession = mutation({
       const patch: Record<string, unknown> = {
         fullName,
         className,
+        isGuest,
       };
+
+      // Nâng cấp KHÁCH → SV chính thức (vd roster mới được đồng bộ sau khi khách
+      // đã join bằng MSV thật): tính điểm danh bù dựa trên giờ join trước đó.
+      if (existing.isGuest && !isGuest && !existing.attendanceStatus) {
+        let officialStartAt = session.officialStartAt;
+        if (!officialStartAt && !session.attendanceOpenAt) {
+          officialStartAt = existing.joinedAt;
+          await ctx.db.patch(session._id, { officialStartAt: existing.joinedAt });
+        }
+        patch.attendanceStatus = computeAttendanceFromCheckin(
+          existing.joinedAt,
+          session.attendanceOpenAt,
+          officialStartAt,
+          session.lateCutoffMinutes,
+          session.lateThresholdMinutes,
+          session.absentAfterMinutes
+        );
+        patch.checkinAt = existing.joinedAt;
+      }
 
       if (deviceId && existing.deviceId && existing.deviceId !== deviceId) {
         patch.deviceId = deviceId;
@@ -116,12 +170,45 @@ export const joinSession = mutation({
         participantId: existing._id,
         sessionId: session._id,
         flagged: !!patch.flagged,
-        attendanceStatus: existing.attendanceStatus ?? null,
+        studentCode,
+        isGuest,
+        attendanceStatus:
+          (patch.attendanceStatus as string | undefined) ??
+          existing.attendanceStatus ??
+          null,
         fullName,
         className,
       };
     }
 
+    // === KHÁCH: ghi nhận để GV thấy + tham gia hoạt động, KHÔNG vào sổ điểm danh ===
+    // Không auto-set T0, không attendanceStatus, không sync LMS.
+    if (isGuest) {
+      const participantId = await ctx.db.insert("participants", {
+        sessionId: session._id,
+        studentCode,
+        fullName,
+        className,
+        joinedAt,
+        deviceId,
+        deviceChangeCount: 0,
+        run: currentRun,
+        isGuest: true,
+      });
+      return {
+        participantId,
+        sessionId: session._id,
+        flagged: false,
+        studentCode,
+        isGuest: true,
+        attendanceStatus: null,
+        fullName,
+        className,
+        lateBySeconds: 0,
+      };
+    }
+
+    // === SV chính thức (khớp danh sách lớp): điểm danh + sync LMS ===
     // Auto-set officialStartAt nếu chưa có và session KHÔNG dùng attendanceOpenAt (LMS-driven)
     let officialStartAt = session.officialStartAt;
     if (!officialStartAt && !session.attendanceOpenAt) {
@@ -153,6 +240,7 @@ export const joinSession = mutation({
       attendanceManualOverride: false,
       checkinAt: joinedAt,
       checkinSource: isLmsLinked ? "presenter" : undefined,
+      isGuest: false,
     });
 
     // Fire-and-forget webhook sync sang LMS (nếu session liên thông LMS).
@@ -173,6 +261,8 @@ export const joinSession = mutation({
       participantId,
       sessionId: session._id,
       flagged: false,
+      studentCode,
+      isGuest: false,
       attendanceStatus,
       fullName,
       className,

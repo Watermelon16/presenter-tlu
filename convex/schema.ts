@@ -41,6 +41,17 @@ export default defineSchema({
     hostName: v.optional(v.string()),    // Tên giảng viên (tạm thời)
     collectStudentCode: v.optional(v.boolean()),     // Bật/tắt thu thập mã sinh viên cho toàn buổi
     status: v.union(v.literal("active"), v.literal("ended")),
+
+    // === Chế độ vào phòng (access mode) ===
+    // roster  = chỉ SV có MSV trong rosterCache mới vào (chặt — buổi chính quy LMS)
+    // open    = ghi danh tự do: ai cũng vào, bắt buộc Họ tên + Lớp, MSV tùy chọn
+    // public  = quảng bá/đại trà: chỉ cần Họ tên, Lớp + MSV tùy chọn
+    // undefined → suy ra: lmsSessionId ? "roster" : "open" (tương thích phòng cũ).
+    accessMode: v.optional(v.union(
+      v.literal("roster"),
+      v.literal("open"),
+      v.literal("public")
+    )),
     createdAt: v.number(),
     endedAt: v.optional(v.number()),
 
@@ -116,6 +127,11 @@ export default defineSchema({
 
     // === Phiên (run) — participant join trong phiên nào ===
     run: v.optional(v.number()),
+
+    // === Khách vãng lai (access mode open/public, không khớp danh sách lớp) ===
+    // isGuest=true → tham gia hoạt động bình thường nhưng KHÔNG vào sổ điểm danh,
+    // KHÔNG set attendanceStatus, KHÔNG đẩy lên LMS. undefined = SV chính thức.
+    isGuest: v.optional(v.boolean()),
 
     // === Điểm danh ===
     // Auto-compute khi join: present (≤T0+ngưỡng), late (>T0+ngưỡng).

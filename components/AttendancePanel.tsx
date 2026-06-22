@@ -58,6 +58,7 @@ export function AttendancePanel({
   const setStatusBulk = useMutation(api.participants.setAttendanceStatusBulk);
   const updateSettings = useMutation(api.participants.updateAttendanceSettings);
   const pushAllToLms = useMutation(api.participants.pushAllParticipantsToLms);
+  const setAccessMode = useMutation(api.sessions.setAccessMode);
   const [isPushingLms, setIsPushingLms] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
@@ -101,9 +102,9 @@ export function AttendancePanel({
   }
 
   const {
-    counts, rows, isLmsLinked, className,
+    counts, rows, isLmsLinked, className, accessMode,
     attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt,
-    rosterCount, rosterSyncedAt, sessionTitle,
+    rosterCount, guestCount, rosterSyncedAt, sessionTitle,
   } = state;
   const lateCutoffAt = attendanceOpenAt ? attendanceOpenAt + lateCutoffMinutes * 60_000 : null;
   const absentCutoffAt = attendanceOpenAt ? attendanceOpenAt + absentAfterMinutes * 60_000 : null;
@@ -257,6 +258,9 @@ export function AttendancePanel({
             </h2>
             <p className="text-xs text-zinc-500 mt-1">
               <strong className="text-zinc-700">{scannedSV}/{totalSV}</strong> SV đã scan · {t0Text}
+              {guestCount > 0 && (
+                <span className="ml-2 text-sky-700 font-medium">· {guestCount} khách (ngoài danh sách)</span>
+              )}
               {nextCutoff && !attendanceFinalizedAt && (
                 <span className="ml-2 text-emerald-700 font-medium">
                   ({fmtRemaining(nextCutoff.at, now)} đến mốc {nextCutoff.label})
@@ -303,6 +307,39 @@ export function AttendancePanel({
         {/* Settings collapsible */}
         {showSettings && (
           <div className="px-6 py-3 border-b border-zinc-100 bg-amber-50/40 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-zinc-700 block mb-1">Chế độ vào học</label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { key: "roster", label: "Danh sách lớp", desc: "Chỉ SV trong danh sách" },
+                  { key: "open", label: "Ghi danh tự do", desc: "Ai cũng vào · khai họ tên" },
+                  { key: "public", label: "Quảng bá", desc: "Chỉ cần họ tên" },
+                ] as const).map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={async () => {
+                      try {
+                        await setAccessMode({ sessionId, accessMode: m.key });
+                        toast.success(`Đã chuyển: ${m.label}`);
+                      } catch {
+                        toast.error("Không đổi được chế độ vào học");
+                      }
+                    }}
+                    className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                      accessMode === m.key
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-zinc-200 bg-white hover:bg-zinc-50"
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-zinc-800">{m.label}</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Khách (không có trong danh sách lớp) vẫn học được nhưng không vào sổ điểm danh.
+              </p>
+            </div>
             <div>
               <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng đi muộn (phút sau T₀)</label>
               <input

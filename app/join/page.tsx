@@ -39,7 +39,10 @@ function readSavedIdentity(): StoredIdentity | null {
     const saved = localStorage.getItem("student_identity_global");
     if (!saved) return null;
     const parsed = JSON.parse(saved) as StoredIdentity;
-    if (parsed.studentCode && parsed.fullName && parsed.className) return parsed;
+    // className có thể trống (phòng quảng bá/đại trà) — chỉ cần MSV + họ tên
+    if (parsed.studentCode && parsed.fullName) {
+      return { ...parsed, className: parsed.className ?? "" };
+    }
     return null;
   } catch {
     return null;
@@ -93,8 +96,16 @@ function JoinRoomForm() {
       : "skip"
   );
   const isLmsLinked = ctxQuery?.isLmsLinked ?? false;
-  const lmsRosterMatch = ctxQuery?.rosterMatch ?? null;
+  // Chế độ vào phòng — quyết định trường nào hiện/bắt buộc.
+  // Chưa biết (đang tải / chưa nhập mã) → mặc định "open": hiện đủ trường, không chặn nhầm.
+  const accessMode = ctxQuery?.accessMode ?? "open";
+  const rosterMatch = ctxQuery?.rosterMatch ?? null;
   const lmsClassName = ctxQuery?.className ?? null;
+  // roster: chỉ MSV (họ tên/lớp lấy tự động). open/public: khai họ tên (+ lớp).
+  const showNameFields = accessMode !== "roster";
+  const requireClass = accessMode === "open";
+  // Có danh sách lớp để đối chiếu MSV không (phòng LMS) → hiện gợi ý khớp / khách.
+  const hasRoster = ctxQuery?.rosterCount != null;
 
   // Sync code state khi codePrefill đổi (hydration timing) — chỉ trên transition từ rỗng → có
   useEffect(() => {
@@ -139,8 +150,21 @@ function JoinRoomForm() {
   }, [qrCode, savedIdentity, autoJoinPhase, joinSession, router]);
 
   const handleJoin = async () => {
-    if (!code.trim() || !studentCode.trim() || !fullName.trim() || !className.trim()) {
-      setError("Vui lòng điền đầy đủ thông tin");
+    if (!code.trim()) {
+      setError("Vui lòng nhập mã phòng");
+      return;
+    }
+    if (accessMode === "roster" && !studentCode.trim()) {
+      setError("Vui lòng nhập mã sinh viên");
+      return;
+    }
+    // Khớp danh sách lớp (rosterMatch) → họ tên/lớp lấy tự động, không cần khai.
+    if (showNameFields && !rosterMatch && !fullName.trim()) {
+      setError("Vui lòng nhập họ và tên");
+      return;
+    }
+    if (requireClass && !rosterMatch && !className.trim()) {
+      setError("Vui lòng nhập lớp");
       return;
     }
 
@@ -149,17 +173,21 @@ function JoinRoomForm() {
 
     try {
       const upperCode = code.trim().toUpperCase();
-      const identity = {
-        studentCode: studentCode.trim(),
-        fullName: fullName.trim(),
-        className: className.trim(),
-      };
-
-      await joinSession({
+      const result = await joinSession({
         code: upperCode,
-        ...identity,
+        studentCode: studentCode.trim() || undefined,
+        fullName: fullName.trim() || undefined,
+        className: className.trim() || undefined,
         deviceId: getOrCreateDeviceId(),
       });
+
+      // Lưu danh tính server đã resolve — khách không nhập MSV sẽ nhận guest_<device>,
+      // họ tên/lớp lấy từ danh sách lớp nếu khớp.
+      const identity = {
+        studentCode: result.studentCode ?? studentCode.trim(),
+        fullName: result.fullName ?? fullName.trim(),
+        className: result.className ?? className.trim(),
+      };
 
       localStorage.setItem(`student_${upperCode}`, JSON.stringify(identity));
       localStorage.setItem("student_identity_global", JSON.stringify(identity));
@@ -265,15 +293,28 @@ function JoinRoomForm() {
 
             <div className="pt-2 border-t">
               <p className="text-sm font-medium mb-3">
-                {isLmsLinked ? "Mã sinh viên" : "Thông tin sinh viên"}
+                {accessMode === "roster" ? "Mã sinh viên" : "Thông tin sinh viên"}
               </p>
-              {isLmsLinked && (
+
+              {/* Banner mô tả chế độ vào phòng */}
+              {accessMode === "roster" && (
                 <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                  Buổi này liên thông với LMS — chỉ cần nhập mã sinh viên,
-                  họ tên và lớp lấy tự động.
+                  {isLmsLinked
+                    ? "Buổi này liên thông với LMS — chỉ cần nhập mã sinh viên, họ tên và lớp lấy tự động."
+                    : "Buổi học theo danh sách lớp — nhập đúng mã sinh viên, họ tên và lớp lấy tự động."}
                 </div>
               )}
-              {!isLmsLinked && hasRememberedIdentity && (
+              {accessMode === "open" && (
+                <div className="mb-3 text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
+                  Buổi học mở — ai cũng vào được. Điền họ tên và lớp; mã sinh viên nếu có.
+                </div>
+              )}
+              {accessMode === "public" && (
+                <div className="mb-3 text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
+                  Buổi học quảng bá — chỉ cần họ tên là vào được.
+                </div>
+              )}
+              {showNameFields && hasRememberedIdentity && (
                 <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                   ✓ Đã nhớ thông tin từ lần trước. Sửa nếu cần.
                 </div>
@@ -281,30 +322,37 @@ function JoinRoomForm() {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-zinc-600 mb-1.5 block">Mã sinh viên</label>
+                  <label className="text-sm text-zinc-600 mb-1.5 block">
+                    {accessMode === "roster" ? "Mã sinh viên" : "Mã sinh viên (nếu có)"}
+                  </label>
                   <VnInput
                     placeholder="2351150001"
                     value={studentCode}
                     onValueChange={setStudentCode}
                     className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
-                  {isLmsLinked && studentCode.trim().length >= 4 && (
+                  {hasRoster && studentCode.trim().length >= 4 && (
                     <p className="text-xs mt-1.5">
-                      {lmsRosterMatch ? (
+                      {rosterMatch ? (
                         <span className="text-emerald-700">
-                          ✓ {lmsRosterMatch.fullName}
+                          ✓ {rosterMatch.fullName}
                           {lmsClassName ? ` — Lớp ${lmsClassName}` : ""}
                         </span>
-                      ) : ctxQuery && ctxQuery.rosterCount !== null ? (
+                      ) : accessMode === "roster" ? (
                         <span className="text-amber-700">
-                          ⚠️ MSV chưa khớp danh sách lớp ({ctxQuery.rosterCount} SV)
+                          ⚠️ MSV chưa khớp danh sách lớp ({ctxQuery?.rosterCount} SV)
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className="text-sky-700">
+                          Sẽ vào với tư cách khách (không có trong danh sách lớp)
+                        </span>
+                      )}
                     </p>
                   )}
                 </div>
 
-                {!isLmsLinked && (
+                {/* open/public: khai họ tên + lớp. Ẩn nếu MSV đã khớp danh sách (lấy tự động). */}
+                {showNameFields && !rosterMatch && (
                   <>
                     <div>
                       <label className="text-sm text-zinc-600 mb-1.5 block">Họ và tên</label>
@@ -317,7 +365,9 @@ function JoinRoomForm() {
                     </div>
 
                     <div>
-                      <label className="text-sm text-zinc-600 mb-1.5 block">Lớp</label>
+                      <label className="text-sm text-zinc-600 mb-1.5 block">
+                        {requireClass ? "Lớp" : "Lớp (nếu có)"}
+                      </label>
                       <VnInput
                         placeholder="VD: 65C"
                         value={className}
@@ -339,8 +389,9 @@ function JoinRoomForm() {
               disabled={
                 isLoading ||
                 !code.trim() ||
-                !studentCode.trim() ||
-                (!isLmsLinked && (!fullName.trim() || !className.trim()))
+                (accessMode === "roster" && !studentCode.trim()) ||
+                (showNameFields && !rosterMatch && !fullName.trim()) ||
+                (requireClass && !rosterMatch && !className.trim())
               }
               className="w-full h-11 text-base mt-2"
             >
@@ -348,8 +399,8 @@ function JoinRoomForm() {
             </Button>
 
             <p className="text-xs text-center text-zinc-500">
-              {isLmsLinked
-                ? "Họ tên và lớp lấy từ danh sách LMS"
+              {accessMode === "roster"
+                ? "Họ tên và lớp lấy từ danh sách lớp"
                 : "Thông tin sẽ được lưu trên máy này. Lần sau quét QR sẽ tự động vào phòng."}
             </p>
           </CardContent>

@@ -25,6 +25,12 @@ export const createSession = mutation({
     title: v.string(),
     hostName: v.optional(v.string()),
     collectStudentCode: v.optional(v.boolean()),   // Có thu thập mã SV cho buổi này không
+    // Chế độ vào phòng — phòng tạo tay không có danh sách lớp nên mặc định "open".
+    accessMode: v.optional(v.union(
+      v.literal("roster"),
+      v.literal("open"),
+      v.literal("public")
+    )),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireApprovedUser(ctx);
@@ -41,6 +47,7 @@ export const createSession = mutation({
       createdAt: Date.now(),
       currentRun: 1,  // Phiên đầu tiên
       ownerUserId: userId,
+      accessMode: args.accessMode ?? "open",
     });
 
     return { sessionId, code };
@@ -150,6 +157,22 @@ export const updateCollectStudentCode = mutation({
     await ctx.db.patch(args.sessionId, {
       collectStudentCode: args.collectStudentCode,
     });
+  },
+});
+
+// Đổi chế độ vào phòng giữa buổi (presenter):
+//   roster = theo danh sách lớp · open = ghi danh tự do · public = quảng bá/đại trà
+export const setAccessMode = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+    accessMode: v.union(
+      v.literal("roster"),
+      v.literal("open"),
+      v.literal("public")
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.sessionId, { accessMode: args.accessMode });
   },
 });
 

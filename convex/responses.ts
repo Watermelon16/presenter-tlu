@@ -947,6 +947,7 @@ export const getSessionFullExport = query({
         attendanceStatus: p.attendanceStatus ?? null,
         attendanceNote: p.attendanceNote ?? null,
         attendanceManualOverride: p.attendanceManualOverride ?? false,
+        isGuest: p.isGuest ?? false,
       };
     });
 

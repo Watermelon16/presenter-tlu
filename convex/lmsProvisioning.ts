@@ -122,6 +122,9 @@ export const createSessionFromLms = internalMutation({
       className: args.className,
       lmsClassId: args.lmsClassId,
       hostEmail: emailLower,
+      // Phòng LMS mặc định chặt theo danh sách lớp; GV có thể đổi sang open/public
+      // ngay trong Presenter nếu muốn đón SV vào muộn / khách.
+      accessMode: "roster",
     });
 
     // 5. Cache roster nếu LMS gửi

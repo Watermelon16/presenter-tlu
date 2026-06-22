@@ -27,6 +27,17 @@ export function toLmsStatus(internal: InternalStatus): LmsStatus {
   return internal;
 }
 
+// === Chế độ vào phòng ===
+// Suy ra accessMode cho session. Phòng cũ (chưa có field) → giữ hành vi trước đây:
+// liên thông LMS thì chặt theo danh sách lớp ("roster"), còn lại mở ghi danh ("open").
+export type AccessMode = "roster" | "open" | "public";
+export function resolveAccessMode(
+  session: Pick<Doc<"sessions">, "accessMode" | "lmsSessionId">
+): AccessMode {
+  if (session.accessMode) return session.accessMode;
+  return session.lmsSessionId ? "roster" : "open";
+}
+
 const DEFAULT_LATE_CUTOFF_MINUTES = 10;
 const DEFAULT_ABSENT_AFTER_MINUTES = 50;
 
@@ -429,7 +440,14 @@ export const getAttendanceState = query({
       .query("participants")
       .withIndex("by_session", (q) => q.eq("sessionId", session._id))
       .collect();
-    const presentInRun = participants.filter((p) => (p.run ?? 1) === currentRun);
+    // Khách (isGuest) KHÔNG vào sổ điểm danh — loại khỏi state/counts ở đây.
+    const presentInRun = participants.filter(
+      (p) => (p.run ?? 1) === currentRun && !p.isGuest
+    );
+    // Đếm khách riêng để GV biết có bao nhiêu người vãng lai đã vào (không tính điểm danh).
+    const guestCount = participants.filter(
+      (p) => (p.run ?? 1) === currentRun && p.isGuest
+    ).length;
 
     const byCode = new Map<string, Doc<"participants">>();
     for (const p of presentInRun) byCode.set(p.studentCode, p);
@@ -492,12 +510,14 @@ export const getAttendanceState = query({
       sessionId: session._id,
       sessionTitle: session.title,
       isLmsLinked,
+      accessMode: resolveAccessMode(session),
       attendanceOpenAt: session.attendanceOpenAt ?? session.officialStartAt ?? null,
       lateCutoffMinutes: session.lateCutoffMinutes ?? session.lateThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
       absentAfterMinutes: session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
       attendanceFinalizedAt: session.attendanceFinalizedAt ?? null,
       className: session.className ?? null,
       rosterCount: roster.length,
+      guestCount,
       rosterSyncedAt,
       counts: {
         present: rows.filter((r) => r.attendanceStatus === "present").length,
@@ -546,6 +566,7 @@ export const peekJoinContext = query({
       title: session.title,
       status: session.status,
       isLmsLinked,
+      accessMode: resolveAccessMode(session),
       className: session.className ?? null,
       attendanceOpenAt: session.attendanceOpenAt ?? null,
       lateCutoffMinutes: session.lateCutoffMinutes ?? session.lateThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,

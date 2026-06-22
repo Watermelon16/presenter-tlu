@@ -61,7 +61,6 @@ export default function ParticipantRoomPage() {
     api.lms.peekJoinContext,
     upperCode ? { code: upperCode } : "skip"
   );
-  const isLmsLinked = joinCtx?.isLmsLinked ?? false;
 
   // Check current user — nếu là GV đã login + sở hữu session (hoặc admin)
   // thì auto-redirect sang /presenter/CODE (host view). SV không login → ở lại /room/.
@@ -175,6 +174,20 @@ export default function ParticipantRoomPage() {
     return !!new URLSearchParams(window.location.search).get("sid")?.trim();
   });
 
+  // Chế độ vào phòng (accessMode) — quyết định trường nào hiện/bắt buộc trong form danh tính.
+  // roster: chỉ MSV (họ tên/lớp tự động) · open: MSV tùy chọn + họ tên + lớp · public: chỉ họ tên.
+  const accessMode = joinCtx?.accessMode ?? "open";
+  const showNameFields = accessMode !== "roster";
+  const requireClass = accessMode === "open";
+  // Đối chiếu MSV với danh sách lớp (nếu có) → hiện "✓ khớp" và miễn khai họ tên/lớp.
+  const roomCtxMatch = useQuery(
+    api.lms.peekJoinContext,
+    upperCode && studentCodeInput.trim()
+      ? { code: upperCode, studentCode: studentCodeInput.trim() }
+      : "skip"
+  );
+  const rosterMatch = roomCtxMatch?.rosterMatch ?? null;
+
   // Trạng thái vote (Poll)
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   // Trạng thái nhập cho Word Cloud
@@ -285,7 +298,7 @@ export default function ParticipantRoomPage() {
     if (perRoom) {
       try {
         const parsed = JSON.parse(perRoom) as StudentIdentity;
-        if (parsed.studentCode && parsed.fullName && parsed.className) {
+        if (parsed.studentCode && parsed.fullName) {
           setIdentity(parsed);
           return;
         }
@@ -297,7 +310,7 @@ export default function ParticipantRoomPage() {
     if (global) {
       try {
         const parsed = JSON.parse(global) as StudentIdentity;
-        if (parsed.studentCode && parsed.fullName && parsed.className) {
+        if (parsed.studentCode && parsed.fullName) {
           // Tự động đăng ký vào phòng này với identity đã nhớ
           joinSession({
             code: upperCode,
@@ -557,29 +570,36 @@ export default function ParticipantRoomPage() {
 
   // Lưu danh tính
   const saveIdentity = async () => {
-    if (!upperCode || !studentCodeInput.trim()) {
+    if (!upperCode) return;
+    // Khớp danh sách lớp (rosterMatch) → họ tên/lớp lấy tự động, không cần khai.
+    if (accessMode === "roster" && !studentCodeInput.trim()) {
       toast.error("Vui lòng nhập mã sinh viên");
       return;
     }
-    if (!isLmsLinked && (!fullNameInput.trim() || !classNameInput.trim())) {
-      toast.error("Vui lòng điền đầy đủ thông tin");
+    if (showNameFields && !rosterMatch && !fullNameInput.trim()) {
+      toast.error("Vui lòng nhập họ và tên");
+      return;
+    }
+    if (requireClass && !rosterMatch && !classNameInput.trim()) {
+      toast.error("Vui lòng nhập lớp");
       return;
     }
 
     try {
-      // Gọi join để tạo participant + auto-compute attendance status
-      // Phòng LMS-linked: backend sẽ tự lookup họ tên/lớp từ roster
+      // Gọi join để tạo participant + (nếu là SV chính thức) auto-compute điểm danh.
+      // MSV khớp danh sách → backend tự lookup họ tên/lớp. Khách → ghi nhận không điểm danh.
       const result = await joinSession({
         code: upperCode,
-        studentCode: studentCodeInput.trim(),
-        fullName: isLmsLinked ? undefined : fullNameInput.trim(),
-        className: isLmsLinked ? undefined : classNameInput.trim(),
+        studentCode: studentCodeInput.trim() || undefined,
+        fullName: showNameFields ? fullNameInput.trim() || undefined : undefined,
+        className: showNameFields ? classNameInput.trim() || undefined : undefined,
         deviceId: getOrCreateDeviceId(),
       });
 
-      // Backend trả fullName/className (đã resolve từ roster nếu LMS-linked)
+      // Backend trả studentCode (đã resolve — khách không có MSV nhận guest_<device>)
+      // + fullName/className (từ roster nếu khớp).
       const newIdentity: StudentIdentity = {
-        studentCode: studentCodeInput.trim(),
+        studentCode: result.studentCode ?? studentCodeInput.trim(),
         fullName: result.fullName ?? fullNameInput.trim(),
         className: result.className ?? classNameInput.trim(),
       };
@@ -1041,9 +1061,11 @@ export default function ParticipantRoomPage() {
               <div>
                 <div className="font-semibold text-zinc-900">Chào mừng đến với buổi giảng</div>
                 <p className="text-sm text-zinc-600 mt-0.5">
-                  {isLmsLinked
-                    ? `Buổi liên thông LMS${joinCtx?.className ? ` · Lớp ${joinCtx.className}` : ""}. Chỉ cần nhập mã sinh viên.`
-                    : "Vui lòng đăng ký thông tin để tham gia hoạt động khi giảng viên bắt đầu."}
+                  {accessMode === "roster"
+                    ? `Buổi học theo danh sách lớp${joinCtx?.className ? ` · Lớp ${joinCtx.className}` : ""}. Chỉ cần nhập mã sinh viên.`
+                    : accessMode === "public"
+                      ? "Buổi học quảng bá — chỉ cần nhập họ tên để vào học."
+                      : "Vui lòng đăng ký thông tin để tham gia. Mã sinh viên nếu có."}
                 </p>
               </div>
             </div>
@@ -1051,12 +1073,18 @@ export default function ParticipantRoomPage() {
             <div className="space-y-3">
               <VnInput
                 type="text"
-                placeholder="Mã sinh viên (VD: 2351150001)"
+                placeholder={accessMode === "roster" ? "Mã sinh viên (VD: 2351150001)" : "Mã sinh viên (nếu có)"}
                 value={studentCodeInput}
                 onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white font-mono"
               />
-              {!isLmsLinked && (
+              {rosterMatch && (
+                <p className="text-xs text-emerald-700">
+                  ✓ {rosterMatch.fullName}
+                  {joinCtx?.className ? ` — Lớp ${joinCtx.className}` : ""}
+                </p>
+              )}
+              {showNameFields && !rosterMatch && (
                 <>
                   <VnInput
                     type="text"
@@ -1067,7 +1095,7 @@ export default function ParticipantRoomPage() {
                   />
                   <VnInput
                     type="text"
-                    placeholder="Lớp (VD: 65C)"
+                    placeholder={requireClass ? "Lớp (VD: 65C)" : "Lớp (nếu có)"}
                     value={classNameInput}
                     onValueChange={setClassNameInput}
                     className="w-full px-4 py-3 rounded-xl border border-zinc-200 bg-white"
@@ -1077,16 +1105,17 @@ export default function ParticipantRoomPage() {
               <button
                 onClick={saveIdentity}
                 disabled={
-                  !studentCodeInput.trim() ||
-                  (!isLmsLinked && (!fullNameInput.trim() || !classNameInput.trim()))
+                  (accessMode === "roster" && !studentCodeInput.trim()) ||
+                  (showNameFields && !rosterMatch && !fullNameInput.trim()) ||
+                  (requireClass && !rosterMatch && !classNameInput.trim())
                 }
                 className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50"
               >
                 Đăng ký tham gia
               </button>
-              {isLmsLinked && (
+              {accessMode === "roster" && (
                 <p className="text-[11px] text-center text-zinc-500">
-                  Họ tên và lớp lấy tự động từ danh sách LMS
+                  Họ tên và lớp lấy tự động từ danh sách lớp
                 </p>
               )}
             </div>
@@ -1163,12 +1192,18 @@ export default function ParticipantRoomPage() {
                   <div className="space-y-3">
                     <VnInput
                       type="text"
-                      placeholder="Mã sinh viên (VD: 2351150001)"
+                      placeholder={accessMode === "roster" ? "Mã sinh viên (VD: 2351150001)" : "Mã sinh viên (nếu có)"}
                       value={studentCodeInput}
                       onValueChange={(v) => setStudentCodeInput(v.toUpperCase())}
                       className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white font-mono"
                     />
-                    {!isLmsLinked && (
+                    {rosterMatch && (
+                      <p className="text-xs text-emerald-700">
+                        ✓ {rosterMatch.fullName}
+                        {joinCtx?.className ? ` — Lớp ${joinCtx.className}` : ""}
+                      </p>
+                    )}
+                    {showNameFields && !rosterMatch && (
                       <>
                         <VnInput
                           type="text"
@@ -1179,7 +1214,7 @@ export default function ParticipantRoomPage() {
                         />
                         <VnInput
                           type="text"
-                          placeholder="Lớp (VD: 65C)"
+                          placeholder={requireClass ? "Lớp (VD: 65C)" : "Lớp (nếu có)"}
                           value={classNameInput}
                           onValueChange={setClassNameInput}
                           className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-white"

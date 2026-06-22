@@ -29,6 +29,8 @@ export default function CreateRoomPage() {
   const [title, setTitle] = useState("");
   const [hostName, setHostName] = useState("");
   const [collectStudentCode, setCollectStudentCode] = useState(true);
+  // Chế độ vào học cho phòng tạo tay (không có danh sách lớp): ghi danh tự do / quảng bá.
+  const [accessMode, setAccessMode] = useState<"open" | "public">("open");
   const [isLoading, setIsLoading] = useState(false);
   const [showManager, setShowManager] = useState(false);
   const [profileEnsured, setProfileEnsured] = useState(false);
@@ -83,6 +85,7 @@ export default function CreateRoomPage() {
         title: title.trim(),
         hostName: hostName.trim() || undefined,
         collectStudentCode,
+        accessMode,
       });
       router.push(`/presenter/${result.code}`);
     } catch (error: unknown) {
@@ -339,6 +342,39 @@ export default function CreateRoomPage() {
                     onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
                     className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Ai được vào học</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAccessMode("open")}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        accessMode === "open"
+                          ? "border-emerald-500 bg-emerald-50"
+                          : "border-zinc-200 hover:bg-zinc-50"
+                      }`}
+                    >
+                      <div className="text-sm font-medium">Ghi danh tự do</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">Ai cũng vào · khai họ tên + lớp</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccessMode("public")}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        accessMode === "public"
+                          ? "border-emerald-500 bg-emerald-50"
+                          : "border-zinc-200 hover:bg-zinc-50"
+                      }`}
+                    >
+                      <div className="text-sm font-medium">Quảng bá / đại trà</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">Mở tối đa · chỉ cần họ tên</div>
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1.5">
+                    Buổi theo danh sách lớp (chặt) áp dụng cho phòng tạo từ LMS.
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">

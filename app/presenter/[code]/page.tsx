@@ -1756,7 +1756,10 @@ function PresenterPage() {
         absent: "Vắng không phép",
         early_leave: "Về sớm",
       };
-      const attendanceRows = students.map((s, i) => ({
+      // Khách (isGuest) KHÔNG vào sổ điểm danh → loại khỏi sheet Điểm danh.
+      const attendanceRows = students
+        .filter((s) => !s.isGuest)
+        .map((s, i) => ({
         "STT": i + 1,
         "Mã SV": s.studentCode,
         "Họ tên": s.fullName,
