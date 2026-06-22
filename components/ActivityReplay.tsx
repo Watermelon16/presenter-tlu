@@ -37,7 +37,13 @@ const TYPE_LABEL: Record<string, { icon: string; label: string }> = {
   opentext: { icon: "📝", label: "Tự luận" },
 };
 
-export function ActivityReplay({ items }: { items: ReplayActivity[] }) {
+export function ActivityReplay({
+  items,
+  stats,
+}: {
+  items: ReplayActivity[];
+  stats?: { totalAnswered: number; totalActivities: number; participatedCount?: number };
+}) {
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -47,21 +53,33 @@ export function ActivityReplay({ items }: { items: ReplayActivity[] }) {
   );
   if (closed.length === 0) return null;
 
-  const participated = closed.filter((a) => a.myResponse?.status === "answered" || a.myBoardPosts.length > 0).length;
+  // Tiến độ tham gia toàn buổi (ưu tiên stats từ server; fallback đếm trong closed)
+  const totalActs = stats?.totalActivities ?? closed.length;
+  const answered =
+    stats?.totalAnswered ??
+    closed.filter((a) => a.myResponse?.status === "answered" || a.myBoardPosts.length > 0).length;
+  const pct = totalActs > 0 ? Math.round((answered / totalActs) * 100) : 0;
 
   return (
     <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full px-5 py-3 flex items-center justify-between hover:bg-zinc-50"
+        className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-zinc-50"
       >
-        <div className="text-left">
+        <div className="text-left flex-1 min-w-0">
           <div className="font-semibold text-zinc-900 text-sm flex items-center gap-1.5">
-            📚 Lịch sử buổi này <span className="text-xs text-zinc-500 font-normal">({closed.length} hoạt động đã đóng · bạn tham gia {participated})</span>
+            📚 Buổi học của bạn
+            <span className="text-xs text-zinc-400 font-normal">· {closed.length} hoạt động đã xong</span>
           </div>
-          <div className="text-[11px] text-zinc-500 mt-0.5">Bấm để xem lại câu trả lời + đáp án + stats lớp</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden max-w-[180px]">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-[11px] text-zinc-500 whitespace-nowrap">đã tham gia {answered}/{totalActs}</span>
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-1">Bấm để xem lại đáp án + thống kê lớp</div>
         </div>
-        <span className="text-zinc-400 text-lg">{open ? "▲" : "▼"}</span>
+        <span className="text-zinc-400 text-lg ml-2">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
@@ -121,8 +139,9 @@ function ReplayDetail({ act }: { act: ReplayActivity }) {
 function PollReplay({ act }: { act: ReplayActivity }) {
   const cfg = act.config as PollConfig;
   const options = cfg.options ?? [];
-  const myValue = act.myResponse?.value as { selectedOptions?: string[] } | undefined;
-  const mySelected = new Set(myValue?.selectedOptions ?? []);
+  // Poll lưu dưới dạng { choiceIds: [...] } (legacy: selectedOptions). Đọc cả hai.
+  const myValue = act.myResponse?.value as { choiceIds?: string[]; selectedOptions?: string[] } | undefined;
+  const mySelected = new Set(myValue?.choiceIds ?? myValue?.selectedOptions ?? []);
   const correctIds = new Set(cfg.correctOptionIds ?? []);
   const isQuiz = !!cfg.isQuiz;
   const counts = act.pollBreakdown ?? {};
@@ -267,15 +286,23 @@ function BoardReplay({ act }: { act: ReplayActivity }) {
 }
 
 function QAReplay({ act }: { act: ReplayActivity }) {
-  const myValue = act.myResponse?.value as { question?: string; isAnswered?: boolean } | undefined;
-  if (!myValue?.question) {
+  // Q&A lưu { text, status, answer } (legacy: question/isAnswered). Đọc cả hai.
+  const myValue = act.myResponse?.value as
+    | { text?: string; question?: string; status?: string; isAnswered?: boolean; answer?: string }
+    | undefined;
+  const question = myValue?.text || myValue?.question;
+  if (!question) {
     return <div className="text-sm text-zinc-500 italic">Bạn không gửi câu hỏi.</div>;
   }
+  const answered = myValue?.status === "answered" || myValue?.isAnswered;
   return (
     <div className="text-sm space-y-1">
       <div className="text-xs text-zinc-500">Câu hỏi của bạn:</div>
-      <div className="bg-white border border-zinc-200 px-3 py-2 rounded-lg">{myValue.question}</div>
-      {myValue.isAnswered && <div className="text-xs text-emerald-700">✓ Giảng viên đã trả lời</div>}
+      <div className="bg-white border border-zinc-200 px-3 py-2 rounded-lg">{question}</div>
+      {answered && <div className="text-xs text-emerald-700">✓ Giảng viên đã trả lời</div>}
+      {myValue?.answer && (
+        <div className="bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg text-emerald-900">{myValue.answer}</div>
+      )}
     </div>
   );
 }

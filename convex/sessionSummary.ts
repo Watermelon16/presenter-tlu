@@ -64,8 +64,9 @@ async function buildSnapshot(ctx: QueryCtx, sessionId: Id<"sessions">) {
         const optMap = new Map<string, { text: string; count: number }>();
         for (const opt of cfg.options ?? []) optMap.set(opt.id, { text: opt.text, count: 0 });
         for (const resp of resps) {
-          const v = resp.value as { selectedOptions?: string[] } | undefined;
-          for (const id of v?.selectedOptions ?? []) {
+          // Poll lưu { choiceIds: [...] } (legacy: selectedOptions). Đọc cả hai.
+          const v = resp.value as { choiceIds?: string[]; selectedOptions?: string[] } | undefined;
+          for (const id of v?.choiceIds ?? v?.selectedOptions ?? []) {
             const o = optMap.get(id);
             if (o) o.count++;
           }

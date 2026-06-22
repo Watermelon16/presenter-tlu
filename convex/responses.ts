@@ -183,8 +183,9 @@ export const getMyHistoryInSession = query({
     for (const act of visible.filter((a) => a.type === "poll")) {
       const counts: Record<string, number> = {};
       for (const r of allResponses.filter((x) => x.activityId === act._id && x.status === "answered")) {
-        const v = r.value as { selectedOptions?: string[] } | undefined;
-        for (const id of v?.selectedOptions ?? []) {
+        // Poll lưu { choiceIds: [...] } (legacy: selectedOptions). Đọc cả hai.
+        const v = r.value as { choiceIds?: string[]; selectedOptions?: string[] } | undefined;
+        for (const id of v?.choiceIds ?? v?.selectedOptions ?? []) {
           counts[id] = (counts[id] ?? 0) + 1;
         }
       }

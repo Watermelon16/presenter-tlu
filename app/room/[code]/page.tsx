@@ -472,9 +472,6 @@ export default function ParticipantRoomPage() {
       : "skip"
   );
 
-  // State để bung/thu lịch sử và xem chi tiết từng activity
-  const [showHistory, setShowHistory] = useState(true);
-  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   // Tính hạng cá nhân + stat tốc độ
   let myRank = -1;
@@ -903,12 +900,17 @@ export default function ParticipantRoomPage() {
         {identity && (
           <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center gap-3">
             <div className="text-emerald-600 text-lg leading-none mt-0.5">✓</div>
-            <div className="text-sm text-emerald-800 flex-1">
-              <span className="font-medium">{identity.fullName}</span>{" "}
-              <span className="text-emerald-700">({identity.studentCode})</span>
-              <span className="text-emerald-600"> · {identity.className}</span>
+            <div className="text-sm text-emerald-800 flex-1 min-w-0">
+              <span className="font-medium">{identity.fullName}</span>
+              {/* Ẩn mã khách (guest_dev_...) — chỉ hiện MSV thật cho gọn */}
+              {identity.studentCode && !identity.studentCode.startsWith("guest_") && (
+                <span className="text-emerald-700"> · {identity.studentCode}</span>
+              )}
+              {identity.className && identity.className !== "—" && (
+                <span className="text-emerald-600"> · {identity.className}</span>
+              )}
               <div className="text-[11px] text-emerald-700/80 mt-0.5">
-                ✓ Thiết bị đã đăng ký với SV này trong buổi
+                ✓ Thiết bị đã đăng ký trong buổi này
               </div>
             </div>
           </div>
@@ -959,80 +961,6 @@ export default function ParticipantRoomPage() {
             >
               ✕
             </button>
-          </div>
-        )}
-
-        {/* LỊCH SỬ BUỔI — SV xem lại closed activities */}
-        {identity && myHistory && (
-          <ActivityReplay items={(myHistory.items ?? []) as unknown as React.ComponentProps<typeof ActivityReplay>["items"]} />
-        )}
-
-        {/* THÀNH TÍCH CÁ NHÂN — chỉ hiện khi SV đã có điểm (đã tham gia ≥1 hoạt động) */}
-        {identity && myRankData && myRank >= 0 && myScore > 0 && (
-          <div className="mb-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-emerald-50 to-amber-50 px-5 py-4 border-b border-zinc-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs text-emerald-700 font-semibold tracking-wider">🏆 THÀNH TÍCH CỦA BẠN</div>
-                  <div className="flex items-baseline gap-3 mt-1">
-                    <div className="text-4xl font-bold text-zinc-900">#{myRank + 1}</div>
-                    <div className="text-sm text-zinc-600">
-                      <span className="font-semibold text-emerald-700">{myScore} điểm</span>
-                      {myAvgMs !== null && (
-                        <span className="ml-2 text-zinc-500">⚡ {formatTimeMs(myAvgMs)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {myRank === 0 && <div className="text-4xl">🥇</div>}
-                {myRank === 1 && <div className="text-4xl">🥈</div>}
-                {myRank === 2 && <div className="text-4xl">🥉</div>}
-                {myRank >= 3 && myRank < 10 && <div className="text-3xl">⭐</div>}
-              </div>
-              <div className="text-xs text-zinc-600 mt-2">
-                {rankData?.participantsWithScore || 0} / {rankData?.totalParticipants || 0} sinh viên có điểm
-              </div>
-            </div>
-
-            {/* Link xem lịch sử xuyên buổi */}
-            <div className="px-5 pt-3">
-              <Link
-                href={`/me?code=${encodeURIComponent(identity.studentCode)}`}
-                className="text-xs text-emerald-700 hover:text-emerald-900 hover:underline underline-offset-2"
-              >
-                📊 Xem thành tích qua các buổi khác →
-              </Link>
-            </div>
-
-            {/* Top 3 nhỏ */}
-            {rankData?.leaderboard && rankData.leaderboard.length > 0 && (
-              <div className="px-5 py-3">
-                <div className="text-[10px] tracking-wider text-zinc-500 font-medium mb-2">TOP 3</div>
-                <div className="space-y-1.5">
-                  {rankData.leaderboard.slice(0, 3).map((entry, idx) => {
-                    const isMe = entry.studentCode === identity.studentCode;
-                    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
-                    return (
-                      <div
-                        key={entry.studentCode}
-                        className={`flex items-center gap-3 text-sm py-1 px-2 rounded-lg ${isMe ? "bg-emerald-100 border border-emerald-300" : ""}`}
-                      >
-                        <span className="text-lg">{medal}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className={`font-medium truncate ${isMe ? "text-emerald-900" : "text-zinc-800"}`}>
-                            {entry.fullName} {isMe && <span className="text-xs text-emerald-700">(bạn)</span>}
-                          </div>
-                          {entry.avgResponseMs !== null && entry.avgResponseMs !== undefined && (
-                            <div className="text-[10px] text-zinc-500 font-mono">⚡ {formatTimeMs(entry.avgResponseMs)} TB</div>
-                          )}
-                        </div>
-                        <div className="text-sm font-mono font-semibold text-emerald-700 tabular-nums shrink-0">{entry.score} đ</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -1122,22 +1050,108 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
-        {/* Chưa có hoạt động + đã có identity — chỉ hiện "đợi" */}
+        {/* Đã vào phòng — chờ hoạt động. App realtime (Convex) nên tự cập nhật,
+            KHÔNG cần bấm gì. Thay nút "Làm mới" gây hiểu nhầm bằng chỉ báo kết nối
+            trực tiếp + gộp gọn thành tích cá nhân vào đây. */}
         {!activeActivity && identity && (
-          <div className="text-center py-16">
-            <div className="mx-auto w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center mb-6">
-              <span className="text-3xl">📭</span>
+          <div className="space-y-4">
+            <div className="bg-white border border-zinc-200 rounded-3xl px-6 py-8 text-center overflow-hidden">
+              {/* Sóng radar — đang "lắng nghe" giảng viên (Tailwind animate-ping) */}
+              <div className="relative mx-auto w-20 h-20 mb-5">
+                <span className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping" />
+                <span
+                  className="absolute inset-2 rounded-full bg-emerald-400/25 animate-ping"
+                  style={{ animationDelay: "0.7s" }}
+                />
+                <div className="absolute inset-3 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <span className="text-3xl">📡</span>
+                </div>
+              </div>
+
+              <h1 className="text-2xl font-semibold text-zinc-900 mb-1">
+                Bạn đã vào phòng 👋
+              </h1>
+              <div className="inline-flex items-center gap-2 text-sm text-emerald-700 mb-3">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                Kết nối trực tiếp · tự động cập nhật
+              </div>
+              <p className="text-zinc-600 text-sm max-w-xs mx-auto leading-relaxed">
+                Hoạt động sẽ <span className="font-medium text-zinc-900">tự hiện ngay</span> khi
+                giảng viên bắt đầu. Bạn không cần bấm gì cả — cứ để máy ở đây.
+              </p>
+
+              {/* Thành tích cá nhân — gộp gọn vào thẻ kết nối */}
+              {myRank >= 0 && myScore > 0 && (
+                <div className="mt-6 pt-6 border-t border-zinc-100">
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-zinc-50 rounded-2xl py-3">
+                      <div className="text-[11px] text-zinc-500">Hạng</div>
+                      <div className="text-xl font-semibold text-zinc-900">
+                        {myRank === 0 ? "🥇" : myRank === 1 ? "🥈" : myRank === 2 ? "🥉" : ""}#{myRank + 1}
+                      </div>
+                    </div>
+                    <div className="flex-1 bg-zinc-50 rounded-2xl py-3">
+                      <div className="text-[11px] text-zinc-500">Điểm</div>
+                      <div className="text-xl font-semibold text-emerald-700">{myScore}</div>
+                    </div>
+                    {myAvgMs !== null && (
+                      <div className="flex-1 bg-zinc-50 rounded-2xl py-3">
+                        <div className="text-[11px] text-zinc-500">Tốc độ TB</div>
+                        <div className="text-xl font-semibold text-zinc-900">⚡{formatTimeMs(myAvgMs)}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {rankData?.leaderboard && rankData.leaderboard.length > 0 && (
+                    <div className="mt-3 text-left">
+                      <div className="text-[10px] tracking-wider text-zinc-400 font-medium mb-1.5 text-center">
+                        TOP 3 THAM GIA
+                      </div>
+                      <div className="space-y-1">
+                        {rankData.leaderboard.slice(0, 3).map((entry, idx) => {
+                          const isMe = entry.studentCode === identity.studentCode;
+                          const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+                          return (
+                            <div
+                              key={entry.studentCode}
+                              className={`flex items-center gap-2 text-sm py-1 px-2 rounded-lg ${isMe ? "bg-emerald-50 border border-emerald-200" : ""}`}
+                            >
+                              <span>{medal}</span>
+                              <span className={`flex-1 truncate ${isMe ? "text-emerald-900 font-medium" : "text-zinc-700"}`}>
+                                {entry.fullName}{isMe && " (bạn)"}
+                              </span>
+                              <span className="font-mono text-emerald-700 text-xs shrink-0">{entry.score}đ</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <Link
+                    href={`/me?code=${encodeURIComponent(identity.studentCode)}`}
+                    className="inline-block mt-3 text-xs text-emerald-700 hover:text-emerald-900 hover:underline underline-offset-2"
+                  >
+                    📊 Xem thành tích qua các buổi khác →
+                  </Link>
+                </div>
+              )}
             </div>
-            <h1 className="text-2xl font-semibold text-zinc-800 mb-2">Đang chờ giảng viên</h1>
-            <p className="text-zinc-600 max-w-sm mx-auto">
-              Bạn đã đăng ký. Khi giảng viên bắt đầu hoạt động, bạn sẽ thấy ngay.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-6 px-5 py-2.5 text-sm rounded-xl border border-zinc-300 hover:bg-zinc-100 transition-colors"
-            >
-              Làm mới
-            </button>
+
+            {/* Trang tự cập nhật — link tải lại an toàn, nói rõ KHÔNG mất dữ liệu */}
+            <div className="text-center text-xs text-zinc-400">
+              💾 Thông tin của bạn đã được lưu ·{" "}
+              <button
+                onClick={() => window.location.reload()}
+                className="underline underline-offset-2 hover:text-zinc-600"
+              >
+                tải lại trang
+              </button>
+              <span className="text-zinc-300"> (không mất dữ liệu)</span>
+            </div>
           </div>
         )}
 
@@ -1885,215 +1899,19 @@ export default function ParticipantRoomPage() {
           </div>
         )}
 
-        {/* ============== LỊCH SỬ HOẠT ĐỘNG CỦA SV ============== */}
-        {identity && myHistory && myHistory.items.length > 0 && (
-          <div className="mt-8 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
-            >
-              <div className="text-left">
-                <div className="font-semibold text-zinc-900">📝 Lịch sử hoạt động</div>
-                <div className="text-xs text-zinc-600 mt-0.5">
-                  Đã tham gia {myHistory.stats.totalAnswered} / {myHistory.stats.totalActivities} hoạt động trong buổi
-                </div>
-              </div>
-              <div className="text-zinc-400 text-lg">{showHistory ? "▲" : "▼"}</div>
-            </button>
-
-            {showHistory && (
-              <div className="border-t border-zinc-200 divide-y divide-zinc-100">
-                {myHistory.items.map((item) => {
-                  const isExpanded = expandedHistoryId === item._id;
-                  const isAnsweredItem = item.myResponse?.status === "answered";
-                  const isCurrentActive = item.status === "active";
-                  const typeIcon: Record<string, string> = {
-                    poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️",
-                  };
-
-                  // Phân loại trạng thái màu
-                  const statusBadge =
-                    item.status === "active" ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-semibold">● ĐANG CHẠY</span>
-                    ) : item.status === "closed" ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG</span>
-                    ) : item.status === "expired" ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">HẾT GIỜ</span>
-                    ) : null;
-
-                  return (
-                    <div key={item._id} className={isCurrentActive ? "bg-emerald-50/40" : ""}>
-                      <button
-                        onClick={() => setExpandedHistoryId(isExpanded ? null : item._id)}
-                        className="w-full px-5 py-3 text-left hover:bg-zinc-50 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl shrink-0 mt-0.5">{typeIcon[item.type] || "•"}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-zinc-900">{item.title}</span>
-                              {statusBadge}
-                              {isAnsweredItem && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">✓ Bạn đã tham gia</span>
-                              )}
-                              {!item.hasParticipated && !isCurrentActive && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">Không tham gia</span>
-                              )}
-                            </div>
-                            <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                              {item.slideCue && <span className="text-amber-600">📍 {item.slideCue}</span>}
-                              <span>{item.totalAnswers} người trả lời</span>
-                              {item.requiresStudentCode ? (
-                                <span className="text-emerald-700">📋 Tính điểm</span>
-                              ) : (
-                                <span className="text-zinc-500">🕶️ Ẩn danh</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className="text-zinc-400 text-sm shrink-0">{isExpanded ? "▲" : "▼"}</span>
-                        </div>
-                      </button>
-
-                      {/* Chi tiết khi expanded */}
-                      {isExpanded && (
-                        <div className="px-5 pb-4 pl-14 text-sm text-zinc-700 space-y-2">
-                          {item.myResponse ? (
-                            <HistoryAnswerDisplay item={item} />
-                          ) : item.hasParticipated && item.myBoardPosts.length > 0 ? (
-                            <div className="space-y-2">
-                              <div className="text-xs text-zinc-500">Bài đăng của bạn:</div>
-                              {item.myBoardPosts.map((p) => (
-                                <div key={p._id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
-                                  {p.imageUrl && (
-                                    <img src={p.imageUrl} alt="" className="max-h-32 rounded mb-2" />
-                                  )}
-                                  <div>{p.content}</div>
-                                  <div className="text-xs text-emerald-600 mt-1">♥ {p.likes} likes</div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-zinc-500 italic">Bạn không trả lời hoạt động này.</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        {/* BUỔI HỌC CỦA BẠN — lịch sử DUY NHẤT (gộp 2 mục cũ), đặt ở CHÂN trang:
+            nội dung hiện tại (thẻ kết nối / hoạt động) là hero ở trên, phần xem
+            lại quá khứ nằm dưới cùng. */}
+        {identity && myHistory && (
+          <div className="mt-8">
+            <ActivityReplay
+              items={(myHistory.items ?? []) as unknown as React.ComponentProps<typeof ActivityReplay>["items"]}
+              stats={myHistory.stats}
+            />
           </div>
         )}
+
       </div>
     </div>
   );
-}
-
-/**
- * Hiển thị câu trả lời của SV cho 1 hoạt động trong lịch sử.
- * Format khác nhau tùy loại activity.
- */
-function HistoryAnswerDisplay({ item }: { item: {
-  type: string;
-  config: unknown;
-  myResponse: { value: unknown; status: string; submittedAt: number; deviceMismatch?: boolean } | null;
-} }) {
-  if (!item.myResponse) return null;
-  const val = item.myResponse.value;
-
-  // Quiz: kiểm tra đúng/sai
-  const cfg = item.config as { isQuiz?: boolean; correctOptionIds?: string[]; options?: Array<{ id: string; text: string }>; pollType?: string } | null;
-  const isQuiz = item.type === "poll" && cfg?.isQuiz && Array.isArray(cfg.correctOptionIds);
-
-  if (item.type === "poll") {
-    const choiceIds = (val as { choiceIds?: string[] })?.choiceIds || [];
-    const opts = cfg?.options || [];
-    const myChoices = opts.filter((o) => choiceIds.includes(o.id));
-
-    let isCorrect: boolean | null = null;
-    if (isQuiz && cfg.correctOptionIds) {
-      const correctSet = new Set(cfg.correctOptionIds);
-      const chosenSet = new Set(choiceIds);
-      isCorrect = chosenSet.size === correctSet.size && [...chosenSet].every((id) => correctSet.has(id));
-    }
-
-    return (
-      <div>
-        <div className="text-xs text-zinc-500 mb-1.5">Câu trả lời của bạn:</div>
-        <div className="space-y-1">
-          {myChoices.map((o) => (
-            <div key={o.id} className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm">
-              ✓ {o.text}
-            </div>
-          ))}
-        </div>
-        {isQuiz && (
-          <div className={`mt-2 text-sm font-medium ${isCorrect ? "text-emerald-700" : "text-red-600"}`}>
-            {isCorrect ? "🎉 Bạn trả lời đúng!" : "❌ Đáp án chưa đúng"}
-          </div>
-        )}
-        {isQuiz && !isCorrect && cfg?.correctOptionIds && (
-          <div className="mt-2">
-            <div className="text-xs text-zinc-500 mb-1">Đáp án đúng:</div>
-            {cfg.options?.filter((o) => cfg.correctOptionIds!.includes(o.id)).map((o) => (
-              <div key={o.id} className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-900 text-sm">
-                ✓ {o.text}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (item.type === "rating") {
-    const rating = (val as { rating?: number })?.rating ?? (typeof val === "number" ? val : null);
-    return (
-      <div>
-        <div className="text-xs text-zinc-500 mb-1">Bạn chấm:</div>
-        <div className="text-3xl font-bold text-emerald-700">{rating ?? "—"}</div>
-      </div>
-    );
-  }
-
-  if (item.type === "wordcloud") {
-    return (
-      <div>
-        <div className="text-xs text-zinc-500 mb-1">Từ khóa của bạn:</div>
-        <div className="text-base font-medium text-emerald-700">{typeof val === "string" ? val : ""}</div>
-      </div>
-    );
-  }
-
-  if (item.type === "opentext") {
-    return (
-      <div>
-        <div className="text-xs text-zinc-500 mb-1">Câu trả lời của bạn:</div>
-        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 whitespace-pre-wrap">{typeof val === "string" ? val : ""}</div>
-      </div>
-    );
-  }
-
-  if (item.type === "qa") {
-    const text = (val as { text?: string })?.text || (typeof val === "string" ? val : "");
-    const upvotes = (val as { upvotes?: number })?.upvotes || 0;
-    const answer = (val as { answer?: string })?.answer;
-    return (
-      <div>
-        <div className="text-xs text-zinc-500 mb-1">Câu hỏi của bạn:</div>
-        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
-          <div>{text}</div>
-          <div className="text-xs text-emerald-600 mt-2">👍 {upvotes} upvote</div>
-          {answer && (
-            <div className="mt-2 pt-2 border-t border-zinc-200">
-              <div className="text-[10px] font-bold text-emerald-700 mb-1">GIẢNG VIÊN TRẢ LỜI:</div>
-              <div className="text-emerald-900">{answer}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return null;
 }
