@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+// Gắn nhãn khách trùng thiết bị: nhiều khách cùng deviceId → "cùng máy #N". Hàm thuần
+// (không phải hook) để gọi an toàn sau early-return trong component.
+function computeGuestDeviceTags(guests: { deviceId: string | null }[]): Map<string, number> {
+  const count = new Map<string, number>();
+  for (const g of guests) if (g.deviceId) count.set(g.deviceId, (count.get(g.deviceId) ?? 0) + 1);
+  const tag = new Map<string, number>();
+  let n = 0;
+  for (const g of guests) {
+    if (g.deviceId && (count.get(g.deviceId) ?? 0) > 1 && !tag.has(g.deviceId)) tag.set(g.deviceId, ++n);
+  }
+  return tag;
+}
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -106,8 +119,15 @@ export function AttendancePanel({
     attendanceOpenAt, lateCutoffMinutes, absentAfterMinutes, attendanceFinalizedAt,
     rosterCount, guestCount, rosterSyncedAt, sessionTitle,
   } = state;
+  // Phòng thủ: nếu Convex chưa kịp deploy field mới → tránh crash (guests = [])
+  const guests = state.guests ?? [];
   const lateCutoffAt = attendanceOpenAt ? attendanceOpenAt + lateCutoffMinutes * 60_000 : null;
   const absentCutoffAt = attendanceOpenAt ? attendanceOpenAt + absentAfterMinutes * 60_000 : null;
+
+  // Đánh dấu khách đăng ký TRÙNG thiết bị (thường là đăng ký thử từ 1 điện thoại).
+  const guestDeviceTag = computeGuestDeviceTags(guests);
+  const dupGuestCount = guests.filter((g) => g.deviceId && guestDeviceTag.has(g.deviceId)).length;
+  const distinctGuestDevices = new Set(guests.map((g) => g.deviceId ?? `_${g.studentCode}`)).size;
 
   let nextCutoff: { label: string; at: number } | null = null;
   if (lateCutoffAt && now < lateCutoffAt) nextCutoff = { label: "muộn", at: lateCutoffAt };
@@ -471,6 +491,61 @@ export function AttendancePanel({
             </tbody>
           </table>
         </div>
+
+        {/* Danh sách KHÁCH (ngoài danh sách lớp) — không vào sổ điểm danh */}
+        {guests.length > 0 && (
+          <div className="px-6 py-3 border-t border-zinc-200 bg-sky-50/40 shrink-0 max-h-56 overflow-y-auto">
+            <div className="text-sm font-semibold text-sky-800 mb-2">
+              👤 Khách (ngoài danh sách): {guestCount}
+              {dupGuestCount > 0 && (
+                <span className="ml-2 text-xs font-normal text-amber-700">
+                  · ~{distinctGuestDevices} thiết bị thực · {dupGuestCount} đăng ký trùng máy
+                </span>
+              )}
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] text-zinc-500">
+                  <th className="px-2 py-1 w-7">#</th>
+                  <th className="px-2 py-1">Tên / Mã</th>
+                  <th className="px-2 py-1">Lớp</th>
+                  <th className="px-2 py-1 whitespace-nowrap">Giờ vào</th>
+                  <th className="px-2 py-1">Thiết bị</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-sky-100">
+                {guests.map((g, i) => {
+                  const tag = g.deviceId ? guestDeviceTag.get(g.deviceId) : undefined;
+                  return (
+                    <tr key={`${g.studentCode}_${i}`} className={tag ? "bg-amber-50/60" : ""}>
+                      <td className="px-2 py-1.5 text-zinc-400 tabular-nums">{i + 1}</td>
+                      <td className="px-2 py-1.5">
+                        <span className="text-zinc-800">{g.fullName || g.studentCode}</span>
+                        {g.studentCode && !g.studentCode.startsWith("guest_") && (
+                          <span className="ml-1.5 text-xs text-zinc-400 font-mono">{g.studentCode}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-zinc-600">{g.className || "—"}</td>
+                      <td className="px-2 py-1.5 text-zinc-500 whitespace-nowrap">{fmtTime(g.joinedAt)}</td>
+                      <td className="px-2 py-1.5">
+                        {tag ? (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+                            ⚠ cùng máy #{tag}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-zinc-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-zinc-500 mt-2">
+              Khách KHÔNG vào sổ điểm danh. Dòng tô vàng “cùng máy” = nhiều khách đăng ký từ 1 thiết bị (thường là đăng ký thử).
+            </p>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between gap-3 shrink-0">

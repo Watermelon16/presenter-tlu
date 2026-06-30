@@ -444,10 +444,20 @@ export const getAttendanceState = query({
     const presentInRun = participants.filter(
       (p) => (p.run ?? 1) === currentRun && !p.isGuest
     );
-    // Đếm khách riêng để GV biết có bao nhiêu người vãng lai đã vào (không tính điểm danh).
-    const guestCount = participants.filter(
-      (p) => (p.run ?? 1) === currentRun && p.isGuest
-    ).length;
+    // Khách (vãng lai) của phiên hiện tại — kèm deviceId để GV nhận ra đăng ký TRÙNG
+    // từ cùng 1 máy (thường là đăng ký thử → số lượng bị thổi phồng).
+    const guests = participants
+      .filter((p) => (p.run ?? 1) === currentRun && p.isGuest)
+      .sort((a, b) => a.joinedAt - b.joinedAt)
+      .map((p) => ({
+        studentCode: p.studentCode,
+        fullName: p.fullName,
+        className: p.className,
+        deviceId: p.deviceId ?? null,
+        joinedAt: p.joinedAt,
+        flagged: !!p.flagged,
+      }));
+    const guestCount = guests.length;
 
     const byCode = new Map<string, Doc<"participants">>();
     for (const p of presentInRun) byCode.set(p.studentCode, p);
@@ -518,6 +528,7 @@ export const getAttendanceState = query({
       className: session.className ?? null,
       rosterCount: roster.length,
       guestCount,
+      guests,
       rosterSyncedAt,
       counts: {
         present: rows.filter((r) => r.attendanceStatus === "present").length,
