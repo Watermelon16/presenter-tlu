@@ -37,6 +37,13 @@ function loadKey(p: Provider): string {
   try { return localStorage.getItem(KEY_PREFIX + p) || ""; } catch { return ""; }
 }
 
+// epoch ms → chuỗi cho <input type="datetime-local"> (giờ địa phương)
+function msToLocalInput(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 type ActivityLite = {
   _id: Id<"activities">;
   title: string;
@@ -75,6 +82,15 @@ export function SurveyBuilder({
   const [requiresStudentCode, setRequiresStudentCode] = useState(activity?.requiresStudentCode ?? false);
   const [timeLimit, setTimeLimit] = useState<string>(activity?.timeLimit ? String(activity.timeLimit) : "");
   const [slideCue, setSlideCue] = useState(activity?.slideCue ?? "");
+
+  const initSurveyCfg = activity?.config as SurveyConfig | undefined;
+  const [openMode, setOpenMode] = useState<"live" | "deadline">(
+    initSurveyCfg?.openMode === "deadline" ? "deadline" : "live"
+  );
+  const [deadlineLocal, setDeadlineLocal] = useState<string>(
+    initSurveyCfg?.deadline ? msToLocalInput(initSurveyCfg.deadline) : ""
+  );
+  const [allowEdit, setAllowEdit] = useState<boolean>(initSurveyCfg?.allowEdit !== false);
 
   const [showPreview, setShowPreview] = useState(false);
   const [showAi, setShowAi] = useState(false);
@@ -193,7 +209,14 @@ export function SurveyBuilder({
             .filter((q) => q.title.length > 0),
         }))
         .filter((s) => s.questions.length > 0),
+      openMode,
     };
+    if (openMode === "deadline") {
+      cleaned.deadline = deadlineLocal ? new Date(deadlineLocal).getTime() : undefined;
+      cleaned.allowEdit = allowEdit;
+      // giữ trạng thái mở/đóng hiện có (mặc định: đang nhận phản hồi)
+      cleaned.acceptingResponses = initSurveyCfg?.acceptingResponses ?? true;
+    }
 
     if (countQuestions(cleaned) === 0) {
       toast.error("Cần ít nhất 1 câu hỏi có nội dung");
@@ -208,7 +231,10 @@ export function SurveyBuilder({
       return;
     }
 
-    const tl = timeLimit.trim() ? Math.max(0, Number(timeLimit)) : undefined;
+    // Chế độ "mở đến hạn" dùng deadline, không dùng time limit của phiên live
+    const tl = openMode === "deadline"
+      ? undefined
+      : timeLimit.trim() ? Math.max(0, Number(timeLimit)) : undefined;
     setSaving(true);
     try {
       if (isEdit && activity) {
@@ -286,15 +312,56 @@ export function SurveyBuilder({
                   rows={2}
                   className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm focus:outline-none focus:border-violet-400 resize-y"
                 />
+
+                {/* Chế độ trả lời: trực tiếp vs mở đến hạn */}
+                <div className="rounded-lg border border-zinc-200 p-2.5 space-y-2">
+                  <div className="flex items-center gap-2 text-sm flex-wrap">
+                    <span className="font-medium text-zinc-700">Chế độ:</span>
+                    <div className="inline-flex rounded-lg border border-zinc-200 overflow-hidden text-xs">
+                      <button type="button" onClick={() => setOpenMode("live")}
+                        className={`px-3 py-1.5 ${openMode === "live" ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"}`}>
+                        ▶ Trực tiếp
+                      </button>
+                      <button type="button" onClick={() => setOpenMode("deadline")}
+                        className={`px-3 py-1.5 border-l border-zinc-200 ${openMode === "deadline" ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"}`}>
+                        🗓 Mở đến hạn
+                      </button>
+                    </div>
+                  </div>
+                  {openMode === "live" ? (
+                    <p className="text-[11px] text-zinc-500">GV kích hoạt → SV trả lời cùng lúc rồi đóng (như poll).</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-zinc-500">
+                        SV vào bằng <b>link/QR cố định</b> bất kỳ lúc nào trước hạn, nộp &amp; sửa được (kể cả SV vắng). Lấy QR ở thẻ hoạt động sau khi lưu.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                        <label className="flex items-center gap-1.5 text-zinc-600">
+                          Hạn nộp
+                          <input type="datetime-local" value={deadlineLocal} onChange={(e) => setDeadlineLocal(e.target.value)}
+                            className="h-8 px-2 rounded-lg border border-zinc-200 text-sm focus:outline-none focus:border-violet-400" />
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <input type="checkbox" checked={allowEdit} onChange={(e) => setAllowEdit(e.target.checked)} />
+                          Cho SV sửa bài trước hạn
+                        </label>
+                      </div>
+                      {!deadlineLocal && <p className="text-[11px] text-amber-600">Chưa đặt hạn → mở đến khi GV bấm “Đóng nhận”.</p>}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-                  <label className="flex items-center gap-1.5 text-zinc-600">
-                    Thời gian (phút)
-                    <Input
-                      type="number" min={0} step={0.5} value={timeLimit}
-                      onChange={(e) => setTimeLimit(e.target.value)}
-                      placeholder="∞" className="w-20 h-8"
-                    />
-                  </label>
+                  {openMode === "live" && (
+                    <label className="flex items-center gap-1.5 text-zinc-600">
+                      Thời gian (phút)
+                      <Input
+                        type="number" min={0} step={0.5} value={timeLimit}
+                        onChange={(e) => setTimeLimit(e.target.value)}
+                        placeholder="∞" className="w-20 h-8"
+                      />
+                    </label>
+                  )}
                   <label className="flex items-center gap-1.5">
                     <input
                       type="checkbox" checked={requiresStudentCode}

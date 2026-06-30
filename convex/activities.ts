@@ -281,6 +281,9 @@ export const restartAllActivities = mutation({
     for (const activity of activities) {
       // Bỏ qua draft (chưa chạy, không cần xoá gì)
       if (activity.status === "draft") continue;
+      // KHẢO SÁT: không xoá theo bulk "chạy lại tất cả" — dữ liệu thu thập dần
+      // (mở đến hạn) phải được giữ. Muốn reset khảo sát thì làm riêng từng cái.
+      if (activity.type === "survey") continue;
 
       // Xoá responses CỦA PHIÊN HIỆN TẠI (giữ lịch sử phiên cũ)
       const responses = await ctx.db
@@ -455,6 +458,26 @@ export const updateActivity = mutation({
     if (args.slideCue !== undefined) patch.slideCue = args.slideCue?.trim() || undefined;
 
     await ctx.db.patch(args.activityId, patch);
+    return true;
+  },
+});
+
+// KHẢO SÁT "mở đến hạn": bật/tắt nhận phản hồi + chỉnh deadline (không vướng khoá
+// "đang active" của updateActivity vì khảo sát async giữ status draft).
+export const setSurveyOpenState = mutation({
+  args: {
+    activityId: v.id("activities"),
+    acceptingResponses: v.optional(v.boolean()),
+    deadline: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") throw new Error("Không tìm thấy khảo sát");
+    await requireSessionOwner(ctx, activity.sessionId);
+    const config = { ...((activity.config ?? {}) as Record<string, unknown>) };
+    if (args.acceptingResponses !== undefined) config.acceptingResponses = args.acceptingResponses;
+    if (args.deadline !== undefined) config.deadline = args.deadline;
+    await ctx.db.patch(args.activityId, { config });
     return true;
   },
 });

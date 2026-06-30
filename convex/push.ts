@@ -31,6 +31,8 @@ export const sendActivityNotification = internalAction({
     title: v.string(),
     body: v.string(),
     url: v.optional(v.string()),
+    // Nếu có: chỉ gửi cho các SV này (vd nhắc người chưa nộp khảo sát).
+    studentCodes: v.optional(v.array(v.string())),
   },
   handler: async (
     ctx,
@@ -49,10 +51,16 @@ export const sendActivityNotification = internalAction({
 
     webPush.setVapidDetails(subject, publicKey, privateKey);
 
-    const subscriptions: Doc<"pushSubscriptions">[] = await ctx.runQuery(
+    let subscriptions: Doc<"pushSubscriptions">[] = await ctx.runQuery(
       api.pushSubscriptions.listSubscriptionsForSession,
       { sessionId: args.sessionId }
     );
+
+    // Lọc theo studentCode nếu chỉ nhắc một nhóm (vd SV chưa nộp khảo sát)
+    if (args.studentCodes && args.studentCodes.length > 0) {
+      const set = new Set(args.studentCodes);
+      subscriptions = subscriptions.filter((s) => s.studentCode && set.has(s.studentCode));
+    }
 
     if (subscriptions.length === 0) {
       return { sent: 0, total: 0 };

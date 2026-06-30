@@ -1,5 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { aggregateWordCloud } from "../lib/wordcloud";
 import { requireSessionOwner } from "./authz";
 
@@ -103,6 +104,78 @@ export const submitResponse = mutation({
     });
 
     return { success: true, deviceMismatch: !!deviceMismatch };
+  },
+});
+
+// ============================================================
+// KHẢO SÁT "MỞ ĐẾN HẠN" (async) — nộp & SỬA được qua link/QR cố định
+// trước deadline, KHÔNG phụ thuộc trạng thái active. PUBLIC (SV gọi).
+// ============================================================
+export const submitSurveyResponse = mutation({
+  args: {
+    activityId: v.id("activities"),
+    studentCode: v.optional(v.string()),
+    value: v.any(), // { answers: { [qid]: ... } }
+    deviceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") throw new Error("Không tìm thấy khảo sát");
+
+    const config = (activity.config ?? {}) as {
+      openMode?: string; deadline?: number; acceptingResponses?: boolean; allowEdit?: boolean;
+    };
+    if (config.openMode !== "deadline") {
+      throw new Error("Khảo sát này không ở chế độ mở đến hạn");
+    }
+    const now = Date.now();
+    if (config.acceptingResponses === false) throw new Error("Khảo sát đã đóng nhận phản hồi");
+    if (typeof config.deadline === "number" && config.deadline > 0 && now > config.deadline) {
+      throw new Error("Đã hết hạn nộp khảo sát");
+    }
+    if (activity.requiresStudentCode && !args.studentCode) {
+      throw new Error("Khảo sát này yêu cầu nhập mã sinh viên");
+    }
+
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    // Tìm bài đã nộp của SV/thiết bị trong phiên này → SỬA thay vì tạo trùng
+    let existing: { _id: import("./_generated/dataModel").Id<"responses"> } | null = null;
+    if (args.studentCode) {
+      const list = await ctx.db
+        .query("responses")
+        .withIndex("by_session_and_student", (q) =>
+          q.eq("sessionId", activity.sessionId).eq("studentCode", args.studentCode)
+        )
+        .filter((q) => q.eq(q.field("activityId"), args.activityId))
+        .collect();
+      existing = list.find((r) => (r.run ?? 1) === currentRun) ?? null;
+    } else if (args.deviceId) {
+      const all = await ctx.db
+        .query("responses")
+        .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+        .collect();
+      existing = all.find((r) => (r.run ?? 1) === currentRun && r.deviceId === args.deviceId) ?? null;
+    }
+
+    if (existing) {
+      if (config.allowEdit === false) throw new Error("Khảo sát không cho phép sửa lại");
+      await ctx.db.patch(existing._id, { value: args.value, submittedAt: now, status: "answered" });
+      return { success: true, edited: true };
+    }
+
+    await ctx.db.insert("responses", {
+      activityId: args.activityId,
+      sessionId: activity.sessionId,
+      studentCode: args.studentCode,
+      value: args.value,
+      status: "answered",
+      submittedAt: now,
+      deviceId: args.deviceId,
+      run: currentRun,
+    });
+    return { success: true, edited: false };
   },
 });
 
@@ -842,6 +915,183 @@ export const getSurveyResponses = query({
         };
       }),
     };
+  },
+});
+
+// PUBLIC: nạp khảo sát cho trang SV (truy cập qua link/QR cố định).
+export const getSurveyForStudent = query({
+  args: { activityId: v.id("activities") },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") return null;
+    const session = await ctx.db.get(activity.sessionId);
+    return {
+      activityId: args.activityId,
+      sessionCode: session?.code ?? "",
+      sessionTitle: session?.title ?? "",
+      title: activity.title,
+      config: activity.config ?? null,
+      requiresStudentCode: activity.requiresStudentCode,
+    };
+  },
+});
+
+// PUBLIC: bài khảo sát SV đã nộp (để hiện lại + cho sửa trước hạn).
+export const getMySurveyResponse = query({
+  args: {
+    activityId: v.id("activities"),
+    studentCode: v.optional(v.string()),
+    deviceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity) return null;
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    let found = null;
+    if (args.studentCode) {
+      const list = await ctx.db
+        .query("responses")
+        .withIndex("by_session_and_student", (q) =>
+          q.eq("sessionId", activity.sessionId).eq("studentCode", args.studentCode)
+        )
+        .filter((q) => q.eq(q.field("activityId"), args.activityId))
+        .collect();
+      found = list.find((r) => (r.run ?? 1) === currentRun) ?? null;
+    } else if (args.deviceId) {
+      const all = await ctx.db
+        .query("responses")
+        .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+        .collect();
+      found = all.find((r) => (r.run ?? 1) === currentRun && r.deviceId === args.deviceId) ?? null;
+    }
+    if (!found || found.status !== "answered") return null;
+    // Trả kèm danh tính đã lưu để client KHÔI PHỤC (không hỏi lại khi reload/sửa)
+    let fullName = "";
+    let className = "";
+    if (found.studentCode) {
+      const p = await ctx.db
+        .query("participants")
+        .withIndex("by_session_and_student", (q) =>
+          q.eq("sessionId", activity.sessionId).eq("studentCode", found.studentCode as string)
+        )
+        .first();
+      if (p) {
+        fullName = p.fullName;
+        className = p.className;
+      }
+    }
+    return {
+      value: found.value,
+      submittedAt: found.submittedAt,
+      studentCode: found.studentCode ?? null,
+      fullName,
+      className,
+    };
+  },
+});
+
+// Helper: gom "danh sách phải làm" (participants phiên hiện tại + roster LMS) + submitters.
+async function gatherSurveyParticipation(
+  ctx: { db: import("./_generated/server").QueryCtx["db"] },
+  activity: import("./_generated/dataModel").Doc<"activities">,
+  currentRun: number
+) {
+  const session = await ctx.db.get(activity.sessionId);
+  const all = await ctx.db
+    .query("responses")
+    .withIndex("by_activity", (q) => q.eq("activityId", activity._id))
+    .collect();
+  const submitted = all.filter((r) => (r.run ?? 1) === currentRun && r.status === "answered");
+  const submittedAtByCode = new Map<string, number>();
+  for (const r of submitted) if (r.studentCode) submittedAtByCode.set(r.studentCode, r.submittedAt);
+
+  const parts = (
+    await ctx.db
+      .query("participants")
+      .withIndex("by_session", (q) => q.eq("sessionId", activity.sessionId))
+      .collect()
+  ).filter((p) => (p.run ?? 1) === currentRun);
+  const roster = await ctx.db
+    .query("rosterCache")
+    .withIndex("by_session", (q) => q.eq("sessionId", activity.sessionId))
+    .collect();
+
+  type Person = { studentCode: string; fullName: string; className: string; isGuest?: boolean };
+  const people = new Map<string, Person>();
+  for (const r of roster) {
+    if (!people.has(r.studentCode))
+      people.set(r.studentCode, { studentCode: r.studentCode, fullName: r.fullName, className: session?.className ?? "" });
+  }
+  for (const p of parts) {
+    people.set(p.studentCode, { studentCode: p.studentCode, fullName: p.fullName, className: p.className, isGuest: p.isGuest });
+  }
+  return { people, submitted, submittedAtByCode };
+}
+
+// OWNER: bảng "Đã làm / Chưa làm" cho khảo sát (theo dõi ai còn thiếu).
+export const getSurveyParticipation = query({
+  args: { activityId: v.id("activities") },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") return null;
+    await requireSessionOwner(ctx, activity.sessionId);
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    const { people, submitted, submittedAtByCode } = await gatherSurveyParticipation(ctx, activity, currentRun);
+
+    type Row = { studentCode: string; fullName: string; className: string; isGuest?: boolean; submittedAt?: number };
+    const done: Row[] = [];
+    const notDone: Row[] = [];
+    for (const person of people.values()) {
+      if (submittedAtByCode.has(person.studentCode)) {
+        done.push({ ...person, submittedAt: submittedAtByCode.get(person.studentCode) });
+      } else {
+        notDone.push(person);
+      }
+    }
+    const extra: Row[] = submitted
+      .filter((r) => r.studentCode && !people.has(r.studentCode))
+      .map((r) => ({ studentCode: r.studentCode as string, fullName: "", className: "", submittedAt: r.submittedAt }));
+    const anonymousCount = submitted.filter((r) => !r.studentCode).length;
+
+    return {
+      totalShould: people.size,
+      doneCount: done.length + extra.length,
+      notDoneCount: notDone.length,
+      anonymousCount,
+      done: [...done, ...extra].sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0)),
+      notDone,
+    };
+  },
+});
+
+// OWNER: nhắc (push) các SV chưa nộp khảo sát.
+export const remindSurveyNonResponders = mutation({
+  args: { activityId: v.id("activities") },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") throw new Error("Không tìm thấy khảo sát");
+    await requireSessionOwner(ctx, activity.sessionId);
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+    const { people, submittedAtByCode } = await gatherSurveyParticipation(ctx, activity, currentRun);
+    const notDoneCodes = [...people.values()]
+      .filter((p) => !submittedAtByCode.has(p.studentCode))
+      .map((p) => p.studentCode);
+    if (notDoneCodes.length === 0) return { reminded: 0 };
+
+    const deadline = (activity.config as { deadline?: number })?.deadline;
+    const dl = deadline ? ` (hạn ${new Date(deadline).toLocaleString("vi-VN")})` : "";
+    await ctx.scheduler.runAfter(0, internal.push.sendActivityNotification, {
+      sessionId: activity.sessionId,
+      activityId: args.activityId,
+      title: "⏰ Nhắc làm khảo sát",
+      body: `Bạn chưa hoàn thành "${activity.title}"${dl}. Bấm để làm ngay.`,
+      url: `/room/${session?.code}/survey/${args.activityId}`,
+      studentCodes: notDoneCodes,
+    });
+    return { reminded: notDoneCodes.length };
   },
 });
 

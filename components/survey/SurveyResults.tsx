@@ -1,10 +1,13 @@
 "use client";
 
-// Kết quả KHẢO SÁT (phía giảng viên): thống kê per câu + biểu đồ, phân tích AI,
-// và export Excel/PDF (chọn nội dung). Mở dạng modal cuộn dọc.
+// Kết quả KHẢO SÁT (phía giảng viên). Trình bày THEO BẢN CHẤT từng loại câu:
+//   - Gộp được (chọn 1/nhiều/danh sách, Likert/sao/NPS, từ khoá) → biểu đồ + %/TB.
+//   - Dữ liệu riêng từng SV (trả lời ngắn/đoạn văn) → BẢNG: STT · Mã SV · Họ tên · Trả lời.
+// Có 2 chế độ xem: "Theo câu hỏi" và "Theo sinh viên" (mỗi SV 1 hàng × các câu).
+// Kèm phân tích AI + export Excel/PDF (chọn nội dung).
 
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -14,8 +17,11 @@ import { aggregateWordCloud } from "@/lib/wordcloud";
 import {
   type SurveyConfig,
   type SurveyAnswer,
+  type SurveyQuestion,
   type SurveyQuestionStat,
   aggregateSurvey,
+  flattenQuestions,
+  answerToText,
   questionTypeLabel,
 } from "@/lib/survey";
 import { runSurveyAnalysis, type SurveyAnalysis } from "@/lib/surveyAiClient";
@@ -34,6 +40,14 @@ function loadKey(p: Provider): string {
   try { return localStorage.getItem(KEY_PREFIX + p) || ""; } catch { return ""; }
 }
 
+type Respondent = {
+  studentCode: string | null;
+  fullName: string;
+  className: string;
+  answers: Record<string, SurveyAnswer>;
+  submittedAt: number;
+};
+
 interface Props {
   activityId: Id<"activities">;
   surveyTitle: string;
@@ -45,14 +59,43 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
   const dbKeys = useQuery(api.userProfiles.getMyAiApiKeys);
 
   const config = (data?.config ?? null) as SurveyConfig | null;
+  const questions = useMemo(() => flattenQuestions(config), [config]);
+  const respondents = useMemo(() => (data?.responses ?? []) as Respondent[], [data]);
+  const hasIdentity = data?.requiresStudentCode ?? false;
+
   const results = useMemo(() => {
     if (!config || !data) return null;
     return aggregateSurvey(
       config,
-      data.responses as Array<{ answers?: Record<string, SurveyAnswer> }>,
+      respondents,
       aggregateWordCloud
     );
-  }, [config, data]);
+  }, [config, data, respondents]);
+
+  const [view, setView] = useState<"byQuestion" | "byStudent" | "progress">("byQuestion");
+
+  // Tiến độ "Đã/Chưa làm" (chỉ tải khi mở tab) + nhắc SV chưa nộp
+  const participation = useQuery(
+    api.responses.getSurveyParticipation,
+    view === "progress" ? { activityId } : "skip"
+  );
+  const remind = useMutation(api.responses.remindSurveyNonResponders);
+  const [reminding, setReminding] = useState(false);
+  const handleRemind = async () => {
+    setReminding(true);
+    try {
+      const r = await remind({ activityId });
+      toast.success(
+        r.reminded > 0
+          ? `Đã gửi nhắc tới ${r.reminded} SV chưa làm`
+          : "Không có SV nào để nhắc (chưa ai bật thông báo, hoặc tất cả đã làm)"
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Lỗi gửi nhắc");
+    } finally {
+      setReminding(false);
+    }
+  };
 
   // AI analysis
   const [analysis, setAnalysis] = useState<SurveyAnalysis | null>(null);
@@ -96,7 +139,7 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
       results,
       respondents: data.responses as unknown as Parameters<typeof exportSurveyExcel>[0]["respondents"],
       analysis,
-      hasIdentity: data.requiresStudentCode,
+      hasIdentity,
     });
     toast.success("Đã xuất Excel");
   };
@@ -111,7 +154,7 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto" onClick={onClose}>
       <div
-        className="bg-zinc-50 rounded-2xl shadow-xl w-full max-w-3xl my-4 overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
+        className="bg-zinc-50 rounded-2xl shadow-xl w-full max-w-4xl my-4 overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
@@ -128,10 +171,34 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
 
         {/* toolbar */}
         <div className="px-5 py-2.5 border-b border-zinc-100 bg-white flex flex-wrap items-center gap-2 shrink-0">
+          {/* view toggle */}
+          <div className="inline-flex rounded-lg border border-zinc-200 overflow-hidden text-xs">
+            <button
+              onClick={() => setView("byQuestion")}
+              className={`px-3 py-1.5 ${view === "byQuestion" ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"}`}
+            >
+              Theo câu hỏi
+            </button>
+            <button
+              onClick={() => setView("byStudent")}
+              className={`px-3 py-1.5 border-l border-zinc-200 ${view === "byStudent" ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"}`}
+            >
+              Theo sinh viên
+            </button>
+            {hasIdentity && (
+              <button
+                onClick={() => setView("progress")}
+                className={`px-3 py-1.5 border-l border-zinc-200 ${view === "progress" ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"}`}
+              >
+                Tiến độ
+              </button>
+            )}
+          </div>
+
           <select
             value={model}
             onChange={(e) => { setModel(e.target.value); try { localStorage.setItem(MODEL_KEY, e.target.value); } catch {} }}
-            className="h-8 rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-300 max-w-[180px]"
+            className="h-8 rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-300 max-w-[150px]"
           >
             {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
@@ -157,6 +224,7 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
             {exportOpts.includeAnalysis && !analysis && (
               <p className="text-[11px] text-amber-700 mt-1.5">Chưa có phân tích AI — bấm “🧠 Phân tích AI” trước nếu muốn kèm.</p>
             )}
+            <p className="text-[11px] text-zinc-500 mt-1.5">Cần dữ liệu chi tiết từng SV (SĐT, email…) → dùng <b>📗 Excel</b> (sheet “Dữ liệu thô”).</p>
             <div className="mt-2.5">
               <Button size="sm" onClick={handlePdf}>📕 Mở bản in PDF</Button>
             </div>
@@ -166,15 +234,34 @@ export function SurveyResults({ activityId, surveyTitle, onClose }: Props) {
         {/* body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {!data && <div className="text-center text-sm text-zinc-400 py-10">Đang tải kết quả…</div>}
-          {data && results?.totalRespondents === 0 && (
+          {data && results?.totalRespondents === 0 && view !== "progress" && (
             <div className="text-center text-sm text-zinc-400 py-10">Chưa có sinh viên nào trả lời.</div>
           )}
 
-          {analysis && <AnalysisCard analysis={analysis} />}
+          {view === "progress" && <ProgressPanel data={participation} reminding={reminding} onRemind={handleRemind} />}
 
-          {results && results.questions.map((qs, i) => (
-            <QuestionResultCard key={qs.id} stat={qs} index={i + 1} />
-          ))}
+          {results && results.totalRespondents > 0 && view === "byQuestion" && (
+            <>
+              {analysis && <AnalysisCard analysis={analysis} />}
+              {results.questions.map((qs, i) => {
+                const q = questions.find((x) => x.id === qs.id);
+                return (
+                  <QuestionResultCard
+                    key={qs.id}
+                    stat={qs}
+                    index={i + 1}
+                    question={q}
+                    respondents={respondents}
+                    hasIdentity={hasIdentity}
+                  />
+                );
+              })}
+            </>
+          )}
+
+          {results && results.totalRespondents > 0 && view === "byStudent" && (
+            <RespondentTable questions={questions} respondents={respondents} hasIdentity={hasIdentity} />
+          )}
         </div>
       </div>
     </div>
@@ -235,7 +322,16 @@ function AnalysisCard({ analysis }: { analysis: SurveyAnalysis }) {
   );
 }
 
-function QuestionResultCard({ stat, index }: { stat: SurveyQuestionStat; index: number }) {
+function QuestionResultCard({
+  stat, index, question, respondents, hasIdentity,
+}: {
+  stat: SurveyQuestionStat;
+  index: number;
+  question?: SurveyQuestion;
+  respondents: Respondent[];
+  hasIdentity: boolean;
+}) {
+  const isText = stat.type === "short_text" || stat.type === "long_text";
   return (
     <div className="bg-white border border-zinc-200 rounded-xl p-4">
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -275,17 +371,238 @@ function QuestionResultCard({ stat, index }: { stat: SurveyQuestionStat; index: 
         </div>
       ) : stat.words && stat.words.length > 0 ? (
         <WordcloudBars words={stat.words.map((w) => ({ text: w.word, count: w.count }))} maxItems={12} />
-      ) : stat.texts ? (
+      ) : isText && question ? (
+        <AnswerTable question={question} respondents={respondents} hasIdentity={hasIdentity} />
+      ) : stat.texts && stat.texts.length > 0 ? (
         <div className="space-y-1.5 max-h-64 overflow-y-auto">
           {stat.texts.map((t, i) => (
-            <div key={i} className="text-sm text-zinc-700 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2">
-              {t}
-            </div>
+            <div key={i} className="text-sm text-zinc-700 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2">{t}</div>
           ))}
         </div>
       ) : (
         <p className="text-sm text-zinc-400">—</p>
       )}
+    </div>
+  );
+}
+
+// Bảng câu trả lời cho 1 câu "dữ liệu riêng" (text): STT · [Mã SV · Họ tên] · Trả lời
+function AnswerTable({
+  question, respondents, hasIdentity,
+}: {
+  question: SurveyQuestion;
+  respondents: Respondent[];
+  hasIdentity: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const rows = respondents
+    .map((r) => ({ r, text: answerToText(question, r.answers[question.id]) }))
+    .filter((x) => x.text.trim());
+  const needle = q.trim().toLowerCase();
+  const filtered = needle
+    ? rows.filter((x) =>
+        x.text.toLowerCase().includes(needle) ||
+        (x.r.fullName ?? "").toLowerCase().includes(needle) ||
+        (x.r.studentCode ?? "").toLowerCase().includes(needle))
+    : rows;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <span className="text-[11px] text-zinc-400">Mỗi SV một giá trị riêng — không tính %/trung bình.</span>
+        {rows.length > 8 && (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Tìm…"
+            className="h-7 w-32 px-2 rounded-md border border-zinc-200 text-xs focus:outline-none focus:border-violet-400"
+          />
+        )}
+      </div>
+      <div className="max-h-72 overflow-auto border border-zinc-100 rounded-lg">
+        <table className="w-full text-sm border-collapse">
+          <thead className="sticky top-0 bg-zinc-50">
+            <tr className="text-left text-[11px] text-zinc-500">
+              <th className="px-2 py-1.5 w-8 font-medium">#</th>
+              {hasIdentity && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Mã SV</th>}
+              {hasIdentity && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Họ tên</th>}
+              <th className="px-2 py-1.5 font-medium">Trả lời</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((x, i) => (
+              <tr key={i} className="border-t border-zinc-100 align-top">
+                <td className="px-2 py-1.5 text-zinc-400 tabular-nums">{i + 1}</td>
+                {hasIdentity && <td className="px-2 py-1.5 text-zinc-600 whitespace-nowrap font-mono text-xs">{x.r.studentCode || "—"}</td>}
+                {hasIdentity && <td className="px-2 py-1.5 text-zinc-700 whitespace-nowrap">{x.r.fullName || "—"}</td>}
+                <td className="px-2 py-1.5 text-zinc-800 break-words">{x.text}</td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={hasIdentity ? 4 : 2} className="px-2 py-3 text-center text-zinc-400 text-xs">Không có kết quả khớp.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Bảng "Theo sinh viên": mỗi SV 1 hàng × tất cả câu (giống sheet Dữ liệu thô).
+function RespondentTable({
+  questions, respondents, hasIdentity,
+}: {
+  questions: SurveyQuestion[];
+  respondents: Respondent[];
+  hasIdentity: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const filtered = needle
+    ? respondents.filter((r) =>
+        (r.fullName ?? "").toLowerCase().includes(needle) ||
+        (r.studentCode ?? "").toLowerCase().includes(needle) ||
+        (r.className ?? "").toLowerCase().includes(needle))
+    : respondents;
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl p-3">
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <span className="text-xs text-zinc-500">{respondents.length} sinh viên · {questions.length} câu</span>
+        {hasIdentity && respondents.length > 8 && (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Tìm SV…"
+            className="h-7 w-40 px-2 rounded-md border border-zinc-200 text-xs focus:outline-none focus:border-violet-400"
+          />
+        )}
+      </div>
+      <div className="max-h-[60vh] overflow-auto border border-zinc-100 rounded-lg">
+        <table className="text-sm border-collapse">
+          <thead className="sticky top-0 bg-zinc-50 z-10">
+            <tr className="text-left text-[11px] text-zinc-500">
+              <th className="px-2 py-1.5 w-8 font-medium sticky left-0 bg-zinc-50">#</th>
+              {hasIdentity && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Mã SV</th>}
+              {hasIdentity && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Họ tên</th>}
+              {questions.map((qq, i) => (
+                <th key={qq.id} className="px-2 py-1.5 font-medium whitespace-nowrap max-w-[220px] truncate" title={qq.title}>
+                  C{i + 1}. {qq.title || "(không tên)"}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r, i) => (
+              <tr key={i} className="border-t border-zinc-100 align-top hover:bg-zinc-50/50">
+                <td className="px-2 py-1.5 text-zinc-400 tabular-nums sticky left-0 bg-white">{i + 1}</td>
+                {hasIdentity && <td className="px-2 py-1.5 text-zinc-600 font-mono text-xs whitespace-nowrap">{r.studentCode || "—"}</td>}
+                {hasIdentity && <td className="px-2 py-1.5 text-zinc-700 whitespace-nowrap">{r.fullName || "—"}</td>}
+                {questions.map((qq) => {
+                  const txt = answerToText(qq, r.answers[qq.id]);
+                  return (
+                    <td key={qq.id} className="px-2 py-1.5 text-zinc-800 max-w-[260px]">
+                      <div className="line-clamp-3 break-words">{txt || <span className="text-zinc-300">—</span>}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={questions.length + (hasIdentity ? 3 : 1)} className="px-2 py-3 text-center text-zinc-400 text-xs">Không có kết quả khớp.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!hasIdentity && (
+        <p className="text-[11px] text-zinc-400 mt-1.5">Khảo sát ẩn danh — không có cột Mã SV/Họ tên. Bật “Gắn danh tính” khi tạo để theo dõi theo từng SV.</p>
+      )}
+    </div>
+  );
+}
+
+// ---- Tiến độ "Đã / Chưa làm" + nhắc SV chưa nộp ----
+type ProgressPerson = { studentCode: string; fullName: string; className: string; isGuest?: boolean; submittedAt?: number };
+type ProgressData = {
+  totalShould: number;
+  doneCount: number;
+  notDoneCount: number;
+  anonymousCount: number;
+  done: ProgressPerson[];
+  notDone: ProgressPerson[];
+};
+
+function ProgressPanel({
+  data, reminding, onRemind,
+}: {
+  data: ProgressData | null | undefined;
+  reminding: boolean;
+  onRemind: () => void;
+}) {
+  if (data === undefined) return <div className="text-center text-sm text-zinc-400 py-10">Đang tải tiến độ…</div>;
+  if (data === null) return <div className="text-center text-sm text-zinc-400 py-10">Không có dữ liệu tiến độ.</div>;
+  const pct = data.totalShould > 0 ? Math.round((data.doneCount / data.totalShould) * 100) : 0;
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded-xl p-4">
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div className="text-sm">
+            <span className="text-2xl font-bold text-emerald-600 tabular-nums">{data.doneCount}</span>
+            <span className="text-zinc-500"> / {data.totalShould} đã làm</span>
+            {data.anonymousCount > 0 && <span className="text-xs text-zinc-400 ml-2">+ {data.anonymousCount} ẩn danh</span>}
+          </div>
+          <Button size="sm" variant="outline" onClick={onRemind} disabled={reminding || data.notDoneCount === 0}>
+            {reminding ? "Đang nhắc…" : `🔔 Nhắc ${data.notDoneCount} SV chưa làm`}
+          </Button>
+        </div>
+        <div className="h-2 rounded-full bg-zinc-100 overflow-hidden">
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-[11px] text-zinc-400 mt-1">Nhắc qua thông báo đẩy — chỉ tới SV đã bật thông báo trên thiết bị.</p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <PeopleList title={`Chưa làm (${data.notDoneCount})`} tone="rose" people={data.notDone} />
+        <PeopleList title={`Đã làm (${data.doneCount})`} tone="emerald" people={data.done} showTime />
+      </div>
+      {data.totalShould === 0 && (
+        <p className="text-xs text-zinc-500 text-center px-4">
+          Chưa có danh sách lớp/SV để đối chiếu. Khi SV vào phòng hoặc có roster LMS, danh sách “chưa làm” sẽ hiện ở đây.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PeopleList({
+  title, tone, people, showTime,
+}: {
+  title: string;
+  tone: "rose" | "emerald";
+  people: ProgressPerson[];
+  showTime?: boolean;
+}) {
+  const head = tone === "rose" ? "text-rose-700" : "text-emerald-700";
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl p-3">
+      <div className={`text-xs font-semibold mb-2 ${head}`}>{title}</div>
+      <div className="max-h-72 overflow-auto space-y-0.5">
+        {people.length === 0 ? (
+          <p className="text-xs text-zinc-400">—</p>
+        ) : (
+          people.map((p, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-sm border-b border-zinc-50 py-1">
+              <span className="truncate min-w-0">
+                <span className="font-mono text-xs text-zinc-500 mr-2">{p.studentCode}</span>
+                {p.fullName || <span className="text-zinc-400">—</span>}
+              </span>
+              {showTime && p.submittedAt && (
+                <span className="text-[10px] text-zinc-400 shrink-0">{new Date(p.submittedAt).toLocaleString("vi-VN")}</span>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

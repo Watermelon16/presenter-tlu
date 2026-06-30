@@ -43,6 +43,10 @@ import { extractPdfLinks } from "@/lib/pdfLinks";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
 import { SurveyBuilder } from "@/components/survey/SurveyBuilder";
 import { SurveyResults } from "@/components/survey/SurveyResults";
+import { SurveyQrModal } from "@/components/survey/SurveyQrModal";
+import { isSurveyAsync, surveyOpenState, formatDeadline, aggregateSurvey, type SurveyConfig } from "@/lib/survey";
+import { aggregateWordCloud } from "@/lib/wordcloud";
+import { exportSurveyExcel } from "@/lib/surveyExport";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
 import { ApiKeysModal } from "@/components/ApiKeysModal";
 import { HelpModal } from "@/components/HelpModal";
@@ -620,6 +624,16 @@ function PresenterPage() {
   const [showSurveyBuilder, setShowSurveyBuilder] = useState(false);
   const [surveyEditActivity, setSurveyEditActivity] = useState<any>(null);
   const [surveyResultActivity, setSurveyResultActivity] = useState<{ id: Id<"activities">; title: string } | null>(null);
+  const [qrSurvey, setQrSurvey] = useState<{ url: string; title: string; deadlineLabel?: string } | null>(null);
+  const setSurveyOpenStateMut = useMutation(api.activities.setSurveyOpenState);
+  const handleToggleSurveyOpen = useCallback(async (activityId: string, nextOpen: boolean) => {
+    try {
+      await setSurveyOpenStateMut({ activityId: activityId as Id<"activities">, acceptingResponses: nextOpen });
+      toast.success(nextOpen ? "Đã mở nhận phản hồi" : "Đã đóng nhận phản hồi");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Lỗi đổi trạng thái");
+    }
+  }, [setSurveyOpenStateMut]);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [gradingActivityId, setGradingActivityId] = useState<Id<"activities"> | null>(null);
@@ -1480,6 +1494,52 @@ function PresenterPage() {
 
   // Chạy lại: reset chính activity đó (xóa responses cũ, mở lại để SV trả lời)
   const handleRestart = useCallback(async (activityId: string, title: string) => {
+    // KHẢO SÁT: chống mất dữ liệu — tự tải backup Excel TRƯỚC khi xoá.
+    const act = activities?.find((a) => a._id === activityId);
+    if (act?.type === "survey") {
+      const wantBackup = confirm(
+        `⚠️ "Chạy lại" sẽ XOÁ toàn bộ câu trả lời khảo sát "${title}".\n\n` +
+          "OK = Tải file backup Excel rồi tiếp tục\nCancel = Huỷ (không xoá gì)"
+      );
+      if (!wantBackup) return;
+      try {
+        const sData = await convex.query(api.responses.getSurveyResponses, {
+          activityId: activityId as Id<"activities">,
+        });
+        if (sData?.config) {
+          const cfg = sData.config as SurveyConfig;
+          const reps = sData.responses as unknown as Parameters<typeof exportSurveyExcel>[0]["respondents"];
+          const results = aggregateSurvey(
+            cfg,
+            sData.responses as unknown as Parameters<typeof aggregateSurvey>[1],
+            aggregateWordCloud
+          );
+          exportSurveyExcel({
+            surveyTitle: sData.title,
+            config: cfg,
+            results,
+            respondents: reps,
+            analysis: null,
+            hasIdentity: sData.requiresStudentCode,
+          });
+        }
+      } catch {
+        toast.error("Không tạo được backup — DỪNG để tránh mất dữ liệu.");
+        return;
+      }
+      if (!confirm(`Đã tải backup. XÁC NHẬN xoá câu trả lời và mở lại "${title}"?`)) return;
+      setIsDuplicating(activityId);
+      try {
+        await restartActivity({ activityId: activityId as Id<"activities"> });
+        toast.success("Đã chạy lại khảo sát (đã backup Excel).");
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Không thể chạy lại.");
+      } finally {
+        setIsDuplicating(null);
+      }
+      return;
+    }
+
     if (!confirm(`Chạy lại "${title}"? Toàn bộ câu trả lời cũ của SV sẽ bị xóa.`)) return;
     setIsDuplicating(activityId);
     try {
@@ -1491,7 +1551,7 @@ function PresenterPage() {
     } finally {
       setIsDuplicating(null);
     }
-  }, [restartActivity]);
+  }, [restartActivity, activities, convex]);
 
   // Sao chép (tách riêng — cho trường hợp muốn dùng template)
   const handleDuplicate = useCallback(async (activityId: string) => {
@@ -1514,6 +1574,44 @@ function PresenterPage() {
 
   // Xóa hoạt động
   const handleDelete = useCallback(async (activityId: string, title: string) => {
+    const act = activities?.find((a) => a._id === activityId);
+    // KHẢO SÁT có phản hồi → tự tải backup Excel trước khi xoá (chống mất dữ liệu)
+    if (act?.type === "survey") {
+      let sData: Awaited<ReturnType<typeof convex.query>> = null;
+      try {
+        sData = await convex.query(api.responses.getSurveyResponses, { activityId: activityId as Id<"activities"> });
+      } catch { /* bỏ qua — xử lý như không có dữ liệu */ }
+      const respCount = (sData as { totalRespondents?: number } | null)?.totalRespondents ?? 0;
+      if (respCount > 0) {
+        const d = sData as NonNullable<typeof sData> & {
+          config: unknown; title: string; requiresStudentCode: boolean; responses: unknown;
+        };
+        if (!confirm(`⚠️ Khảo sát "${title}" có ${respCount} phản hồi sẽ MẤT khi xoá.\n\nOK = Tải backup Excel rồi xoá\nCancel = Huỷ`)) return;
+        try {
+          const cfg = d.config as SurveyConfig;
+          const results = aggregateSurvey(cfg, d.responses as unknown as Parameters<typeof aggregateSurvey>[1], aggregateWordCloud);
+          exportSurveyExcel({
+            surveyTitle: d.title, config: cfg, results,
+            respondents: d.responses as unknown as Parameters<typeof exportSurveyExcel>[0]["respondents"],
+            analysis: null, hasIdentity: d.requiresStudentCode,
+          });
+        } catch {
+          toast.error("Không tạo được backup — DỪNG để tránh mất dữ liệu.");
+          return;
+        }
+        if (!confirm(`Đã tải backup. XÁC NHẬN xoá khảo sát "${title}"?`)) return;
+      } else {
+        if (!confirm(`Xoá khảo sát "${title}"?`)) return;
+      }
+      try {
+        await deleteActivity({ activityId: activityId as Id<"activities"> });
+        toast.success(respCount > 0 ? "Đã xoá khảo sát (đã backup)." : "Đã xoá khảo sát.");
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Không thể xoá");
+      }
+      return;
+    }
+
     if (!confirm(`Bạn có chắc muốn xóa hoạt động "${title}"?`)) return;
     try {
       await deleteActivity({ activityId: activityId as any });
@@ -1521,7 +1619,7 @@ function PresenterPage() {
     } catch (err: any) {
       toast.error(err?.message || "Không thể xóa hoạt động");
     }
-  }, [deleteActivity]);
+  }, [deleteActivity, activities, convex]);
 
   // Export kết quả buổi giảng ra CSV (dễ mở bằng Excel)
   const handleExportResults = async () => {
@@ -2718,6 +2816,12 @@ function PresenterPage() {
       poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️", video: "🎬", html: "✨", survey: "🗳",
     };
 
+    // Khảo sát "mở đến hạn" (async): không kích hoạt live, có QR + mở/đóng nhận
+    const sCfg = (activity.config ?? {}) as SurveyConfig;
+    const isAsyncSurvey = activity.type === "survey" && isSurveyAsync(sCfg);
+    const asyncState = isAsyncSurvey ? surveyOpenState(sCfg, Date.now()) : null;
+    const surveyAccepting = sCfg.acceptingResponses !== false;
+
     return (
       <div
         ref={setNodeRef}
@@ -2749,8 +2853,17 @@ function PresenterPage() {
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate flex items-center gap-2">
             {activity.title}
-            {activity.status === "draft" && (
+            {activity.status === "draft" && !isAsyncSurvey && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 font-medium">NHÁP</span>
+            )}
+            {isAsyncSurvey && asyncState === "open" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-violet-600 text-white font-semibold">🗓 ĐANG MỞ</span>
+            )}
+            {isAsyncSurvey && asyncState === "closed_by_teacher" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-300 text-zinc-700 font-medium">ĐÃ ĐÓNG NHẬN</span>
+            )}
+            {isAsyncSurvey && asyncState === "past_deadline" && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">HẾT HẠN</span>
             )}
             {activity.status === "active" && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-semibold animate-pulse">● ĐANG CHẠY · SV THẤY</span>
@@ -2763,8 +2876,11 @@ function PresenterPage() {
             )}
           </div>
           <div className="text-xs text-zinc-500 flex items-center gap-3 mt-0.5 flex-wrap">
-            <span className="capitalize">{activity.type}</span>
+            <span className="capitalize">{isAsyncSurvey ? "khảo sát · mở đến hạn" : activity.type}</span>
             {activity.timeLimit && <span className="text-blue-600">⏱ {activity.timeLimit}p</span>}
+            {isAsyncSurvey && sCfg.deadline && (
+              <span className="text-violet-700" title="Hạn nộp khảo sát">🗓 {formatDeadline(sCfg.deadline)}</span>
+            )}
             {activity.requiresStudentCode && <span className="text-emerald-700" title="Ghi nhận điểm tham gia">📋 Tính điểm</span>}
             {activity.slideCue && (
               <span className="text-amber-600 flex items-center gap-1">📍 {fmtSlide(activity.slideCue)}</span>
@@ -2773,8 +2889,44 @@ function PresenterPage() {
         </div>
 
         <div className="flex items-center gap-2 opacity-80 group-hover:opacity-100">
+          {/* Khảo sát "mở đến hạn": QR + mở/đóng nhận + kết quả (KHÔNG kích hoạt live) */}
+          {isAsyncSurvey && (
+            <>
+              <button
+                onClick={() =>
+                  setQrSurvey({
+                    url: `${window.location.origin}/room/${code}/survey/${activity._id}`,
+                    title: activity.title,
+                    deadlineLabel: sCfg.deadline ? formatDeadline(sCfg.deadline) : undefined,
+                  })
+                }
+                className="px-3 py-1.5 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors shadow-sm"
+                title="QR + link cố định để SV vào làm"
+              >
+                🔗 QR/Link
+              </button>
+              <button
+                onClick={() => handleToggleSurveyOpen(activity._id, !surveyAccepting)}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors border ${
+                  surveyAccepting
+                    ? "bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                    : "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-500"
+                }`}
+                title={surveyAccepting ? "Đóng nhận phản hồi" : "Mở nhận phản hồi"}
+              >
+                {surveyAccepting ? "⏸ Đóng nhận" : "▶ Mở nhận"}
+              </button>
+              <button
+                onClick={() => handleViewResult(activity._id)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-zinc-700 font-medium transition-colors"
+                title="Kết quả + tiến độ Đã/Chưa làm"
+              >
+                📊 Kết quả
+              </button>
+            </>
+          )}
           {/* Nút Bắt đầu / Đóng — quan trọng nhất, đặt to + nổi bật */}
-          {activity.status === "draft" && (
+          {activity.status === "draft" && !isAsyncSurvey && (
             <button
               onClick={() => handleStart(activity._id)}
               disabled={isStartingThis}
@@ -5857,6 +6009,16 @@ function PresenterPage() {
           activityId={surveyResultActivity.id}
           surveyTitle={surveyResultActivity.title}
           onClose={() => setSurveyResultActivity(null)}
+        />
+      )}
+
+      {/* Khảo sát: QR + link cố định */}
+      {qrSurvey && (
+        <SurveyQrModal
+          url={qrSurvey.url}
+          title={qrSurvey.title}
+          deadlineLabel={qrSurvey.deadlineLabel}
+          onClose={() => setQrSurvey(null)}
         />
       )}
 

@@ -57,10 +57,21 @@ export type SurveySection = {
   questions: SurveyQuestion[];
 };
 
+// Cơ chế mở:
+//  - "live"     : trực tiếp như poll (GV kích hoạt → SV trả lời cùng lúc → đóng). Mặc định.
+//  - "deadline" : "mở đến hạn" (async) — SV vào bằng link/QR cố định bất kỳ lúc nào trước
+//                 hạn, NỘP & SỬA được; không chiếm màn hình live. Dùng cho phiếu đăng ký,
+//                 khảo sát mang về, SV vắng/không kịp...
+export type SurveyOpenMode = "live" | "deadline";
+
 export type SurveyConfig = {
   intro?: string;                 // lời dẫn đầu biểu mẫu
   sections: SurveySection[];
   shuffleQuestions?: boolean;     // xáo trộn thứ tự câu trong từng mục (chống mồi)
+  openMode?: SurveyOpenMode;      // undefined = "live"
+  deadline?: number;              // epoch ms — hạn nộp (chỉ dùng khi openMode="deadline")
+  acceptingResponses?: boolean;   // GV bật/tắt nhận phản hồi sớm (mặc định: đang nhận)
+  allowEdit?: boolean;            // cho SV sửa lại bài trước hạn (mặc định bật ở deadline)
 };
 
 // ---- Giá trị trả lời -------------------------------------------------------
@@ -160,6 +171,37 @@ export function defaultSurveyConfig(): SurveyConfig {
     intro: "",
     sections: [{ ...newSection(""), questions: [newQuestion("likert", "")] }],
   };
+}
+
+// ---- Async "mở đến hạn" -----------------------------------------------------
+export function isSurveyAsync(config: SurveyConfig | undefined | null): boolean {
+  return config?.openMode === "deadline";
+}
+
+export type SurveyOpenState = "open" | "closed_by_teacher" | "past_deadline" | "not_async";
+
+// Trạng thái mở của khảo sát async tại thời điểm `now` (epoch ms).
+export function surveyOpenState(config: SurveyConfig | undefined | null, now: number): SurveyOpenState {
+  if (!isSurveyAsync(config)) return "not_async";
+  if (config!.acceptingResponses === false) return "closed_by_teacher";
+  if (typeof config!.deadline === "number" && config!.deadline > 0 && now > config!.deadline) return "past_deadline";
+  return "open";
+}
+export function isSurveyOpen(config: SurveyConfig | undefined | null, now: number): boolean {
+  return surveyOpenState(config, now) === "open";
+}
+export function surveyAllowsEdit(config: SurveyConfig | undefined | null): boolean {
+  return isSurveyAsync(config) && config!.allowEdit !== false;
+}
+export function formatDeadline(ms: number | undefined | null): string {
+  if (!ms) return "";
+  try {
+    return new Date(ms).toLocaleString("vi-VN", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 // ---- Truy cập ----------------------------------------------------------------
