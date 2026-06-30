@@ -185,6 +185,34 @@ export const joinSession = mutation({
     // === KHÁCH: ghi nhận để GV thấy + tham gia hoạt động, KHÔNG vào sổ điểm danh ===
     // Không auto-set T0, không attendanceStatus, không sync LMS.
     if (isGuest) {
+      // 1 THIẾT BỊ = 1 KHÁCH: nếu thiết bị này đã có 1 khách trong PHIÊN HIỆN TẠI →
+      // DÙNG LẠI bản ghi đó (cập nhật tên/lớp theo lần mới nhất), KHÔNG tạo khách mới
+      // → số lượng không bị thổi phồng khi 1 máy đăng ký nhiều lần. Giữ nguyên
+      // studentCode gốc (định danh ổn định) để không lệch dữ liệu trả lời đã có.
+      if (deviceId) {
+        const sameDeviceGuest = await ctx.db
+          .query("participants")
+          .withIndex("by_session_and_device", (q) =>
+            q.eq("sessionId", session._id).eq("deviceId", deviceId)
+          )
+          .filter((q) => q.eq(q.field("isGuest"), true))
+          .first();
+        if (sameDeviceGuest && (sameDeviceGuest.run ?? 1) === currentRun) {
+          await ctx.db.patch(sameDeviceGuest._id, { fullName, className });
+          return {
+            participantId: sameDeviceGuest._id,
+            sessionId: session._id,
+            flagged: false,
+            studentCode: sameDeviceGuest.studentCode,
+            isGuest: true,
+            attendanceStatus: null,
+            fullName,
+            className,
+            lateBySeconds: 0,
+          };
+        }
+      }
+
       const participantId = await ctx.db.insert("participants", {
         sessionId: session._id,
         studentCode,
