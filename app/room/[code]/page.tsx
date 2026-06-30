@@ -10,6 +10,8 @@ import { VnInput, VnTextarea } from "@/components/VnInput";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { ActivityReplay } from "@/components/ActivityReplay";
 import { ReactionBar } from "@/components/ReactionBar";
+import { SurveyForm } from "@/components/survey/SurveyForm";
+import type { SurveyAnswer } from "@/lib/survey";
 
 // Append voice transcript vào current text (space giữa nếu cần)
 function appendVoice(current: string, voice: string): string {
@@ -761,6 +763,32 @@ export default function ParticipantRoomPage() {
     }
   };
 
+  // Gửi KHẢO SÁT (biểu mẫu gộp) — SurveyForm tự quản lý state, validate trước khi gọi.
+  const handleSurveySubmit = async (answers: Record<string, SurveyAnswer>) => {
+    if (!activeActivity) return;
+    if (!identity && activeActivity.requiresStudentCode) {
+      setShowIdentityForm(true);
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmitError("");
+    try {
+      await submitResponse({
+        activityId: activeActivity._id,
+        studentCode: identity?.studentCode,
+        value: { answers },
+        deviceId: getOrCreateDeviceId(),
+      });
+      setHasSubmitted(true);
+      toast.success("Đã gửi khảo sát. Cảm ơn bạn!");
+    } catch (err: any) {
+      setSubmitError(err.message || "Gửi thất bại");
+      toast.error(err.message || "Gửi khảo sát thất bại");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Format thời gian còn lại
   const formatTimeLeft = (minutes: number) => {
     const mins = Math.floor(minutes);
@@ -1415,6 +1443,16 @@ export default function ParticipantRoomPage() {
               </div>
             )}
 
+            {/* Form trả lời - Khảo sát (biểu mẫu gộp, SV điền & gửi 1 lần) */}
+            {activeActivity.type === "survey" && !hasSubmitted && (
+              <SurveyForm
+                config={activeActivity.config?.sections ? activeActivity.config : { sections: [] }}
+                disabled={timeLeft !== null && timeLeft <= 0}
+                submitting={isSubmitting}
+                onSubmit={handleSurveySubmit}
+              />
+            )}
+
             {/* Form trả lời - Rating / Thang điểm */}
             {activeActivity.type === "rating" && !hasSubmitted && (() => {
               const cfg = activeActivity.config || {};
@@ -1647,8 +1685,36 @@ export default function ParticipantRoomPage() {
               </div>
             )}
 
+            {/* Khảo sát: xác nhận đã gửi + xem lại câu trả lời (read-only) */}
+            {hasSubmitted && activeActivity?.type === "survey" && (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-6 text-center">
+                  <div className="text-5xl mb-3">✅</div>
+                  <div className="text-2xl font-semibold text-emerald-800 mb-1">Đã gửi khảo sát!</div>
+                  <p className="text-emerald-700 text-sm">
+                    Cảm ơn bạn đã dành thời gian trả lời
+                    {activeActivity.requiresStudentCode ? " — phản hồi được ghi nhận." : " — khảo sát ẩn danh."}
+                  </p>
+                </div>
+                {myResponse?.value?.answers && (
+                  <details className="bg-white border border-zinc-200 rounded-2xl p-4">
+                    <summary className="cursor-pointer text-sm font-medium text-zinc-600">
+                      Xem lại câu trả lời của bạn
+                    </summary>
+                    <div className="mt-4">
+                      <SurveyForm
+                        config={activeActivity.config?.sections ? activeActivity.config : { sections: [] }}
+                        initialAnswers={myResponse.value.answers}
+                        readOnly
+                      />
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+
             {/* Feedback sau khi tham gia - Tối ưu trải nghiệm sinh viên */}
-            {hasSubmitted && activeActivity?.type !== "board" && (
+            {hasSubmitted && activeActivity?.type !== "board" && activeActivity?.type !== "survey" && (
               <div className={`border rounded-3xl p-8 text-center ${
                 isQuiz
                   ? isCorrect

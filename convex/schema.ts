@@ -182,7 +182,11 @@ export default defineSchema({
       v.literal("qa"),
       v.literal("opentext"),
       v.literal("video"),
-      v.literal("html")
+      v.literal("html"),
+      // Khảo sát "biểu mẫu gộp": 1 activity chứa nhiều câu hỏi đa dạng
+      // (chọn 1/nhiều, dropdown, Likert, sao, NPS, tự luận...) chia theo mục.
+      // config = SurveyConfig (lib/survey.ts); value = { answers: { [qid]: ... } }.
+      v.literal("survey")
     ),
     title: v.string(),                    // Tiêu đề hoạt động
     config: v.any(),                      // Cấu hình chi tiết (câu hỏi, lựa chọn, thang điểm...)

@@ -41,7 +41,8 @@ import { SessionTimer } from "@/components/SessionTimer";
 import { ReactionsOverlay } from "@/components/ReactionsOverlay";
 import { extractPdfLinks } from "@/lib/pdfLinks";
 import { OpentextGradingModal } from "@/components/OpentextGradingModal";
-import { SurveyAiGenModal } from "@/components/SurveyAiGenModal";
+import { SurveyBuilder } from "@/components/survey/SurveyBuilder";
+import { SurveyResults } from "@/components/survey/SurveyResults";
 import { Dropdown, DropdownItem, DropdownDivider, DropdownLabel } from "@/components/Dropdown";
 import { ApiKeysModal } from "@/components/ApiKeysModal";
 import { HelpModal } from "@/components/HelpModal";
@@ -615,7 +616,10 @@ function PresenterPage() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showSingleAiModal, setShowSingleAiModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
-  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  // Khảo sát (biểu mẫu gộp): builder tạo/sửa + modal kết quả
+  const [showSurveyBuilder, setShowSurveyBuilder] = useState(false);
+  const [surveyEditActivity, setSurveyEditActivity] = useState<any>(null);
+  const [surveyResultActivity, setSurveyResultActivity] = useState<{ id: Id<"activities">; title: string } | null>(null);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [gradingActivityId, setGradingActivityId] = useState<Id<"activities"> | null>(null);
@@ -1456,13 +1460,19 @@ function PresenterPage() {
 
   // Xem lại kết quả + nhận xét của hoạt động cũ (đã đóng) — KHÔNG kích hoạt lại
   const handleViewResult = useCallback((activityId: string) => {
+    // Khảo sát: mở modal kết quả riêng (thống kê per câu + phân tích + export)
+    const act = activities?.find((a) => a._id === activityId);
+    if (act?.type === "survey") {
+      setSurveyResultActivity({ id: activityId as Id<"activities">, title: act.title });
+      return;
+    }
     setRevealActivityId(activityId);
     setFullscreenOverlay((cur) => {
       if (cur === "slides") setOverlayReturnTo("slides");
       return "result";
     });
     setResultTab("result");
-  }, []);
+  }, [activities]);
 
   const handleMoveUp = useCallback((activityId: string) => {
     moveActivityUp({ activityId: activityId as any });
@@ -2526,6 +2536,12 @@ function PresenterPage() {
 
   // Mở modal ở chế độ chỉnh sửa
   const openEditModal = (activity: any) => {
+    // Khảo sát dùng builder riêng (biểu mẫu nhiều câu)
+    if (activity.type === "survey") {
+      setSurveyEditActivity(activity);
+      setShowSurveyBuilder(true);
+      return;
+    }
     setEditingActivity(activity);
 
     // ===== Bước 1: Set createType theo activity (LUÔN LUÔN — quan trọng để không nhầm loại) =====
@@ -2699,7 +2715,7 @@ function PresenterPage() {
     const isStartingThis = isStarting === activity._id;
 
     const typeIcon: Record<string, string> = {
-      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️", video: "🎬", html: "✨",
+      poll: "📊", wordcloud: "☁️", rating: "⭐", qa: "❓", board: "📌", opentext: "✏️", video: "🎬", html: "✨", survey: "🗳",
     };
 
     return (
@@ -3145,10 +3161,11 @@ function PresenterPage() {
                   />
                   <DropdownItem
                     icon="🗳"
-                    label="Khảo sát từ chủ đề"
-                    hint="Nhập topic → gen survey questions (chuỗi nhiều câu)"
+                    label="Khảo sát (biểu mẫu)"
+                    hint="Biểu mẫu nhiều câu đa dạng — soạn tay hoặc gợi ý AI rồi chỉnh"
                     onClick={() => {
-                      setShowSurveyModal(true);
+                      setSurveyEditActivity(null);
+                      setShowSurveyBuilder(true);
                       close();
                     }}
                   />
@@ -3478,6 +3495,7 @@ function PresenterPage() {
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
                     { type: "poll", icon: "📊", name: "Trắc nghiệm", desc: "SV chọn 1 hoặc nhiều đáp án có sẵn (hỗ trợ chế độ Quiz)", color: "blue" },
+                    { type: "survey", icon: "🗳", name: "Khảo sát (biểu mẫu)", desc: "Nhiều câu đa dạng (chọn/Likert/sao/NPS/tự luận) chia mục, SV điền 1 lần", color: "violet" },
                     { type: "wordcloud", icon: "☁️", name: "Đám mây từ", desc: "Từ khóa ngắn, tự gom từ trùng ý (cả gõ không dấu) → cụm to", color: "sky" },
                     { type: "rating", icon: "⭐", name: "Thang điểm", desc: "Chấm 1–N với nhãn thấp/cao tùy chỉnh", color: "amber" },
                     { type: "qa", icon: "❓", name: "Hỏi đáp", desc: "SV đặt câu hỏi tự do, có upvote", color: "emerald" },
@@ -3489,7 +3507,12 @@ function PresenterPage() {
                     <button
                       key={item.type}
                       onClick={() => {
-                        openCreateModal(item.type as "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html");
+                        if (item.type === "survey") {
+                          setSurveyEditActivity(null);
+                          setShowSurveyBuilder(true);
+                        } else {
+                          openCreateModal(item.type as "poll" | "wordcloud" | "rating" | "qa" | "board" | "opentext" | "video" | "html");
+                        }
                         setShowCreatePicker(false);
                       }}
                       className="text-left p-3 rounded-xl hover:bg-zinc-50 active:bg-zinc-100 transition-colors flex items-start gap-3 group"
@@ -5803,7 +5826,7 @@ function PresenterPage() {
         hasPdf={hasPdf}
         onOpenSingleActivity={() => setShowSingleAiModal(true)}
         onOpenPdfGen={() => setShowAiGenModal(true)}
-        onOpenSurvey={() => setShowSurveyModal(true)}
+        onOpenSurvey={() => { setSurveyEditActivity(null); setShowSurveyBuilder(true); }}
         onOpenSummary={() => setShowSummaryModal(true)}
         onOpenInsights={() => setShowInsightsModal(true)}
         onOpenApiKeys={() => setShowApiKeysModal(true)}
@@ -5817,14 +5840,23 @@ function PresenterPage() {
         />
       )}
 
-      {/* Survey AI gen modal */}
-      {showSurveyModal && session._id && (
-        <SurveyAiGenModal
+      {/* Khảo sát: builder tạo/sửa (biểu mẫu nhiều câu) */}
+      {showSurveyBuilder && session._id && (
+        <SurveyBuilder
           sessionId={session._id}
-          sessionTitle={session.title}
           existingActivityCount={activities?.length ?? 0}
           collectStudentCode={session.collectStudentCode ?? false}
-          onClose={() => setShowSurveyModal(false)}
+          activity={surveyEditActivity ?? undefined}
+          onClose={() => { setShowSurveyBuilder(false); setSurveyEditActivity(null); }}
+        />
+      )}
+
+      {/* Khảo sát: kết quả + phân tích + export */}
+      {surveyResultActivity && (
+        <SurveyResults
+          activityId={surveyResultActivity.id}
+          surveyTitle={surveyResultActivity.title}
+          onClose={() => setSurveyResultActivity(null)}
         />
       )}
 

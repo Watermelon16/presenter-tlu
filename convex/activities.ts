@@ -7,7 +7,7 @@ import { requireSessionOwner } from "./authz";
 export const createActivity = mutation({
   args: {
     sessionId: v.id("sessions"),
-    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa"), v.literal("opentext"), v.literal("video"), v.literal("html")),
+    type: v.union(v.literal("poll"), v.literal("wordcloud"), v.literal("rating"), v.literal("board"), v.literal("qa"), v.literal("opentext"), v.literal("video"), v.literal("html"), v.literal("survey")),
     title: v.string(),
     config: v.any(),
     requiresStudentCode: v.boolean(),
@@ -95,7 +95,9 @@ export const startActivity = mutation({
                 ? "Bảng tương tác"
                 : activity.type === "qa"
                   ? "Hỏi đáp"
-                  : "Câu hỏi mở";
+                  : activity.type === "survey"
+                    ? "Khảo sát"
+                    : "Câu hỏi mở";
       await ctx.scheduler.runAfter(0, internal.push.sendActivityNotification, {
         sessionId: activity.sessionId,
         activityId: args.activityId,

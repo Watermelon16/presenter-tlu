@@ -55,8 +55,8 @@ export const submitResponse = mutation({
       if (existingInCurrentRun) {
         throw new Error("Bạn đã trả lời hoạt động này rồi");
       }
-    } else if (args.deviceId && (activity.type === "poll" || activity.type === "rating")) {
-      // Dedupe anonymous: poll/rating tính 1 vote / device để không làm méo kết quả.
+    } else if (args.deviceId && (activity.type === "poll" || activity.type === "rating" || activity.type === "survey")) {
+      // Dedupe anonymous: poll/rating/survey tính 1 lần / device để không làm méo kết quả.
       // Wordcloud/qa/board cho phép multi-submit (brainstorm/Q&A nhiều câu).
       const allForActivity = await ctx.db
         .query("responses")
@@ -786,6 +786,62 @@ export const getDetailedPollResults = query({
     }
 
     return result;
+  },
+});
+
+/**
+ * KHẢO SÁT (type="survey"): trả về config + danh sách phản hồi thô (mỗi SV 1 bản
+ * ghi: answers theo từng câu) + danh tính nếu yêu cầu. Client tự tổng hợp bằng
+ * lib/survey.aggregateSurvey để render thống kê per câu, phân tích AI và export.
+ */
+export const getSurveyResponses = query({
+  args: { activityId: v.id("activities") },
+  handler: async (ctx, args) => {
+    const activity = await ctx.db.get(args.activityId);
+    if (!activity || activity.type !== "survey") return null;
+
+    const session = await ctx.db.get(activity.sessionId);
+    const currentRun = session?.currentRun ?? 1;
+
+    const allResponses = await ctx.db
+      .query("responses")
+      .withIndex("by_activity", (q) => q.eq("activityId", args.activityId))
+      .collect();
+    const responses = allResponses.filter((r) => (r.run ?? 1) === currentRun);
+    const answered = responses.filter((r) => r.status === "answered");
+    const totalNoResponse = responses.filter((r) => r.status === "no_response").length;
+
+    // Map danh tính nếu khảo sát có yêu cầu mã SV
+    let participantMap: Map<string, { fullName: string; className: string }> | null = null;
+    if (activity.requiresStudentCode) {
+      const participants = await ctx.db
+        .query("participants")
+        .withIndex("by_session", (q) => q.eq("sessionId", activity.sessionId))
+        .collect();
+      participantMap = new Map(
+        participants.map((p) => [p.studentCode, { fullName: p.fullName, className: p.className }])
+      );
+    }
+
+    return {
+      activityId: args.activityId,
+      title: activity.title,
+      config: activity.config ?? null,
+      requiresStudentCode: activity.requiresStudentCode,
+      totalRespondents: answered.length,
+      totalNoResponse,
+      responses: answered.map((r) => {
+        const ident = r.studentCode && participantMap ? participantMap.get(r.studentCode) : null;
+        const val = (r.value ?? {}) as { answers?: Record<string, unknown> };
+        return {
+          studentCode: r.studentCode ?? null,
+          fullName: ident?.fullName ?? "",
+          className: ident?.className ?? "",
+          answers: val.answers ?? {},
+          submittedAt: r.submittedAt,
+        };
+      }),
+    };
   },
 });
 

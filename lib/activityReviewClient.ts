@@ -8,7 +8,7 @@ import type { Provider } from "./aiModels";
 // Snapshot type khớp với convex/activityAiReview.ts getReviewSnapshot
 export type ReviewSnapshot = {
   activityId: string;
-  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video" | "html";
+  type: "poll" | "wordcloud" | "rating" | "board" | "qa" | "opentext" | "video" | "html" | "survey";
   title: string;
   config: unknown;
   totalAnswered: number;
