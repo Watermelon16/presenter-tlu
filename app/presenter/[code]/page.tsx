@@ -3158,14 +3158,18 @@ function PresenterPage() {
                   const closedCount = sortedActivities.filter(
                     (a) => a.status === "closed" || a.status === "expired"
                   ).length;
-                  if (closedCount === 0) {
-                    toast.message("Chưa có hoạt động nào đã chạy để reset");
+                  const hasSurvey = sortedActivities.some((a) => a.type === "survey");
+                  if (closedCount === 0 && !hasSurvey) {
+                    toast.message("Chưa có hoạt động nào để reset");
                     return;
                   }
                   if (
                     !confirm(
-                      `Reset ${closedCount} hoạt động đã chạy về NHÁP?\n\n` +
+                      "Reset TẤT CẢ hoạt động về NHÁP (kể cả KHẢO SÁT)?\n\n" +
                         "• Toàn bộ câu trả lời + board posts của PHIÊN HIỆN TẠI sẽ bị XOÁ\n" +
+                        (hasSurvey
+                          ? "• Khảo sát cũng bị xoá dữ liệu — nếu cần giữ, vào 📊 Kết quả → Xuất Excel TRƯỚC\n"
+                          : "") +
                         "• Activity về 'Nháp', sẵn sàng chạy lại\n" +
                         "• KHÔNG đổi phiên — vẫn cùng lớp hiện tại\n\n" +
                         "Khác với 'Phiên mới': phiên mới giữ lịch sử + sang lớp khác."

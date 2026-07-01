@@ -279,11 +279,11 @@ export const restartAllActivities = mutation({
     let postCount = 0;
 
     for (const activity of activities) {
-      // Bỏ qua draft (chưa chạy, không cần xoá gì)
-      if (activity.status === "draft") continue;
-      // KHẢO SÁT: không xoá theo bulk "chạy lại tất cả" — dữ liệu thu thập dần
-      // (mở đến hạn) phải được giữ. Muốn reset khảo sát thì làm riêng từng cái.
-      if (activity.type === "survey") continue;
+      const isSurvey = activity.type === "survey";
+      // Draft thường (chưa chạy) không có gì để reset. NHƯNG khảo sát "mở đến hạn" giữ
+      // status "draft" mà vẫn thu thập dữ liệu dần → cũng reset (xoá responses) để "chạy
+      // lại phiên" làm mới luôn khảo sát. (GV nên xuất Excel trước nếu muốn giữ — cảnh báo ở UI.)
+      if (activity.status === "draft" && !isSurvey) continue;
 
       // Xoá responses CỦA PHIÊN HIỆN TẠI (giữ lịch sử phiên cũ)
       const responses = await ctx.db
