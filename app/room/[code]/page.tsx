@@ -114,6 +114,40 @@ export default function ParticipantRoomPage() {
   const upvoteQuestion = useMutation(api.responses.upvoteQuestion);
   const heartbeat = useMutation(api.presence.heartbeat);
 
+  // Điểm danh lại giữa giờ: GV mở đợt xác minh (chống điểm danh đầu giờ rồi trốn).
+  // Chỉ biết "đang mở, hết hạn lúc X" — KHÔNG có mã (mã chỉ hiện trên màn chiếu GV).
+  const reverifyStatus = useQuery(
+    api.reverify.getPublicRoundStatus,
+    session?._id ? { sessionId: session._id } : "skip"
+  );
+  const confirmPresence = useMutation(api.reverify.confirmPresence);
+  const [reverifyCodeInput, setReverifyCodeInput] = useState("");
+  const [reverifyConfirmed, setReverifyConfirmed] = useState<number | null>(null); // expiresAt đã xác nhận
+  const [reverifyNow, setReverifyNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!reverifyStatus?.active) return;
+    const id = setInterval(() => setReverifyNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [reverifyStatus?.active]);
+
+  const handleConfirmPresence = async () => {
+    if (!session?._id || !identity) return;
+    try {
+      await confirmPresence({
+        sessionId: session._id,
+        studentCode: identity.studentCode,
+        deviceId: getOrCreateDeviceId(),
+        code: reverifyCodeInput.trim(),
+      });
+      setReverifyConfirmed(reverifyStatus?.expiresAt ?? reverifyNow);
+      setReverifyCodeInput("");
+      toast.success("✓ Đã xác nhận vẫn có mặt");
+    } catch (e: unknown) {
+      const err = e as { data?: string; message?: string };
+      toast.error(err.data || err.message || "Mã không đúng");
+    }
+  };
+
   // Presence: báo "còn online" định kỳ để presenter đếm số SV đang kết nối
   useEffect(() => {
     if (!session?._id) return;
@@ -945,6 +979,37 @@ export default function ParticipantRoomPage() {
               <div className="text-[11px] text-emerald-700/80 mt-0.5">
                 ✓ Thiết bị đã đăng ký trong buổi này
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Banner điểm danh lại giữa giờ — chỉ hiện khi GV đang mở đợt xác minh */}
+        {identity && reverifyStatus?.active && reverifyConfirmed !== reverifyStatus.expiresAt && (
+          <div className="mb-6 bg-indigo-50 border border-indigo-300 rounded-2xl px-4 py-3">
+            <div className="text-sm font-medium text-indigo-900 mb-2">
+              🔄 GV đang điểm danh lại — nhìn màn chiếu, nhập mã để xác nhận vẫn có mặt
+              {reverifyStatus.expiresAt && (
+                <span className="text-indigo-600 font-normal">
+                  {" "}(còn {Math.max(0, Math.ceil((reverifyStatus.expiresAt - reverifyNow) / 1000))}s)
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                value={reverifyCodeInput}
+                onChange={(e) => setReverifyCodeInput(e.target.value.replace(/\D/g, ""))}
+                placeholder="Nhập mã trên màn chiếu"
+                className="flex-1 h-10 px-3 rounded-lg border border-indigo-300 text-center tracking-[0.3em] font-mono text-lg"
+              />
+              <button
+                onClick={handleConfirmPresence}
+                disabled={reverifyCodeInput.trim().length < 4}
+                className="px-4 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-40"
+              >
+                Xác nhận
+              </button>
             </div>
           </div>
         )}

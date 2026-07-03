@@ -72,6 +72,11 @@ export function AttendancePanel({
   const updateSettings = useMutation(api.participants.updateAttendanceSettings);
   const pushAllToLms = useMutation(api.participants.pushAllParticipantsToLms);
   const setAccessMode = useMutation(api.sessions.setAccessMode);
+  const activeRound = useQuery(api.reverify.getActiveRoundForOwner, open ? { sessionId } : "skip");
+  const startRound = useMutation(api.reverify.startRound);
+  const finalizeRound = useMutation(api.reverify.finalizeRound);
+  const [isStartingRound, setIsStartingRound] = useState(false);
+  const [isFinalizingRound, setIsFinalizingRound] = useState(false);
   const [isPushingLms, setIsPushingLms] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
@@ -191,6 +196,35 @@ export function AttendancePanel({
       toast.error(err.data || err.message || "Lỗi đồng bộ LMS");
     } finally {
       setIsPushingLms(false);
+    }
+  };
+
+  const handleStartRound = async () => {
+    if (isStartingRound) return;
+    setIsStartingRound(true);
+    try {
+      await startRound({ sessionId, durationSeconds: 90 });
+      toast.success("Đã mở đợt điểm danh lại — chiếu mã này lên màn hình cho SV đọc");
+    } catch (e: unknown) {
+      const err = e as { data?: string; message?: string };
+      toast.error(err.data || err.message || "Lỗi");
+    } finally {
+      setIsStartingRound(false);
+    }
+  };
+
+  const handleFinalizeRound = async () => {
+    if (isFinalizingRound) return;
+    if (!confirm("Chốt đợt xác minh? SV chưa xác nhận sẽ bị gắn cờ để bạn xem lại (không tự đổi Vắng).")) return;
+    setIsFinalizingRound(true);
+    try {
+      const r = await finalizeRound({ sessionId });
+      toast.success(`Đã gắn cờ ${r.flaggedCount} SV chưa xác nhận giữa giờ`);
+    } catch (e: unknown) {
+      const err = e as { data?: string; message?: string };
+      toast.error(err.data || err.message || "Lỗi");
+    } finally {
+      setIsFinalizingRound(false);
     }
   };
 
@@ -417,6 +451,65 @@ export function AttendancePanel({
             </div>
           </div>
         )}
+
+        {/* Điểm danh lại giữa giờ — chống SV điểm danh đầu giờ rồi trốn */}
+        <div className="px-6 py-3 border-b border-zinc-100 bg-indigo-50/40">
+          {activeRound && now < activeRound.expiresAt ? (
+            <div className="flex items-center gap-4 flex-wrap">
+              <div>
+                <div className="text-[11px] text-zinc-600 mb-0.5">
+                  Chiếu mã này lên màn hình — SV nhìn màn chiếu để nhập:
+                </div>
+                <div className="text-3xl font-bold tracking-[0.3em] tabular-nums text-indigo-700">
+                  {activeRound.code}
+                </div>
+              </div>
+              <div className="text-xs text-amber-700 font-medium">
+                Hết hạn sau {Math.max(0, Math.ceil((activeRound.expiresAt - now) / 1000))}s
+              </div>
+              <button
+                onClick={handleFinalizeRound}
+                disabled={isFinalizingRound}
+                className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-60"
+              >
+                Chốt đợt xác minh ngay
+              </button>
+            </div>
+          ) : activeRound ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-zinc-600">
+                Đợt vừa hết hạn (mã {activeRound.code}) — chốt để gắn cờ SV chưa xác nhận, hoặc mở đợt mới.
+              </span>
+              <button
+                onClick={handleFinalizeRound}
+                disabled={isFinalizingRound}
+                className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-60"
+              >
+                Chốt đợt vừa rồi
+              </button>
+              <button
+                onClick={handleStartRound}
+                disabled={isStartingRound}
+                className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 text-indigo-700 font-medium hover:bg-indigo-100 disabled:opacity-60"
+              >
+                🔄 Mở đợt mới
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-zinc-600">
+                Nghi có SV điểm danh đầu giờ rồi rời lớp? Mở đợt xác minh — mã chỉ hiện trên màn chiếu.
+              </span>
+              <button
+                onClick={handleStartRound}
+                disabled={isStartingRound}
+                className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-60"
+              >
+                🔄 Điểm danh lại (giữa giờ)
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Bulk actions */}
         <div className="px-6 py-2.5 border-b border-zinc-100 flex items-center gap-2 flex-wrap text-xs">

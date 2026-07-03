@@ -157,6 +157,10 @@ export default defineSchema({
     checkinAt: v.optional(v.number()),
     checkinSource: v.optional(v.union(v.literal("lms"), v.literal("presenter"))),
     syncedToLmsAt: v.optional(v.number()),
+
+    // Điểm danh lại giữa giờ (bắt SV có mặt đầu giờ nhưng rời sớm) — xem bảng
+    // reverifyRounds. Ghi lại lần gần nhất SV này xác minh thành công.
+    lastReverifyAt: v.optional(v.number()),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])
@@ -175,6 +179,19 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_session_and_student", ["sessionId", "studentCode"])
     .index("by_lms_session", ["lmsSessionId"]),
+
+  // Đợt "điểm danh lại giữa giờ" — GV bấm mở, hệ thống sinh mã ngắn hạn CHỈ hiện
+  // trên màn hình GV (không lộ qua session doc công khai, vì SV cũng subscribe
+  // session đó). SV phải đang ngồi trong lớp nhìn màn chiếu mới lấy được mã.
+  // Chỉ giữ đợt gần nhất mỗi session là đủ (mở đợt mới không xoá đợt cũ, nhưng
+  // logic chỉ quan tâm đợt mới nhất theo createdAt).
+  reverifyRounds: defineTable({
+    sessionId: v.id("sessions"),
+    code: v.string(),        // Mã ngắn hạn (vd 6 số) — KHÔNG trả qua query công khai
+    createdAt: v.number(),
+    expiresAt: v.number(),   // Hết hạn sau ~60-90s tuỳ GV chọn
+  })
+    .index("by_session", ["sessionId"]),
 
   // Hoạt động trong buổi giảng (Poll, Board, Q&A...)
   activities: defineTable({

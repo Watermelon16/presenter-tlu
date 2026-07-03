@@ -33,6 +33,7 @@ import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as reactions from "../reactions.js";
 import type * as responses from "../responses.js";
+import type * as reverify from "../reverify.js";
 import type * as scriptTemplates from "../scriptTemplates.js";
 import type * as sessionSummary from "../sessionSummary.js";
 import type * as sessions from "../sessions.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   pushSubscriptions: typeof pushSubscriptions;
   reactions: typeof reactions;
   responses: typeof responses;
+  reverify: typeof reverify;
   scriptTemplates: typeof scriptTemplates;
   sessionSummary: typeof sessionSummary;
   sessions: typeof sessions;
