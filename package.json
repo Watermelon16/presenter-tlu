@@ -36,6 +36,9 @@
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
+  "overrides": {
+    "postcss": "^8.5.15"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
