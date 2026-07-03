@@ -101,6 +101,11 @@ export default defineSchema({
     attendanceOpenAt: v.optional(v.number()),
     lateCutoffMinutes: v.optional(v.number()),   // 10 — sau ngưỡng này = late
     absentAfterMinutes: v.optional(v.number()),  // 50 — sau ngưỡng này = absent
+
+    // === Thời lượng dự kiến buổi học (phút) — khống chế phòng không kéo dài vô hạn ===
+    // undefined/0 = không giới hạn. Chỉ dùng để CẢNH BÁO GV trên Presenter khi gần/quá
+    // giờ dự kiến (tính từ attendanceOpenAt ?? officialStartAt) — KHÔNG tự khoá/kết thúc phòng.
+    plannedDurationMinutes: v.optional(v.number()),
     attendanceFinalizedAt: v.optional(v.number()),
     className: v.optional(v.string()),
     hostEmail: v.optional(v.string()),

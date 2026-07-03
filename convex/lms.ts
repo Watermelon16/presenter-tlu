@@ -42,43 +42,38 @@ const DEFAULT_LATE_CUTOFF_MINUTES = 10;
 const DEFAULT_ABSENT_AFTER_MINUTES = 50;
 
 // Tính trạng thái điểm danh dựa vào lúc check-in:
-//   0..lateCutoff phút       → present
-//   lateCutoff..absentAfter  → late
-//   > absentAfter            → absent (auto; GV có thể chỉnh excused/late sau)
+//   0..lateCutoff phút → present, sau đó → late.
+// KHÔNG tự động trả về "absent": SV đã quét QR nghĩa là đã có mặt (dù muộn).
+// "Vắng" chỉ được xác lập khi: (a) LMS báo SV hoàn toàn chưa điểm danh ở đâu
+// (xem finalizeAttendance), hoặc (b) GV chỉnh tay. Nếu không, một buổi học kéo
+// dài hơn ngưỡng mặc định (vd 2 tiết ~90p) sẽ khiến SV đến muộn nhưng có quét QR
+// bị đánh vắng oan — kể cả khi SV đó đã điểm danh đúng trên LMS.
 export function computeAttendanceFromCheckin(
   checkinAt: number,
   openAt: number | undefined,
   fallbackStartAt: number | undefined,
   lateCutoffMinutes: number | undefined,
-  fallbackThresholdMinutes: number | undefined,
-  absentAfterMinutes: number | undefined
-): "present" | "late" | "absent" {
+  fallbackThresholdMinutes: number | undefined
+): "present" | "late" {
   // Ưu tiên attendanceOpenAt (LMS-driven); fallback officialStartAt (auto từ SV đầu)
   const t0 = openAt ?? fallbackStartAt;
   if (!t0) return "present";
   const lateMin = lateCutoffMinutes ?? fallbackThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES;
-  const absMin = absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES;
-  const lateCutoff = t0 + lateMin * 60_000;
-  const absentCutoff = t0 + absMin * 60_000;
-  if (checkinAt > absentCutoff) return "absent";
-  if (checkinAt > lateCutoff) return "late";
-  return "present";
+  return checkinAt > t0 + lateMin * 60_000 ? "late" : "present";
 }
 
-// Backward-compat alias — giữ tên cũ trong khi đang dùng ở nơi khác
-export function computePresentOrLate(
+// SV quét QR rất trễ (sau absentAfterMinutes) — vẫn tính "late" (đã có mặt),
+// chỉ gắn cờ để GV để ý xem lại, KHÔNG tự đổi thành "vắng".
+export function isSeriouslyLateCheckin(
   checkinAt: number,
   openAt: number | undefined,
   fallbackStartAt: number | undefined,
-  cutoffMinutes: number | undefined,
-  fallbackThresholdMinutes: number | undefined
-): "present" | "late" {
-  const r = computeAttendanceFromCheckin(
-    checkinAt, openAt, fallbackStartAt,
-    cutoffMinutes, fallbackThresholdMinutes,
-    undefined  // không enforce absent cutoff khi gọi qua alias cũ
-  );
-  return r === "absent" ? "late" : r;
+  absentAfterMinutes: number | undefined
+): boolean {
+  const t0 = openAt ?? fallbackStartAt;
+  if (!t0) return false;
+  const absMin = absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES;
+  return checkinAt > t0 + absMin * 60_000;
 }
 
 // ─── Internal: LMS gọi "Bắt đầu buổi" ──────────────────────────────────────
@@ -142,11 +137,15 @@ export const upsertParticipantFromLms = internalMutation({
 
     const currentRun = session.currentRun ?? 1;
 
-    // Status: Presenter là source of truth cho logic late/absent — luôn recompute
-    // từ checkinAt + T₀ + cutoffs. Chỉ trust status_code từ LMS nếu là override
-    // do GV LMS đánh tay (excused / early_leave) — Presenter compute không ra
-    // được 2 trạng thái này.
-    const lmsOverride = args.statusFromLms === "excused" || args.statusFromLms === "left_early" || args.statusFromLms === "early_leave"
+    // Status: Presenter là source of truth cho logic present/late — luôn recompute
+    // từ checkinAt + T₀ + cutoffs (nhưng không bao giờ tự suy ra "absent" — SV đã
+    // checkin thì coi như có mặt, dù muộn). Chỉ trust status_code từ LMS nếu là
+    // override do GV LMS đánh tay (excused / early_leave / absent) — đó là quyết
+    // định của GV trên LMS, Presenter không được phép ghi đè.
+    const lmsOverride = args.statusFromLms === "excused"
+      || args.statusFromLms === "left_early"
+      || args.statusFromLms === "early_leave"
+      || args.statusFromLms === "absent"
       ? toInternalStatus(args.statusFromLms)
       : null;
     const status: InternalStatus = lmsOverride ?? computeAttendanceFromCheckin(
@@ -154,7 +153,12 @@ export const upsertParticipantFromLms = internalMutation({
       session.attendanceOpenAt,
       session.officialStartAt,
       session.lateCutoffMinutes,
-      session.lateThresholdMinutes,
+      session.lateThresholdMinutes
+    );
+    const seriouslyLate = !lmsOverride && isSeriouslyLateCheckin(
+      args.checkinAt,
+      session.attendanceOpenAt,
+      session.officialStartAt,
       session.absentAfterMinutes
     );
 
@@ -209,6 +213,7 @@ export const upsertParticipantFromLms = internalMutation({
         fullName: args.fullName,
         className: session.className ?? existing.className,
         syncedToLmsAt: Date.now(),
+        ...(seriouslyLate ? { flagged: true, flagReason: "Điểm danh rất trễ — GV xem lại" } : {}),
       });
       participantId = existing._id;
     } else {
@@ -224,13 +229,16 @@ export const upsertParticipantFromLms = internalMutation({
         checkinAt: args.checkinAt,
         checkinSource: "lms",
         syncedToLmsAt: Date.now(),
+        ...(seriouslyLate ? { flagged: true, flagReason: "Điểm danh rất trễ — GV xem lại" } : {}),
       });
       created = true;
     }
 
     // Echo về LMS khi Presenter compute status KHÁC với cái LMS gửi sang.
     // Lý do: LMS có thể chưa biết T0 hoặc dùng logic late khác → Presenter là
-    // source of truth cho present/late/absent (compute từ checkinAt + T0 + cutoffs).
+    // source of truth cho present/late (compute từ checkinAt + T0 + cutoffs). Vì
+    // status ở đây chỉ có thể là present/late/lmsOverride, echo này không bao giờ
+    // đè trạng thái "absent" đúng của LMS bằng một "absent" đoán mò từ đồng hồ.
     // Không gây loop vì LMS không tự push lại khi nhận status update.
     // (Path rescan đã return ở trên → tới đây chỉ là first scan hoặc edge fix.)
     const lmsSaid = toInternalStatus(args.statusFromLms ?? null);
@@ -472,6 +480,7 @@ export const getAttendanceState = query({
       checkinSource: "lms" | "presenter" | null;
       checkinAt: number | null;
       flagged: boolean;
+      flagReason: string | null;
       participantId: string | null;
     };
     const rows: Row[] = [];
@@ -488,6 +497,7 @@ export const getAttendanceState = query({
         checkinSource: p?.checkinSource ?? null,
         checkinAt: p?.checkinAt ?? p?.joinedAt ?? null,
         flagged: !!p?.flagged,
+        flagReason: p?.flagReason ?? null,
         participantId: p?._id ?? null,
       });
       if (p) byCode.delete(r.studentCode);
@@ -504,6 +514,7 @@ export const getAttendanceState = query({
         checkinSource: p.checkinSource ?? null,
         checkinAt: p.checkinAt ?? p.joinedAt ?? null,
         flagged: !isLmsLinked ? false : true, // chỉ flag nếu LMS-linked (vì non-LMS không có roster)
+        flagReason: p.flagReason ?? (isLmsLinked ? "Không có trong roster LMS" : null),
         participantId: p._id,
       });
     }
@@ -524,6 +535,7 @@ export const getAttendanceState = query({
       attendanceOpenAt: session.attendanceOpenAt ?? session.officialStartAt ?? null,
       lateCutoffMinutes: session.lateCutoffMinutes ?? session.lateThresholdMinutes ?? DEFAULT_LATE_CUTOFF_MINUTES,
       absentAfterMinutes: session.absentAfterMinutes ?? DEFAULT_ABSENT_AFTER_MINUTES,
+      plannedDurationMinutes: session.plannedDurationMinutes ?? null,
       attendanceFinalizedAt: session.attendanceFinalizedAt ?? null,
       className: session.className ?? null,
       rosterCount: roster.length,

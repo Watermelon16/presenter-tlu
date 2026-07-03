@@ -77,6 +77,7 @@ export function AttendancePanel({
   const [showSettings, setShowSettings] = useState(false);
   const [lateThreshold, setLateThreshold] = useState(10);
   const [absentAfter, setAbsentAfter] = useState(50);
+  const [plannedDuration, setPlannedDuration] = useState(0); // 0 = không giới hạn
   const [settingsInited, setSettingsInited] = useState(false);
 
   const [now, setNow] = useState(() => Date.now());
@@ -99,6 +100,7 @@ export function AttendancePanel({
     if (state && !settingsInited) {
       setLateThreshold(state.lateCutoffMinutes ?? 10);
       setAbsentAfter(state.absentAfterMinutes ?? 50);
+      setPlannedDuration(state.plannedDurationMinutes ?? 0);
       setSettingsInited(true);
     }
   }, [state, settingsInited]);
@@ -131,7 +133,7 @@ export function AttendancePanel({
 
   let nextCutoff: { label: string; at: number } | null = null;
   if (lateCutoffAt && now < lateCutoffAt) nextCutoff = { label: "muộn", at: lateCutoffAt };
-  else if (absentCutoffAt && now < absentCutoffAt) nextCutoff = { label: "vắng", at: absentCutoffAt };
+  else if (absentCutoffAt && now < absentCutoffAt) nextCutoff = { label: "cảnh báo trễ", at: absentCutoffAt };
 
   const totalSV = isLmsLinked ? Math.max(rosterCount, rows.length) : rows.length;
   const scannedSV = rows.filter((r) => r.attendanceStatus != null).length;
@@ -213,6 +215,7 @@ export function AttendancePanel({
         sessionId,
         lateThresholdMinutes: lateThreshold,
         absentAfterMinutes: absentAfter,
+        plannedDurationMinutes: plannedDuration,
       });
       toast.success("Đã lưu cài đặt");
       setShowSettings(false);
@@ -249,7 +252,7 @@ export function AttendancePanel({
   };
 
   const t0Text = attendanceOpenAt
-    ? `Giờ bắt đầu (T₀): ${fmtClock(attendanceOpenAt)} · Muộn sau ${lateCutoffMinutes}p, vắng sau ${absentAfterMinutes}p`
+    ? `Giờ bắt đầu (T₀): ${fmtClock(attendanceOpenAt)} · Muộn sau ${lateCutoffMinutes}p, cảnh báo trễ sau ${absentAfterMinutes}p`
     : "Chưa có T₀ — đợi LMS bấm 'Bắt đầu' hoặc SV đầu tiên scan";
 
   return (
@@ -372,7 +375,7 @@ export function AttendancePanel({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng vắng (phút sau T₀)</label>
+              <label className="text-xs font-medium text-zinc-700 block mb-1">Ngưỡng cảnh báo trễ (phút sau T₀)</label>
               <input
                 type="number"
                 min={lateThreshold + 1}
@@ -382,9 +385,31 @@ export function AttendancePanel({
                 className="w-full h-9 px-3 rounded-md border border-zinc-200 text-sm"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-zinc-700 block mb-1">Thời lượng dự kiến buổi học</label>
+              <div className="flex flex-wrap gap-1.5">
+                {[0, 45, 50, 90, 100, 120].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPlannedDuration(m)}
+                    className={`px-2.5 py-1 text-xs rounded-lg border ${
+                      plannedDuration === m
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"
+                    }`}
+                  >
+                    {m === 0 ? "Không giới hạn" : `${m}p`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Chỉ để Presenter cảnh báo GV khi gần/quá giờ dự kiến — KHÔNG tự khoá hay kết thúc phòng.
+              </p>
+            </div>
             <div className="sm:col-span-2 flex items-center justify-between gap-3 flex-wrap">
               <p className="text-[11px] text-zinc-500">
-                0..{lateThreshold}p = Có mặt · {lateThreshold}..{absentAfter}p = Muộn · &gt;{absentAfter}p = Vắng
+                0..{lateThreshold}p = Có mặt · sau đó = Đi muộn · sau {absentAfter}p = gắn cờ để GV xem lại (không tự Vắng)
               </p>
               <button onClick={handleSaveSettings} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500">
                 Lưu cài đặt
@@ -435,7 +460,7 @@ export function AttendancePanel({
                     <td className="px-6 py-2.5 text-xs text-zinc-400 tabular-nums">{i + 1}</td>
                     <td className="px-3 py-2.5 font-mono text-sm">
                       {r.studentCode}
-                      {r.flagged && <span className="ml-1 text-amber-600" title="Không có trong roster LMS">⚠</span>}
+                      {r.flagged && <span className="ml-1 text-amber-600" title={r.flagReason || "Không có trong roster LMS"}>⚠</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="font-medium">{r.fullName}</div>
@@ -550,7 +575,7 @@ export function AttendancePanel({
         {/* Footer */}
         <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-zinc-500">
-            Auto: T₀+{lateCutoffMinutes}p → muộn · T₀+{absentAfterMinutes}p → vắng. GV bấm icon trạng thái để override.
+            Auto: T₀+{lateCutoffMinutes}p → muộn · T₀+{absentAfterMinutes}p → gắn cờ xem lại (không tự vắng). GV bấm icon trạng thái để override.
             {isLmsLinked && <span className="ml-1 text-emerald-700 font-medium">· Đồng bộ realtime với LMS</span>}
           </div>
           <button

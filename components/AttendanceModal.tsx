@@ -195,8 +195,8 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
                 return (
                   <>
                     Giờ bắt đầu (T₀): <strong>{formatTime(t0)}</strong> · Muộn sau{" "}
-                    <strong>{s.lateThresholdMinutes ?? 10}p</strong>, vắng sau{" "}
-                    <strong>{s.absentAfterMinutes ?? 50}p</strong>
+                    <strong>{s.lateThresholdMinutes ?? 10}p</strong>, cảnh báo trễ sau{" "}
+                    <strong>{s.absentAfterMinutes ?? 50}p</strong> (vẫn tính Đi muộn)
                   </>
                 );
               })()}
@@ -252,12 +252,12 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
                   className="h-9"
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  0..{lateThreshold}p = Có mặt · {lateThreshold}..{absentAfter}p = Muộn · &gt;{absentAfter}p = Vắng
+                  0..{lateThreshold}p = Có mặt · sau đó = Đi muộn (không giới hạn — quét là tính có mặt)
                 </p>
               </div>
               <div>
                 <label className="text-xs font-medium text-zinc-700 block mb-1">
-                  Ngưỡng vắng (phút sau T₀)
+                  Ngưỡng cảnh báo trễ (phút sau T₀)
                 </label>
                 <Input
                   type="number"
@@ -268,7 +268,8 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
                   className="h-9"
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  Scan sau {absentAfter} phút → tự đánh dấu Vắng (GV chỉnh sau)
+                  Scan sau {absentAfter} phút → vẫn tính Đi muộn, chỉ gắn cờ để GV xem lại (KHÔNG tự đánh Vắng).
+                  Vắng chỉ do LMS báo SV chưa điểm danh ở đâu, hoặc GV chỉnh tay.
                 </p>
               </div>
               <div>
@@ -406,7 +407,7 @@ export function AttendanceModal({ sessionId, onClose }: Props) {
         <div className="px-6 py-3 border-t border-zinc-200 flex items-center justify-between bg-zinc-50 text-xs text-zinc-500">
           <div>
             Auto: T₀+{session.lateThresholdMinutes ?? 10}p → muộn ·
-            T₀+{(session as { absentAfterMinutes?: number }).absentAfterMinutes ?? 50}p → vắng.
+            T₀+{(session as { absentAfterMinutes?: number }).absentAfterMinutes ?? 50}p → gắn cờ xem lại (không tự vắng).
             GV bấm icon trạng thái để override.
           </div>
           <Button onClick={onClose} variant="outline" size="sm">

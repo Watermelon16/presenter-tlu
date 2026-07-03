@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
-import { computeAttendanceFromCheckin, resolveAccessMode } from "./lms";
+import { computeAttendanceFromCheckin, isSeriouslyLateCheckin, resolveAccessMode } from "./lms";
 import { requireSessionOwner } from "./authz";
 
 // Sinh viên tham gia phòng + nhập thông tin danh tính
@@ -151,10 +151,13 @@ export const joinSession = mutation({
           session.attendanceOpenAt,
           officialStartAt,
           session.lateCutoffMinutes,
-          session.lateThresholdMinutes,
-          session.absentAfterMinutes
+          session.lateThresholdMinutes
         );
         patch.checkinAt = existing.joinedAt;
+        if (isSeriouslyLateCheckin(existing.joinedAt, session.attendanceOpenAt, officialStartAt, session.absentAfterMinutes)) {
+          patch.flagged = true;
+          patch.flagReason = "Điểm danh rất trễ — GV xem lại";
+        }
       }
 
       if (deviceId && existing.deviceId && existing.deviceId !== deviceId) {
@@ -245,15 +248,19 @@ export const joinSession = mutation({
       await ctx.db.patch(session._id, { officialStartAt: joinedAt });
     }
 
-    // Compute attendance: ưu tiên attendanceOpenAt (LMS), fallback officialStartAt
-    // 3 trạng thái: 0..10p=present, 10..50p=late, >50p=absent (cấu hình per session)
+    // Compute attendance: ưu tiên attendanceOpenAt (LMS), fallback officialStartAt.
+    // Chỉ 2 trạng thái tự động: 0..lateThreshold=present, sau đó=late. SV đã quét QR
+    // là đã có mặt — không bao giờ tự động thành "vắng" dù quét trễ bao nhiêu; "vắng"
+    // chỉ do LMS báo (roster chưa ai điểm danh) hoặc GV chỉnh tay.
     const attendanceStatus = computeAttendanceFromCheckin(
       joinedAt,
       session.attendanceOpenAt,
       officialStartAt,
       session.lateCutoffMinutes,
-      session.lateThresholdMinutes,
-      session.absentAfterMinutes
+      session.lateThresholdMinutes
+    );
+    const seriouslyLate = isSeriouslyLateCheckin(
+      joinedAt, session.attendanceOpenAt, officialStartAt, session.absentAfterMinutes
     );
 
     const participantId = await ctx.db.insert("participants", {
@@ -270,6 +277,7 @@ export const joinSession = mutation({
       checkinAt: joinedAt,
       checkinSource: isLmsLinked ? "presenter" : undefined,
       isGuest: false,
+      ...(seriouslyLate ? { flagged: true, flagReason: "Điểm danh rất trễ — GV xem lại" } : {}),
     });
 
     // Fire-and-forget webhook sync sang LMS (nếu session liên thông LMS).
@@ -489,7 +497,8 @@ export const pushAllParticipantsToLms = mutation({
 });
 
 /**
- * GV chỉnh setting điểm danh của session: ngưỡng đi muộn, T0, webhook URL.
+ * GV chỉnh setting điểm danh của session: ngưỡng đi muộn, T0, webhook URL,
+ * thời lượng dự kiến buổi học (chỉ để cảnh báo, không tự khoá/kết thúc phòng).
  */
 export const updateAttendanceSettings = mutation({
   args: {
@@ -499,6 +508,7 @@ export const updateAttendanceSettings = mutation({
     officialStartAt: v.optional(v.number()),
     attendanceWebhookUrl: v.optional(v.string()),
     lmsSessionId: v.optional(v.string()),
+    plannedDurationMinutes: v.optional(v.number()),  // 0 = không giới hạn
   },
   handler: async (ctx, args) => {
     await requireSessionOwner(ctx, args.sessionId);
@@ -516,6 +526,11 @@ export const updateAttendanceSettings = mutation({
     }
     if (args.officialStartAt !== undefined) {
       patch.officialStartAt = args.officialStartAt;
+    }
+    if (args.plannedDurationMinutes !== undefined) {
+      patch.plannedDurationMinutes = args.plannedDurationMinutes <= 0
+        ? undefined
+        : Math.max(15, Math.min(240, args.plannedDurationMinutes));
     }
     if (args.attendanceWebhookUrl !== undefined) {
       const url = args.attendanceWebhookUrl.trim();

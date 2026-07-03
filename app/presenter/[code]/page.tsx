@@ -19,6 +19,7 @@ import { AiGenFromPdfModal } from "@/components/AiGenFromPdfModal";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
 import { Logo } from "@/components/Logo";
 import { AttendancePanel } from "@/components/AttendancePanel";
+import { SessionTimeBadge } from "@/components/SessionTimeBadge";
 import { SmartInsightsModal } from "@/components/SmartInsightsModal";
 import { SessionSummaryModal } from "@/components/SessionSummaryModal";
 import { AiSingleActivityModal } from "@/components/AiSingleActivityModal";
@@ -3199,6 +3200,12 @@ function PresenterPage() {
 
           {/* RIGHT: SV count + Dropdowns */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <SessionTimeBadge
+              attendanceOpenAt={session.attendanceOpenAt}
+              officialStartAt={session.officialStartAt}
+              plannedDurationMinutes={session.plannedDurationMinutes}
+              onOpenSettings={() => setShowAttendanceModal(true)}
+            />
             <button
               onClick={() => setShowAttendanceModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-zinc-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
